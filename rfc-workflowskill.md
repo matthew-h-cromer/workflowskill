@@ -1,4 +1,4 @@
-# Proposal: WorkflowSkill — Deterministic and Composable Agent Skills
+# Proposal: WorkflowSkill — Deterministic Agent Skill Workflows
 
 ## Executive Summary
 
@@ -8,7 +8,7 @@ This makes recurring automations expensive and fragile. A simple daily email tri
 
 The root cause is a design mismatch. Most of what happens in a repeated workflow doesn't require intelligence at all. Fetching data, filtering a list, formatting a message, deciding where to send it: these are deterministic steps. Only a fraction of the work (scoring an email's importance, summarizing a document, making a judgment call) actually needs an AI model. But today, the entire job runs through one.
 
-WorkflowSkill fixes this by letting authors declare a workflow's plan once. Deterministic steps execute directly through a lightweight runtime with no AI, no cost, and the same result every time. Steps that genuinely require judgment invoke a model, and authors choose which model, so a cheap one handles simple classification while a more capable one handles nuance. Error handling, retries, and fallback paths are explicit rather than improvised.
+WorkflowSkill fixes this by letting authors declare a workflow's plan once. Deterministic steps execute directly through a lightweight runtime with no AI, no cost, and the same result every time. Steps that genuinely require judgment invoke a model, and authors choose which model, so a cheap one handles simple classification while a more capable one handles nuance. Error handling and retries are explicit rather than improvised.
 
 The result: that $4.50/month email triage drops to $0.09. Every run follows the same plan. Behavior is auditable and version-controlled. The automation becomes reliable enough to run while you sleep.
 
@@ -95,7 +95,7 @@ Security researchers studying the OpenClaw ecosystem note that users routinely a
 
 Troubleshooting makes the problem concrete. When a skill-based workflow misbehaves, you have two fuzzy inputs: the intent written in the skill and the intent inferred from the execution transcript. Neither is precise. Comparing them to find root cause is interpretive work, and so is the fix you design. A deterministic workflow changes this entirely. Behavior is measurable against explicit expectations. The gap between what should have happened and what did happen is visible, not inferred. Building and iterating on explicit definitions is a fundamentally different class of problem, and a much easier one. Each iteration moves your automation toward a concrete outcome rather than drifting around one.
 
-WorkflowSkill addresses this at the architectural level. The execution path is declared, not improvised. Error handling is explicit: try/fallback, retry with backoff, approval gates for steps that need human sign-off. Every run follows the same plan. That plan can be read, audited, version-controlled, and tested before it touches production systems. When something goes wrong, you have a structured run log with step-level timing and failure reasons, not a transcript to synthesize.
+WorkflowSkill addresses this at the architectural level. The execution path is declared, not improvised. Error handling is explicit: retry with backoff, fail-or-ignore semantics per step. Every run follows the same plan. That plan can be read, audited, version-controlled, and tested before it touches production systems. When something goes wrong, you have a structured run log with step-level timing and failure reasons, not a transcript to synthesize.
 
 The result is automation that is trustworthy enough to run while you are asleep.
 
@@ -110,7 +110,7 @@ I want a declarative workflow language that a lightweight runtime can execute di
 I want WorkflowSkill to live inside the existing SKILL.md format so that adoption is incremental, systems without a runtime still function, no existing skills break, and the ecosystem doesn't fork.
 
 **PR3: Flow Control**
-I want conditional branching, loops, and early exits expressed declaratively so that workflow logic is visible and auditable rather than improvised per-run by the LLM.
+I want conditional branching, iteration, and early exits expressed declaratively so that workflow logic is visible and auditable rather than improvised per-run by the LLM.
 
 **PR4: Observability**
 I want structured, step-level run logs with timing, inputs, outputs, and failure reasons so that debugging a failed workflow is a lookup rather than a transcript interpretation exercise.
@@ -119,25 +119,16 @@ I want structured, step-level run logs with timing, inputs, outputs, and failure
 I want every workflow execution to produce a unique run ID and a full record of which steps ran, which were skipped, and what data flowed between them, so that I can reconstruct exactly what happened in any past run without ambiguity.
 
 **PR6: Error Handling**
-I want explicit, per-step error handling semantics (fail, ignore, fallback) so that a single step failure doesn't silently corrupt the rest of the workflow or produce a partial result the user mistakes for a complete one.
+I want explicit, per-step error handling semantics (fail, ignore) so that a single step failure doesn't silently corrupt the rest of the workflow or produce a partial result the user mistakes for a complete one.
 
-**PR7: Fallbacks**
-I want to declare alternative paths for any step so that when a tool is unavailable or an LLM call returns unusable output, the workflow degrades gracefully rather than halting or improvising.
-
-**PR8: Retries**
+**PR7: Retries**
 I want configurable retry policies with backoff so that transient failures (rate limits, network timeouts, temporary API errors) are absorbed automatically without human intervention or wasted LLM reasoning about what to do next.
 
-**PR9: Composability**
-I want one WorkflowSkill to invoke another as a step, with typed inputs and outputs, so that complex automations are assembled from tested, reusable building blocks rather than written monolithically.
-
-**PR10: Targeted LLM Usage**
+**PR8: Targeted LLM Usage**
 I want to specify which model to use per LLM step so that judgment-heavy steps can use a capable model while simple classification or summarization steps use a cheaper one, and deterministic steps use no model at all.
 
-**PR11: Input/Output Schemas**
+**PR9: Input/Output Schemas**
 I want typed, validated inputs and outputs on every workflow so that workflows are self-documenting, callers get clear errors on bad input, and agents can programmatically assess whether a run produced a valid result.
-
-**PR12: Human-in-the-Loop**
-I want explicit approval gates that pause execution and resume on human authorization so that high-stakes steps (sending money, deleting data, publishing content) never run unattended without deliberate opt-in.
 
 ## WorkflowSkill
 
@@ -158,7 +149,7 @@ outputs:
   <name>: { type: string|int|float|boolean|array|object }
 steps:
   - id: string
-    type: tool|llm|transform|conditional|loop|approval|exit|workflow
+    type: tool|llm|transform|conditional|exit
     description: string
     inputs:
       <name>: { type: string|int|float|boolean|array|object, default: <value> }
@@ -173,7 +164,7 @@ steps:
 
 ### Backwards Compatibility
 
-This placement inside SKILL.md is intentional to satisfy **PR2: Backwards Compatibility**. Systems without a WorkflowSkill runtime read the block as documentation. The LLM can interpret the YAML and execute a reasonable approximation of it. Systems with a runtime execute it directly. A single skill file works in both contexts. Adoption is incremental, and no existing skills break.
+This placement inside SKILL.md is intentional to satisfy **PR2: Backwards Compatibility** (renumbered below). Systems without a WorkflowSkill runtime read the block as documentation. The LLM can interpret the YAML and execute a reasonable approximation of it. Systems with a runtime execute it directly. A single skill file works in both contexts. Adoption is incremental, and no existing skills break.
 
 ### Workflow Inputs and Outputs
 
@@ -184,14 +175,13 @@ A workflow should have a defined schema for inputs and outputs. Being able to ex
 | Field | Required | Description |
 |-------|----------|-------------|
 | id | yes | Unique identifier within the workflow. Referenced by other steps via `$steps.<id>.output`. |
-| type | yes | One of: `tool`, `llm`, `transform`, `conditional`, `loop`, `approval`, `exit`, `workflow`. |
+| type | yes | One of: `tool`, `llm`, `transform`, `conditional`, `exit`. |
 | description | no | Human-readable explanation. Displayed in run logs. |
 | inputs | yes | Schema declaring what this step expects, with type and source for each field. |
 | outputs | yes | Schema declaring what this step produces. |
 | condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
-| each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `loop` or `exit` steps; rejected at validation time. |
-| on_error | no | Error handling strategy: `fail` (default), `ignore` (log and continue with null output), or `fallback`. |
-| fallback | no | A complete step definition to execute if this step fails and on_error is `fallback`. |
+| each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
+| on_error | no | Error handling strategy: `fail` (default) or `ignore` (log the error and continue with null output). |
 | retry | no | Retry policy: `{ max: int, delay: string, backoff: float }`. |
 
 ### Step Inputs and Outputs
@@ -202,7 +192,7 @@ Every step declares typed inputs and outputs. This serves three purposes:
 
 **Post-step validation.** After each step executes, the runtime validates its actual output against the declared schema. A step that produces unexpected output fails explicitly rather than silently corrupting downstream steps.
 
-**Composability contracts.** When a workflow step invokes a child, input and output schemas are validated across the boundary.
+**Composability contracts.** When workflow composition is supported (see Future Work), input and output schemas are validated across the boundary between parent and child workflows.
 
 ```yaml
 inputs:
@@ -221,16 +211,13 @@ outputs:
 
 ### Step Types
 
-| Type | Purpose |
-|------|---------|
+| Type | Description |
+|------|-------------|
 | **Tool** | Invokes a registered tool directly. No LLM involved. Use for any step where the inputs, operation, and expected output shape are known at authoring time. |
 | **LLM** | Calls a language model with an explicit prompt. The only step type that consumes tokens. Use for steps requiring judgment, creativity, or natural language understanding. |
 | **Transform** | Filters, maps, sorts, or reshapes data. Pure data manipulation inside the runtime. Use to prepare the output of one step as input for the next. |
-| **Conditional** | Branches execution based on a value or expression. Use when the workflow must take meaningfully different paths. For simply skipping a single step, use the `condition` common field instead. |
-| **Loop** | Executes a sequence of steps repeatedly until a condition is met or a maximum iteration count is reached. Use for polling, convergence, or any repeat-until pattern. Not for iterating over a known collection. Use the `each` common field for that. |
-| **Approval** | Pauses execution and waits for human authorization. Use before any step with irreversible or high-stakes side effects. |
+| **Conditional** | Evaluates a `condition` expression and dispatches to the matching branch. Each branch contains one or more step IDs to execute. Returns the output of the last step in the selected branch. For skipping a single step, use the `condition` common field instead. |
 | **Exit** | Terminates the workflow immediately with a status and optional output. Use inside a conditional branch for early termination, or as a circuit breaker when a critical step fails with `on_error: ignore`. |
-| **Workflow** | Invokes another WorkflowSkill as a step. The composability primitive. Use when a sequence of steps is reusable across parent workflows, or when a complex workflow benefits from decomposition. |
 
 ### Flow Control
 
@@ -239,7 +226,26 @@ outputs:
 | `condition` | Common field | Guard. Should this step run? Binary skip/execute. |
 | `each` | Common field | Iterate. Run this step for every item in a collection. |
 | `conditional` | Step type | Branch. Route between different step sequences. |
-| `loop` | Step type | Repeat. Execute steps until a condition is met. |
 | `exit` | Step type | Terminate. Stop the workflow early with a status and output. |
 
 ## Runtime
+
+## Future Work
+
+The following capabilities are considered for inclusion once the core specification has proven its value in production.
+
+**Approval gates.** Pause execution and wait for human authorization before high-stakes steps. This is the most architecturally complex addition: it requires state serialization, process suspension and resumption, a notification contract with the platform, and timeout handling. It is also the only feature that forces the runtime to maintain state across process boundaries. Every other executor is fire-and-forget within a single run.
+
+**Workflow composability.** Invoke one WorkflowSkill as a step within another, with typed inputs and outputs validated across the boundary. This requires scoping rules for child workflows, nested run log merging, and cross-skill versioning semantics. Composability becomes valuable once the community has built a critical mass of standalone workflows to compose.
+
+**Fallback paths.** Declare alternative step definitions that execute when a primary step fails. More expressive than `on_error: ignore` because the fallback can take a completely different action rather than continuing with null output.
+
+**Loop step type.** Repeat-until patterns for polling, convergence, and retry-with-adaptation. The `each` field handles iteration over known collections. The loop step addresses cases where the number of iterations isn't known in advance: waiting for an API to return a specific status, refining output until a quality threshold is met, or retrying with modified parameters.
+
+**Extended transform operations.** `pick` (select specific fields from an object), `format` (interpolate values into a string template), `group`, `flatten`, `merge`, `concat`, `count`, and `unique`. The initial three operations (filter, map, sort) are orthogonal primitives that cover the majority of data reshaping needs. `pick` is a special case of `map`. `format` duplicates what the expression language already provides in prompt templates. Additional operations will be added based on demand from real workflows.
+
+**Expression extensions.** Null coalescing (`??`) for handling missing data from skipped steps, and the `in` operator for set membership checks. Both are deferred until real usage patterns clarify their semantics and interaction with the error handling model.
+
+**Run log verbosity levels.** Configurable detail levels: minimal (timing and status only), standard (current default), and debug (full untruncated inputs and outputs). Useful for production storage optimization and detailed troubleshooting respectively.
+
+**Structured output enforcement.** Strict validation of LLM responses against declared `response_format` schemas. Deferred because LLM output validation is inherently messy (partial conformance, model-specific structured output support varies), and the failure modes need to be understood before enforcement semantics are specified.
