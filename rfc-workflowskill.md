@@ -215,6 +215,29 @@ outputs:
     items: { type: object, properties: { score: int, summary: string } }
 ```
 
+### Expression Language
+
+Expressions appear in `condition` guards, `each` fields, input `source` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
+
+**References:**
+
+| Syntax | Resolves To |
+|--------|-------------|
+| `$inputs.<name>` | A workflow input parameter |
+| `$steps.<id>.output` | The full output of a previous step |
+| `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
+| `$item` | The current element when inside an `each` iteration |
+| `$index` | The current index when inside an `each` iteration |
+
+**Operators:**
+
+| Category | Operators |
+|----------|-----------|
+| Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
+| Logical | `&&`, `\|\|`, `!` |
+
+**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references and comparisons.
+
 ### Step Types
 
 | Type | Description |
