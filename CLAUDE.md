@@ -92,6 +92,7 @@ Be aware of these so the RFC can address "why not just use X?":
 - **LangGraph**: Graph-based workflow orchestration. Powerful but framework-specific, Python-only, not a standard.
 - **CrewAI**: Role-based agent teams. More about multi-agent coordination than workflow definition.
 - **Temporal/Prefect/Airflow**: Production workflow engines. Too heavy for agent skills. Different abstraction level.
+- **Haystack**: Python pipeline framework (24.2k stars). Validates the core thesis: separates deterministic and LLM steps, achieves lowest token usage among comparable frameworks. But framework-not-standard, Python-only, code-first. Evidence for WorkflowSkill, not competition against it.
 - **flowmind**: Community-built OpenClaw meta-skill for chaining skills. Proves demand. WorkflowSkill is the standardized answer.
 
 ---
