@@ -502,6 +502,493 @@ A conformant WorkflowSkill runtime must:
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
 
+## Usage
+
+The spec above defines every piece of the WorkflowSkill format. This section puts them together into complete, runnable workflows. Each example is a `workflow` block that would appear inside a SKILL.md file.
+
+### Example 1: Daily Email Triage
+
+This is the email triage workflow referenced throughout the Problem Statement. It fetches unread emails, uses an LLM to score each one for importance, filters and sorts the results, and posts a briefing to Slack. One LLM step, using a cheap model. Everything else is deterministic.
+
+Five of the seven steps consume zero tokens. The LLM step uses Haiku for simple classification work. Monthly cost: ~$0.09 instead of ~$4.50.
+
+```yaml
+```workflow
+inputs:
+  max_results:
+    type: int
+    default: 20
+  min_score:
+    type: int
+    default: 7
+
+outputs:
+  briefing:
+    type: object
+    properties:
+      important_count: { type: int }
+      emails: { type: array }
+
+steps:
+  - id: fetch_emails
+    type: tool
+    description: Fetch unread emails from the last 24 hours
+    tool: gmail.search
+    inputs:
+      query:
+        type: string
+        default: "is:unread newer_than:1d"
+      max_results:
+        type: int
+        source: $inputs.max_results
+    outputs:
+      messages:
+        type: array
+    retry:
+      max: 3
+      delay: "2s"
+      backoff: 2.0
+
+  - id: score_emails
+    type: llm
+    description: Score each email for importance and summarize
+    model: haiku
+    prompt: |
+      Score this email from 1 to 10 for importance based on sender,
+      subject, and urgency. Provide a one-sentence summary.
+
+      From: $item.from
+      Subject: $item.subject
+      Body: $item.body
+
+      Respond as JSON: { "from": "<sender>", "subject": "<subject>",
+      "score": <1-10>, "summary": "<string>" }
+    response_format:
+      type: object
+      properties:
+        from: { type: string }
+        subject: { type: string }
+        score: { type: int }
+        summary: { type: string }
+    each: $steps.fetch_emails.output.messages
+    inputs:
+      email:
+        type: object
+        source: $item
+    outputs:
+      from: { type: string }
+      subject: { type: string }
+      score: { type: int }
+      summary: { type: string }
+
+  - id: filter_important
+    type: transform
+    description: Keep emails scoring at or above the threshold
+    operation: filter
+    where: $item.score >= $inputs.min_score
+    inputs:
+      items:
+        type: array
+        source: $steps.score_emails.output
+    outputs:
+      items: { type: array }
+
+  - id: sort_by_score
+    type: transform
+    description: Sort by score, highest first
+    operation: sort
+    field: score
+    direction: desc
+    inputs:
+      items:
+        type: array
+        source: $steps.filter_important.output.items
+    outputs:
+      items: { type: array }
+
+  - id: exit_if_none
+    type: exit
+    description: Nothing important today
+    condition: $steps.sort_by_score.output.items.length == 0
+    status: success
+    output:
+      important_count: 0
+      emails: []
+
+  - id: format_briefing
+    type: transform
+    description: Shape the final output
+    operation: map
+    expression:
+      from: $item.from
+      subject: $item.subject
+      score: $item.score
+      summary: $item.summary
+    inputs:
+      items:
+        type: array
+        source: $steps.sort_by_score.output.items
+    outputs:
+      items: { type: array }
+
+  - id: send_briefing
+    type: tool
+    description: Post the daily briefing to Slack
+    tool: slack.post_message
+    inputs:
+      channel:
+        type: string
+        default: "#daily-briefing"
+      blocks:
+        type: array
+        source: $steps.format_briefing.output.items
+    outputs:
+      ok: { type: boolean }
+    on_error: ignore
+```
+```
+
+| Step | Type | Tokens | Purpose |
+|------|------|--------|---------|
+| fetch_emails | tool | 0 | Fetch data from Gmail |
+| score_emails | llm | ~300 x 20 | Score and summarize each email |
+| filter_important | transform | 0 | Keep emails above threshold |
+| sort_by_score | transform | 0 | Order by importance |
+| exit_if_none | exit | 0 | Short-circuit if nothing matters |
+| format_briefing | transform | 0 | Shape the output |
+| send_briefing | tool | 0 | Deliver to Slack |
+
+### Example 2: Deployment Report (Zero LLM Tokens)
+
+Not every workflow needs an LLM. This one fetches recent deployments from GitHub, filters to production, sorts by time, and posts a summary to Slack. Every step is deterministic. Total token cost: zero.
+
+This is the class of workflow (backups, aggregation, rule-based routing) that currently runs through a full LLM session for no reason.
+
+```yaml
+```workflow
+inputs:
+  repo:
+    type: string
+  hours:
+    type: int
+    default: 24
+
+outputs:
+  report:
+    type: object
+    properties:
+      count: { type: int }
+      deployments: { type: array }
+
+steps:
+  - id: fetch_deploys
+    type: tool
+    description: Get recent deployments
+    tool: github.list_deployments
+    inputs:
+      repo:
+        type: string
+        source: $inputs.repo
+      since:
+        type: string
+        default: "24h"
+    outputs:
+      deployments: { type: array }
+    retry:
+      max: 3
+      delay: "5s"
+      backoff: 2.0
+
+  - id: filter_production
+    type: transform
+    description: Keep only production deployments
+    operation: filter
+    where: $item.environment == "production"
+    inputs:
+      items:
+        type: array
+        source: $steps.fetch_deploys.output.deployments
+    outputs:
+      items: { type: array }
+
+  - id: exit_if_none
+    type: exit
+    description: Nothing deployed
+    condition: $steps.filter_production.output.items.length == 0
+    status: success
+    output:
+      count: 0
+      deployments: []
+
+  - id: sort_recent
+    type: transform
+    description: Most recent first
+    operation: sort
+    field: created_at
+    direction: desc
+    inputs:
+      items:
+        type: array
+        source: $steps.filter_production.output.items
+    outputs:
+      items: { type: array }
+
+  - id: format_report
+    type: transform
+    description: Extract the fields we care about
+    operation: map
+    expression:
+      repo: $item.repository.name
+      sha: $item.sha
+      author: $item.creator.login
+      status: $item.state
+      deployed_at: $item.created_at
+    inputs:
+      items:
+        type: array
+        source: $steps.sort_recent.output.items
+    outputs:
+      items: { type: array }
+
+  - id: post_to_slack
+    type: tool
+    description: Send the report
+    tool: slack.post_message
+    inputs:
+      channel:
+        type: string
+        default: "#deployments"
+      blocks:
+        type: array
+        source: $steps.format_report.output.items
+    outputs:
+      ok: { type: boolean }
+```
+```
+
+Six steps. Zero tokens. The runtime executes this in a fraction of a second with no model calls. Compare that to an LLM reading a SKILL.md, reasoning about which GitHub API to call, interpreting the response, formatting a message, and deciding where to send it.
+
+### Example 3: Content Moderation (Conditional Branching)
+
+This workflow demonstrates the `conditional` step type for routing between different execution paths. New posts are evaluated against community guidelines. If any high-severity violations are found, those posts are removed automatically and moderators are notified. Otherwise, flagged posts are queued for human review.
+
+```yaml
+```workflow
+inputs:
+  channel_id:
+    type: string
+
+outputs:
+  result:
+    type: object
+    properties:
+      evaluated: { type: int }
+      auto_removed: { type: int }
+      queued_for_review: { type: int }
+
+steps:
+  - id: fetch_posts
+    type: tool
+    description: Get new posts from the last hour
+    tool: community.list_recent_posts
+    inputs:
+      channel_id:
+        type: string
+        source: $inputs.channel_id
+      since:
+        type: string
+        default: "1h"
+    outputs:
+      posts: { type: array }
+
+  - id: exit_if_none
+    type: exit
+    description: No new posts
+    condition: $steps.fetch_posts.output.posts.length == 0
+    status: success
+    output:
+      evaluated: 0
+      auto_removed: 0
+      queued_for_review: 0
+
+  - id: evaluate_posts
+    type: llm
+    description: Check each post against community guidelines
+    model: haiku
+    prompt: |
+      Evaluate this post against community guidelines.
+      Flag violations for: harassment, spam, misinformation,
+      illegal content.
+
+      Post by $item.author: $item.body
+
+      Respond as JSON: { "post_id": "<id>", "severity": "none|low|high",
+      "reason": "<explanation or empty string>" }
+    response_format:
+      type: object
+      properties:
+        post_id: { type: string }
+        severity: { type: string }
+        reason: { type: string }
+    each: $steps.fetch_posts.output.posts
+    inputs:
+      post:
+        type: object
+        source: $item
+    outputs:
+      post_id: { type: string }
+      severity: { type: string }
+      reason: { type: string }
+
+  - id: filter_violations
+    type: transform
+    description: Keep only posts that were flagged
+    operation: filter
+    where: $item.severity != "none"
+    inputs:
+      items:
+        type: array
+        source: $steps.evaluate_posts.output
+    outputs:
+      items: { type: array }
+
+  - id: exit_if_clean
+    type: exit
+    description: All posts are clean
+    condition: $steps.filter_violations.output.items.length == 0
+    status: success
+    output:
+      evaluated: $steps.fetch_posts.output.posts.length
+      auto_removed: 0
+      queued_for_review: 0
+
+  - id: filter_high_severity
+    type: transform
+    operation: filter
+    where: $item.severity == "high"
+    inputs:
+      items:
+        type: array
+        source: $steps.filter_violations.output.items
+    outputs:
+      items: { type: array }
+
+  - id: filter_low_severity
+    type: transform
+    operation: filter
+    where: $item.severity == "low"
+    inputs:
+      items:
+        type: array
+        source: $steps.filter_violations.output.items
+    outputs:
+      items: { type: array }
+
+  - id: route_by_severity
+    type: conditional
+    description: Urgent alert vs. routine summary
+    condition: $steps.filter_high_severity.output.items.length > 0
+    then: [auto_remove, send_urgent_alert]
+    else: [send_summary]
+
+  - id: auto_remove
+    type: tool
+    description: Remove high-severity posts immediately
+    tool: community.remove_posts
+    each: $steps.filter_high_severity.output.items
+    inputs:
+      post_id:
+        type: string
+        source: $item.post_id
+      reason:
+        type: string
+        source: $item.reason
+    outputs:
+      removed: { type: boolean }
+
+  - id: send_urgent_alert
+    type: tool
+    description: Urgent alert to the moderation team
+    tool: slack.post_message
+    inputs:
+      channel:
+        type: string
+        default: "#moderation-urgent"
+      blocks:
+        type: array
+        source: $steps.filter_high_severity.output.items
+    outputs:
+      ok: { type: boolean }
+    on_error: ignore
+
+  - id: send_summary
+    type: tool
+    description: Routine summary when nothing critical
+    tool: slack.post_message
+    inputs:
+      channel:
+        type: string
+        default: "#moderation-log"
+      blocks:
+        type: array
+        source: $steps.filter_violations.output.items
+    outputs:
+      ok: { type: boolean }
+    on_error: ignore
+
+  - id: queue_for_review
+    type: tool
+    description: Queue low-severity posts for human review
+    condition: $steps.filter_low_severity.output.items.length > 0
+    tool: community.queue_review
+    each: $steps.filter_low_severity.output.items
+    inputs:
+      post_id:
+        type: string
+        source: $item.post_id
+      reason:
+        type: string
+        source: $item.reason
+    outputs:
+      queued: { type: boolean }
+```
+```
+
+The conditional step at `route_by_severity` is the key. If any high-severity violations exist, the workflow auto-removes those posts and sends an urgent alert to moderators. If all violations are low-severity, moderators get a routine summary instead. The routing logic is declared and auditable, not improvised by the LLM at runtime.
+
+The `queue_for_review` step sits outside the conditional. It uses a `condition` guard to check whether low-severity posts exist, and runs regardless of which branch the conditional took. This means low-severity posts are always queued for human review, whether or not high-severity posts were also found in the same batch.
+
+## Alternatives
+
+A natural question: why define a new workflow format when existing tools already orchestrate AI workflows?
+
+| Approach | What It Is | Why It Doesn't Fill This Gap |
+|----------|-----------|------------------------------|
+| **LangGraph** | Graph-based workflow orchestration for LLM applications | Framework-specific. Python-only. Requires writing code, not declaring a plan. Not a standard that multiple agents can consume. |
+| **CrewAI** | Role-based multi-agent coordination | Solves a different problem: agent teams, not repeatable workflows. Every run still involves full LLM orchestration. |
+| **Temporal / Prefect / Airflow** | Production workflow engines | Designed for infrastructure-scale orchestration (data pipelines, deployment automation). Require a runtime server, worker processes, and operational investment far beyond what an agent skill needs. Different abstraction level entirely. |
+| **Haystack** | Python pipeline framework for LLM applications | Validates the core thesis: Haystack separates deterministic and LLM steps and achieves the lowest token usage among comparable frameworks. But it is a framework, not a standard. Python-only, code-first. A single agent platform could use Haystack internally; the ecosystem cannot standardize on it. |
+| **Lobster** | OpenClaw's built-in typed workflow shell for composing tools into pipelines | The closest existing solution and strong validation of the problem. Lobster is a shell-style pipeline engine (exec, where, pick, pipe) with approval gates and typed data. But it is OpenClaw-specific, not a cross-platform standard. It cannot be consumed by Claude Code, Cursor, Codex, or any other agent. A standard that lives inside AgentSkill lets every platform benefit, including OpenClaw. |
+| **flowmind** | Community-built OpenClaw meta-skill for chaining skills into sequences | Proves the demand. Users built this because the platform didn't have a solution. WorkflowSkill is the standardized answer: typed inputs/outputs, error handling, run logs, and a spec that any platform can implement. |
+
+The common thread: every existing approach is either a framework (tied to one language, one runtime, one ecosystem) or an infrastructure tool (too heavy for agent skills). None of them are a portable, declarative format that lives inside an existing skill file and works across 27+ agent products.
+
+WorkflowSkill is not competing with LangGraph or Temporal. It operates at a different layer. A LangGraph application could invoke a WorkflowSkill. A Temporal workflow could trigger one. The goal is not to replace orchestration frameworks but to give the skills layer a standard way to declare what should happen, so that the execution can be deterministic where possible and intelligent only where necessary.
+
+## Security Considerations
+
+WorkflowSkill changes the trust model for skill execution. Today, an LLM mediates every tool call: it reads the skill instructions, decides which tools to invoke, and the platform can inspect the LLM's reasoning before allowing execution. A WorkflowSkill runtime executes tool calls directly, without LLM mediation. This is the source of its performance advantage, but it also means the workflow definition itself becomes the security boundary.
+
+Three properties of the design mitigate this:
+
+**The workflow is auditable.** Every tool call, every input source, and every conditional path is declared in YAML and can be reviewed before the workflow runs. There is no hidden logic. A security review of a WorkflowSkill is a review of a data file, not an interpretation of what an LLM might decide to do.
+
+**The runtime has no capabilities of its own.** It can only invoke tools that the platform has already registered and authorized. If a tool requires elevated permissions, the platform's existing authorization model controls access. The runtime does not bypass tool-level security.
+
+**The capabilities proposal (#170) applies directly.** The active AgentSkill proposal for declaring required capabilities (`shell`, `filesystem`, `network`, `browser`) works with WorkflowSkill without modification. A WorkflowSkill that calls `gmail.search` and `slack.post_message` declares `network` capability. The platform enforces this before the runtime starts.
+
+The remaining risk is malicious workflow definitions: a skill that declares a workflow wiring sensitive data to an exfiltration endpoint. This is the same class of risk that exists today with malicious SKILL.md instructions (see the ClawHavoc campaign and CVE-2026-25253). The mitigation is the same: skill vetting, capability declarations, and platform-level tool authorization. WorkflowSkill makes this review easier, not harder, because the data flow is explicit rather than inferred from natural language instructions.
+
 ## Future Work
 
 The following capabilities are considered for inclusion once the core specification has proven its value in production.
