@@ -103,32 +103,38 @@ The result is automation that is trustworthy enough to run while you are asleep.
 
 The following proposal seeks to satisfy these requirements:
 
-**PR1: Workflow Language**
+**PR1: Natural Language Authoring**
+I want users to describe a workflow in plain language and have an agent generate the WorkflowSkill YAML, so that creating an automation is as easy as explaining what you want and no one has to write YAML by hand.
+
+**PR2: Autonomous Improvement**
+I want agents to inspect workflow definitions and structured run logs, identify failures or inefficiencies, and propose improvements autonomously, so that workflows get better over time without the user ever editing the workflow directly.
+
+**PR3: Workflow Language**
 I want a declarative workflow language that a lightweight runtime can execute directly, so that deterministic steps run without LLM inference and cost scales with complexity rather than frequency.
 
-**PR2: Backwards Compatibility**
-I want WorkflowSkill to live inside the existing SKILL.md format so that adoption is incremental, systems without a runtime still function, no existing skills break, and the ecosystem doesn't fork.
-
-**PR3: Flow Control**
-I want conditional branching, iteration, and early exits expressed declaratively so that workflow logic is visible and auditable rather than improvised per-run by the LLM.
-
-**PR4: Observability**
-I want structured, step-level run logs with timing, inputs, outputs, and failure reasons so that debugging a failed workflow is a lookup rather than a transcript interpretation exercise.
-
-**PR5: Traceability**
-I want every workflow execution to produce a unique run ID and a full record of which steps ran, which were skipped, and what data flowed between them, so that I can reconstruct exactly what happened in any past run without ambiguity.
-
-**PR6: Error Handling**
-I want explicit, per-step error handling semantics (fail, ignore) so that a single step failure doesn't silently corrupt the rest of the workflow or produce a partial result the user mistakes for a complete one.
-
-**PR7: Retries**
-I want configurable retry policies with backoff so that transient failures (rate limits, network timeouts, temporary API errors) are absorbed automatically without human intervention or wasted LLM reasoning about what to do next.
-
-**PR8: Targeted LLM Usage**
+**PR4: Targeted LLM Usage**
 I want to specify which model to use per LLM step so that judgment-heavy steps can use a capable model while simple classification or summarization steps use a cheaper one, and deterministic steps use no model at all.
 
-**PR9: Input/Output Schemas**
+**PR5: Backwards Compatibility**
+I want WorkflowSkill to live inside the existing SKILL.md format so that adoption is incremental, systems without a runtime still function, no existing skills break, and the ecosystem doesn't fork.
+
+**PR6: Input/Output Schemas**
 I want typed, validated inputs and outputs on every workflow so that workflows are self-documenting, callers get clear errors on bad input, and agents can programmatically assess whether a run produced a valid result.
+
+**PR7: Observability**
+I want structured, step-level run logs with timing, inputs, outputs, and failure reasons so that debugging a failed workflow is a lookup rather than a transcript interpretation exercise.
+
+**PR8: Traceability**
+I want every workflow execution to produce a unique run ID and a full record of which steps ran, which were skipped, and what data flowed between them, so that I can reconstruct exactly what happened in any past run without ambiguity.
+
+**PR9: Flow Control**
+I want conditional branching, iteration, and early exits expressed declaratively so that workflow logic is visible and auditable rather than improvised per-run by the LLM.
+
+**PR10: Error Handling**
+I want explicit, per-step error handling semantics (fail, ignore) so that a single step failure doesn't silently corrupt the rest of the workflow or produce a partial result the user mistakes for a complete one.
+
+**PR11: Retries**
+I want configurable retry policies with backoff so that transient failures (rate limits, network timeouts, temporary API errors) are absorbed automatically without human intervention or wasted LLM reasoning about what to do next.
 
 ## WorkflowSkill
 
@@ -164,7 +170,7 @@ steps:
 
 ### Backwards Compatibility
 
-This placement inside SKILL.md is intentional to satisfy **PR2: Backwards Compatibility** (renumbered below). Systems without a WorkflowSkill runtime read the block as documentation. The LLM can interpret the YAML and execute a reasonable approximation of it. Systems with a runtime execute it directly. A single skill file works in both contexts. Adoption is incremental, and no existing skills break.
+This placement inside SKILL.md is intentional to satisfy **PR5: Backwards Compatibility**. Systems without a WorkflowSkill runtime read the block as documentation. The LLM can interpret the YAML and execute a reasonable approximation of it. Systems with a runtime execute it directly. A single skill file works in both contexts. Adoption is incremental, and no existing skills break.
 
 ### Workflow Inputs and Outputs
 
