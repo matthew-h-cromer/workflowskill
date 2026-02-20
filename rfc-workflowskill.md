@@ -158,11 +158,42 @@ steps:
     type: tool|llm|transform|conditional|exit
     description: string
     inputs:
-      <name>: { type: string|int|float|boolean|array|object, default: <value> }
+      <name>: { type: <type>, source: <expression>, default: <value> }
     outputs:
-      <name>: { type: string|int|float|boolean|array|object }
-    # type-specific fields
-    # flow control fields
+      <name>: { type: <type> }
+
+    # Tool fields
+    tool: string                    # registered tool name
+
+    # LLM fields
+    model: string                   # model identifier (optional)
+    prompt: string                  # prompt template with $-expressions
+    response_format: object         # structured output hint (optional)
+
+    # Transform fields
+    operation: filter|map|sort      # transform operation
+    where: expression               # filter: keep items where true
+    expression: object              # map: output shape per item
+    field: string                   # sort: field to sort by
+    direction: asc|desc             # sort: order (default: asc)
+
+    # Conditional fields
+    condition: expression           # branch condition
+    then: [step_id, ...]            # true branch
+    else: [step_id, ...]            # false branch (optional)
+
+    # Exit fields
+    status: success|failed          # termination status
+    output: expression              # final output (optional)
+
+    # Common flow control fields
+    condition: expression           # guard: skip if false (optional)
+    each: expression                # iterate over array (optional)
+    on_error: fail|ignore           # error strategy (default: fail)
+    retry:                          # retry policy (optional)
+      max: int
+      delay: string
+      backoff: float
 ```
 ````
 
@@ -229,6 +260,12 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | `$item` | The current element when inside an `each` iteration |
 | `$index` | The current index when inside an `each` iteration |
 
+**Properties:**
+
+| Syntax | Resolves To |
+|--------|-------------|
+| `<array>.length` | The number of elements in an array |
+
 **Operators:**
 
 | Category | Operators |
@@ -236,7 +273,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
 | Logical | `&&`, `\|\|`, `!` |
 
-**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references and comparisons.
+**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses, and comparisons.
 
 ### Step Types
 
@@ -247,6 +284,53 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | **Transform** | Filters, maps, sorts, or reshapes data. Pure data manipulation inside the runtime. Use to prepare the output of one step as input for the next. |
 | **Conditional** | Evaluates a `condition` expression and dispatches to the matching branch. Each branch contains one or more step IDs to execute. Returns the output of the last step in the selected branch. For skipping a single step, use the `condition` common field instead. |
 | **Exit** | Terminates the workflow immediately with a status and optional output. Use inside a conditional branch for early termination, or as a circuit breaker when a critical step fails with `on_error: ignore`. |
+
+#### Tool Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `tool` | yes | Name of the tool to invoke, as registered in the platform's tool registry (MCP server, function, etc.). |
+
+The step's resolved `inputs` are passed as the tool's arguments. The tool's response becomes the step's output. The runtime does not interpret the response.
+
+#### LLM Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `model` | no | Model identifier (e.g., `haiku`, `sonnet`). Falls back to the platform's default model. |
+| `prompt` | yes | Prompt template. `$`-prefixed expression references are interpolated before sending to the model. |
+| `response_format` | no | Structured output hint passed to models that support it. Not enforced by the runtime in this version. |
+
+#### Transform Fields
+
+| Field | Required | Used With | Description |
+|-------|----------|-----------|-------------|
+| `operation` | yes | all | One of: `filter`, `map`, `sort`. |
+| `where` | yes | filter | Expression evaluated per item. Items where the expression is true are kept. |
+| `expression` | yes | map | Object defining the output shape. Each value is an expression resolved per item. |
+| `field` | yes | sort | Dot-notation path to the field to sort by. |
+| `direction` | no | sort | `asc` (default) or `desc`. |
+
+Transform steps operate on the array provided in their input. The output is the transformed array.
+
+The `where` field is deliberately named differently from the common `condition` guard to avoid ambiguity. The guard decides whether the step runs at all. The `where` clause decides which items survive the filter.
+
+#### Conditional Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `condition` | yes | Expression to evaluate. |
+| `then` | yes | Array of step IDs to execute if the condition is true. |
+| `else` | no | Array of step IDs to execute if the condition is false. |
+
+Steps referenced in `then` and `else` are defined in the main steps array but execute only when their branch is selected. They are skipped during normal sequential execution. The conditional step returns the output of the last step executed in the selected branch.
+
+#### Exit Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `status` | yes | Workflow termination status: `success` or `failed`. |
+| `output` | no | Expression or literal value to return as the workflow's final output. |
 
 ### Flow Control
 
@@ -292,9 +376,52 @@ Each step type has a dedicated executor. The runtime dispatches to the correct o
 
 | Operation | Description |
 |-----------|-------------|
-| `filter` | Keep items matching a condition |
-| `map` | Extract or reshape fields from each item |
-| `sort` | Order items by a field |
+| `filter` | Keep items matching a `where` expression |
+| `map` | Reshape each item using an `expression` object |
+| `sort` | Order items by a `field` in a given `direction` |
+
+Filter evaluates the `where` expression per item. Items where it returns true are kept:
+
+```yaml
+- id: filter_important
+  type: transform
+  operation: filter
+  where: $item.score >= $inputs.min_score
+  inputs:
+    items: { type: array, source: $steps.score_emails.output }
+  outputs:
+    items: { type: array }
+```
+
+Map projects each item into a new shape. Each value in the `expression` object is resolved per item:
+
+```yaml
+- id: extract_fields
+  type: transform
+  operation: map
+  expression:
+    repo: $item.repository.name
+    author: $item.author.login
+    deployed_at: $item.created_at
+  inputs:
+    items: { type: array, source: $steps.fetch_deploys.output.deployments }
+  outputs:
+    items: { type: array }
+```
+
+Sort orders items by a single field. Defaults to ascending:
+
+```yaml
+- id: sort_by_score
+  type: transform
+  operation: sort
+  field: score
+  direction: desc
+  inputs:
+    items: { type: array, source: $steps.filter_important.output.items }
+  outputs:
+    items: { type: array }
+```
 
 **Conditional.** Evaluates the `condition` expression. Executes the steps in the matching branch. Returns the output of the last step executed.
 
