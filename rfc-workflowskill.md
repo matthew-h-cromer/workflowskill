@@ -259,6 +259,122 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 
 ## Runtime
 
+A WorkflowSkill runtime is a lightweight execution engine. It reads the workflow YAML, validates the graph, executes each step in sequence, and produces a structured log. It does not reason, plan, or make decisions. Every decision point is resolved by the workflow definition itself: conditions evaluate to true or false, transforms apply declared operations, and LLM steps call a model with an explicit prompt.
+
+### Execution Model
+
+Execution proceeds in two phases.
+
+**Phase 1: Validate.** The runtime parses the workflow YAML, resolves all `$steps` references to verify they form a directed acyclic graph, type-checks input wiring between steps, and confirms that all referenced tools are available. If validation fails, the workflow does not execute. The runtime returns a validation error listing every problem found.
+
+**Phase 2: Execute.** Steps run in declaration order. Each step follows the same lifecycle:
+
+1. **Guard.** Evaluate the `condition` field if present. If false, skip the step, record it as skipped in the run log, and set its output to null.
+2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
+3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results.
+4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
+5. **Validate output.** Check the executor's return value against the step's declared output schema. If validation fails, treat it as a step failure.
+6. **Handle errors.** If the step failed, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
+7. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
+8. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
+
+After the last step completes, the runtime validates the workflow's outputs against the declared output schema, emits the complete run log, and returns outputs to the caller.
+
+### Step Executors
+
+Each step type has a dedicated executor. The runtime dispatches to the correct one based on the step's `type` field.
+
+**Tool.** Resolves the tool by name from the platform's tool registry (MCP server, registered function, etc.). Passes the step's resolved inputs as the tool's arguments. Returns the tool's response as the step's output. The runtime does not interpret the response.
+
+**LLM.** Resolves the model from the step's `model` field, falling back to a platform default. Constructs the prompt by interpolating expression references in the `prompt` field. Sends the prompt and resolved inputs to the model API. Returns the model's response. The `response_format` field, when present, is passed to models that support structured output as a hint. The runtime does not enforce conformance against it in this version. Output validation relies on the standard step-level schema check.
+
+**Transform.** Applies one of three built-in operations to reshape data between steps. No external calls. No LLM. Pure data manipulation inside the runtime.
+
+| Operation | Description |
+|-----------|-------------|
+| `filter` | Keep items matching a condition |
+| `map` | Extract or reshape fields from each item |
+| `sort` | Order items by a field |
+
+**Conditional.** Evaluates the `condition` expression. Executes the steps in the matching branch. Returns the output of the last step executed.
+
+**Exit.** Sets the workflow's final status and output. No further steps execute.
+
+### Error Handling
+
+Error handling is per-step, explicit, and declared at authoring time.
+
+When a step fails, the runtime checks its `on_error` field:
+
+- **`fail`** (default): Halt the workflow. The run log records the failure and all subsequent steps are not attempted. This is the right default because silent failures in unattended workflows are worse than loud ones.
+- **`ignore`**: Log the error, set the step's output to null, and continue. Use this for non-critical steps where the workflow can degrade gracefully. Downstream steps that reference the ignored step's output receive null and must handle it (or use a `condition` guard to skip themselves).
+
+When a step declares a `retry` policy, the runtime retries before applying `on_error`. Retries use the step's `max` count, `delay` between attempts, and `backoff` multiplier. Only retriable failures (network errors, rate limits, transient API errors) trigger retries. Validation failures and permanent errors do not.
+
+### Run Log
+
+Every execution produces a structured run log. The log is the primary debugging and observability artifact. It satisfies **PR7: Observability** and **PR8: Traceability**.
+
+The run log contains:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique run identifier |
+| `workflow` | Name of the workflow that was executed |
+| `status` | Final status: `success` or `failed` |
+| `started_at` / `completed_at` | ISO 8601 timestamps |
+| `duration_ms` | Total wall-clock time |
+| `inputs` | The workflow inputs that were provided |
+| `outputs` | The workflow outputs that were produced |
+| `steps[]` | Ordered array of step records |
+| `summary` | Aggregate counts: steps executed, steps skipped, total tokens, total duration |
+
+Each step record contains:
+
+| Field | Description |
+|-------|-------------|
+| `id` | The step's declared identifier |
+| `executor` | Which executor ran: `tool`, `llm`, `transform`, `conditional`, `exit` |
+| `status` | `success`, `failed`, or `skipped` |
+| `reason` | Why the step was skipped (if applicable) |
+| `duration_ms` | Wall-clock time for this step |
+| `iterations` | Number of iterations (if `each` was used) |
+| `tokens` | Input and output token counts (LLM steps only) |
+| `output` | The step's output (truncated) |
+| `error` | Error details (if the step failed) |
+
+Every step is accounted for, including skipped ones. Token usage is isolated to LLM steps. Timing is per-step, so bottlenecks are visible at a glance. When something goes wrong, you look at the run log and see exactly which step failed, what its inputs were, and what error it returned.
+
+### Runtime Boundaries
+
+The runtime executes workflows. Everything else is the platform's responsibility.
+
+| Concern | Handled By |
+|---------|------------|
+| Tool discovery and registration | MCP / platform registry |
+| Model selection defaults | Platform configuration |
+| Skill discovery and activation | Agent / platform |
+| Scheduling and cron triggers | Platform scheduler |
+| Secret management | Platform vault / environment |
+| Notification delivery | Platform channels |
+| Conversation state and memory | Agent |
+| Persistent storage between runs | Platform |
+
+This boundary is deliberate. The runtime stays small by not absorbing platform concerns. Different platforms (OpenClaw, Claude Code, Cursor) can implement the same runtime spec while handling infrastructure differently.
+
+### Conformance
+
+A conformant WorkflowSkill runtime must:
+
+1. Parse and validate workflow YAML before executing any steps.
+2. Execute all five step types: tool, llm, transform, conditional, exit.
+3. Evaluate `condition` guards and `each` iteration on any step that declares them.
+4. Enforce `on_error` semantics: `fail` halts the workflow, `ignore` logs and continues with null output.
+5. Execute retry policies respecting `max`, `delay`, and `backoff`.
+6. Validate step outputs against declared schemas.
+7. Produce a structured run log for every execution, including skipped steps.
+8. Reject workflows containing unrecognized step types rather than silently ignoring them.
+
 ## Future Work
 
 The following capabilities are considered for inclusion once the core specification has proven its value in production.
