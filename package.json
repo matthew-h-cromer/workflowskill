@@ -1,0 +1,45 @@
+{
+  "name": "workflowskill",
+  "version": "0.1.0",
+  "description": "WorkflowSkill runtime - execute declarative agent workflows",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "workflowskill": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/cli/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
+    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/*.md"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "workflowskill",
+    "agentskill",
+    "workflow",
+    "agent",
+    "automation"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^10.0.1",
+    "tsdown": "^0.20.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.0",
+    "vitest": "^4.0.18"
+  }
+}
