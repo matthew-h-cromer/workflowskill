@@ -6,3 +6,16 @@ export { parseSkillMd, parseWorkflowYaml, parseWorkflowFromMd, ParseError } from
 export type { ParseErrorDetail } from './parser/index.js';
 export { resolveExpression, interpolatePrompt, LexError, ParseExprError, EvalError } from './expression/index.js';
 export { validateWorkflow } from './validator/index.js';
+export { MockToolAdapter } from './adapters/mock-tool-adapter.js';
+export { MockLLMAdapter } from './adapters/mock-llm-adapter.js';
+export type { LLMHandler } from './adapters/mock-llm-adapter.js';
+export {
+  dispatch,
+  executeTransform,
+  executeConditional,
+  executeExit,
+  executeTool,
+  executeLLM,
+  StepExecutionError,
+} from './executor/index.js';
+export type { StepOutput, ConditionalOutput, ExitOutput, DispatchResult } from './executor/index.js';
