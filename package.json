@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
-    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/*.md"
+    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/echo.md test/fixtures/two-step-pipe.md test/fixtures/llm-judgment.md test/fixtures/filter-exit.md test/fixtures/branch.md test/fixtures/each-loop.md test/fixtures/error-fail.md test/fixtures/error-ignore.md test/fixtures/retry-backoff.md test/fixtures/sort-pipeline.md test/fixtures/graduation-*.md"
   },
   "engines": {
     "node": ">=20"
