@@ -1,5 +1,20 @@
 # Proposal: WorkflowSkill — Deterministic Agent Skill Workflows
 
+## Contents
+
+- [Executive Summary](#executive-summary)
+- [Why Now](#why-now)
+- [Context](#context)
+- [Problem Statement](#problem-statement)
+- [Proposal](#proposal)
+- [WorkflowSkill](#workflowskill)
+- [Runtime](#runtime)
+- [Usage](#usage)
+- [Alternatives](#alternatives)
+- [Security Considerations](#security-considerations)
+- [Adoption Path](#adoption-path)
+- [Future Work](#future-work)
+
 ## Executive Summary
 
 AI agents can now do real work on your behalf: triage your email, brief you on your calendar, monitor your finances, publish content on a schedule. But there's a problem. Every time one of these automations runs, the agent approaches it like it's never done it before. It reads its instructions from scratch, reasons about what to do, picks its tools, and improvises its way through, even if it ran the exact same job yesterday and will run it again tomorrow.
@@ -13,6 +28,18 @@ WorkflowSkill fixes this by letting authors declare a workflow's plan once. Dete
 The result: that $4.50/month email triage drops to $0.09. Every run follows the same plan. Behavior is auditable and version-controlled. The automation becomes reliable enough to run while you sleep.
 
 WorkflowSkill is designed as an extension to the existing AgentSkills standard. It lives inside the same file format skills already use. Systems that support it execute workflows directly. Systems that don't still read it as documentation and work as they always have. Nothing breaks. Adoption is incremental.
+
+## Why Now
+
+The AgentSkill standard has crossed the adoption threshold. 27+ agent products implement it. ClawHub hosts over 10,700 skills. The community is already building workflow tooling on its own: flowmind chains skills into repeatable sequences, Lobster adds a typed pipeline shell. The gap between "skills as documentation" and "skills as executable programs" is visible and felt.
+
+Three signals indicate this is the right moment:
+
+**Critical mass.** The standard is adopted widely enough that a workflow extension benefits the entire ecosystem, not one platform. A format that works across Claude Code, Codex, Cursor, Gemini CLI, and OpenClaw is worth standardizing. A format that works in one of those is a feature.
+
+**Proven demand.** Community-built tools validate the need. flowmind exists because users wanted to chain skills into sequences and the platform didn't support it. Lobster exists because OpenClaw needed typed pipelines with approval gates. These are independent implementations of the same idea: structured, repeatable execution of multi-step workflows.
+
+**Compounding waste.** As agent platforms add scheduling and cron support, more workflows run unattended. Every new cron job multiplies the cost of full LLM orchestration. The problem isn't theoretical. OpenClaw users report $47/week in API costs for routine automations. The longer the ecosystem waits to address this, the more money burns.
 
 ## Context
 
@@ -46,9 +73,11 @@ This is a structural misalignment. Any agent platform that implements the AgentS
 
 ### Workflows Are Prevalent
 
-A bottom-up survey of actual use cases makes the scope clear. A recent analysis of the top 10 ways people run autonomous agents identified: email triage, daily briefings, calendar management, content research pipelines, developer workflow automation, finance tracking, smart home automation, research and shopping, meal planning, and personal knowledge management. Nine of those ten are multi-step workflows, tasks with a defined sequence of fetch, process, filter, and deliver steps that follow the same pattern every run. Only the personal knowledge base (primarily retrieval, not orchestration) sits outside that pattern.
+Nine of the top ten autonomous agent use cases are multi-step workflows. A recent analysis identified: email triage, daily briefings, calendar management, content research pipelines, developer workflow automation, finance tracking, smart home automation, research and shopping, and meal planning. Each follows the same pattern: fetch data, process it, filter or transform it, deliver a result. Only the personal knowledge base (primarily retrieval, not orchestration) sits outside that pattern.
 
-The supply side confirms this. Of ClawHub's ~3,300 legitimate skills, the Productivity category alone represents 25% of the registry and is explicitly described as "email automation and workflow optimization." Business skills (4.6%) are described as "enterprise workflow solutions." Development skills (29.7%) are where CI/CD pipelines, deployment automation, and monitoring workflows live. Accounting for overlap, roughly 35–50% of meaningfully used skills involve multi-step orchestration rather than single-tool API documentation. The emergence of flowmind is further evidence: a meta-skill whose sole purpose is chaining other skills into repeatable sequences, built by the community because the platform didn't yet have a solution.
+The supply side confirms this. Of ClawHub's ~3,300 legitimate skills, the Productivity category (25% of the registry) is explicitly described as "email automation and workflow optimization." Business skills (4.6%) are "enterprise workflow solutions." Development skills (29.7%) contain CI/CD pipelines, deployment automation, and monitoring workflows. Accounting for overlap, roughly 35-50% of meaningfully used skills involve multi-step orchestration rather than single-tool API documentation.
+
+The emergence of flowmind makes the gap concrete: a meta-skill whose sole purpose is chaining other skills into repeatable sequences, built by the community because the platform didn't have a solution.
 
 Workflows aren't an edge case in the AgentSkills ecosystem. They're the primary use case.
 
@@ -83,7 +112,22 @@ We start to see truly massive cost savings when we consider customizing which mo
 
 In this example, it means we may choose to use Haiku over Sonnet. In that instance given Haiku is 12x cheaper per token, we would eliminate more like 98% of the cost.
 
-This is not to mention the possibility of purely deterministic workflows (backups, aggregation, rule based handling, etc.) which may not use an LLM at all.
+Now consider a second case: the deployment report from Example 2. This workflow fetches deployments, filters to production, sorts by time, and posts to Slack. It requires zero judgment. But without WorkflowSkill, an LLM orchestrates every step:
+
+| Step | What Happens | Tokens |
+|------|-------------|--------|
+| 1: Session Init | Agent reads SKILL.md instructions | ~500 |
+| 2: Tool Selection | LLM reasons about which GitHub API to call | ~200 |
+| 3: Tool Execution | github.list_deployments called, results returned | ~600 |
+| 4: Result Interpretation | LLM reads and filters to production | ~800 |
+| 5: Formatting | LLM formats the Slack message | ~400 |
+| 6: Delivery Decision | LLM decides where to send it | ~200 |
+| **Total per run** | | **~2,700** |
+| **Monthly (daily cron for 30 days)** | | **~81,000** |
+
+At Sonnet pricing ($15/M output tokens): ~$1.22/month. With WorkflowSkill: $0.00. Every token was waste. No step in this workflow requires inference. Multiply by the number of similar automations a team runs (deployment reports, backup confirmations, status aggregations, alert routing) and the savings are substantial.
+
+This is not to mention the possibility of purely deterministic workflows (backups, aggregation, rule-based handling, etc.) which may not use an LLM at all.
 
 ### The Reliability Problem
 
@@ -135,6 +179,16 @@ I want explicit, per-step error handling semantics (fail, ignore) so that a sing
 
 **PR11: Retries**
 I want configurable retry policies with backoff so that transient failures (rate limits, network timeouts, temporary API errors) are absorbed automatically without human intervention or wasted LLM reasoning about what to do next.
+
+### Authoring Model
+
+A reasonable concern: declarative YAML is harder to write and maintain than natural language instructions. If WorkflowSkill trades runtime cost for authoring cost, the tradeoff might not be worth it.
+
+The answer is that humans won't write most workflows. LLMs will. PR1 (Natural Language Authoring) is not aspirational. It is how the format is designed to be used. A user describes what they want: "triage my email every morning, score each one for importance, send me the important ones on Slack." An agent generates the WorkflowSkill YAML, validates it, and offers it for review. The YAML is the execution artifact, not the authoring surface.
+
+This is analogous to how SQL is used in practice. Most SQL is generated by ORMs, query builders, and application code, not typed by hand. The structured format exists so machines can execute it reliably, not so humans can write it comfortably. The same applies here. The workflow YAML is legible enough for a human to review and audit, but the primary author is an agent.
+
+The structured format also enables PR2 (Autonomous Improvement). An agent can read a workflow definition, compare it against run logs, identify failures or inefficiencies, and propose modifications. This is possible precisely because the format is structured and machine-readable. Natural language instructions are easy to write but hard to improve systematically.
 
 ## WorkflowSkill
 
@@ -275,6 +329,8 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 
 **Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses, and comparisons.
 
+**Prompt interpolation.** Expressions in `prompt` fields (on LLM steps) follow the same reference resolution rules: `$inputs`, `$steps`, `$item`, and `$index` are resolved and property access works. Comparison and logical operators are not supported in prompt interpolation. The resolved value is coerced to its string representation and inserted at the reference position. Objects and arrays are serialized as JSON. Null values are inserted as the empty string.
+
 ### Step Types
 
 | Type | Description |
@@ -324,6 +380,8 @@ The `where` field is deliberately named differently from the common `condition` 
 | `else` | no | Array of step IDs to execute if the condition is false. |
 
 Steps referenced in `then` and `else` are defined in the main steps array but execute only when their branch is selected. They are skipped during normal sequential execution. The conditional step returns the output of the last step executed in the selected branch.
+
+`each` is not valid on `conditional` steps. If you need to branch per-item, use `each` on the individual steps within each branch. This constraint is enforced at validation time, same as `exit` steps.
 
 #### Exit Fields
 
@@ -408,6 +466,8 @@ Map projects each item into a new shape. Each value in the `expression` object i
   outputs:
     items: { type: array }
 ```
+
+Values in a map `expression` can be expression references (`$item.field`), literal values (strings, numbers, booleans), or nested objects where each value follows the same rules. Array construction and computed expressions are not supported. For reshaping that requires building arrays, use multiple transform steps.
 
 Sort orders items by a single field. Defaults to ascending:
 
@@ -501,6 +561,8 @@ A conformant WorkflowSkill runtime must:
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
+
+A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.
 
 ## Usage
 
@@ -989,6 +1051,20 @@ Three properties of the design mitigate this:
 
 The remaining risk is malicious workflow definitions: a skill that declares a workflow wiring sensitive data to an exfiltration endpoint. This is the same class of risk that exists today with malicious SKILL.md instructions (see the ClawHavoc campaign and CVE-2026-25253). The mitigation is the same: skill vetting, capability declarations, and platform-level tool authorization. WorkflowSkill makes this review easier, not harder, because the data flow is explicit rather than inferred from natural language instructions.
 
+## Adoption Path
+
+Adoption is centered on building a working implementation and proving the spec in production before proposing it for formal standardization.
+
+**Phase 1: Reference runtime.** Build a WorkflowSkill runtime as an OpenClaw module. OpenClaw is the right starting point: the largest open-source agent platform (196k+ stars), full AgentSkill support, an active community already building workflow tools (flowmind, Lobster), and the exact pain points described in this RFC documented in their issue tracker. The reference runtime implements the full spec: all five step types, expression evaluation, error handling, retry policies, and structured run logs.
+
+**Phase 2: Community feedback.** Run real workflows in production on OpenClaw. Publish results: cost comparisons, reliability metrics, authoring experience. Gather feedback from workflow authors and platform maintainers. Iterate on the spec where real usage reveals gaps or unnecessary complexity.
+
+**Phase 3: Formal proposal.** Submit the refined WorkflowSkill extension to the AgentSkill working group under AAIF / Linux Foundation governance. The reference implementation and production data serve as evidence of viability. The goal is inclusion in the AgentSkill specification, not a competing standard.
+
+**Phase 4: Conformance test suite.** Once the spec is stable and accepted, publish a platform-agnostic test suite that any runtime can run to verify compliance. Tests cover step type execution, expression resolution, error handling semantics, conditional branching, iteration, and run log format. The suite is what makes cross-platform adoption practical: the OpenClaw module is one implementation, the tests define correctness.
+
+This path is deliberately incremental. It does not require any existing platform to change anything until they choose to adopt the extension. It does not fork the ecosystem. And it produces a working implementation before asking for standardization.
+
 ## Future Work
 
 The following capabilities are considered for inclusion once the core specification has proven its value in production.
@@ -1008,3 +1084,9 @@ The following capabilities are considered for inclusion once the core specificat
 **Run log verbosity levels.** Configurable detail levels: minimal (timing and status only), standard (current default), and debug (full untruncated inputs and outputs). Useful for production storage optimization and detailed troubleshooting respectively.
 
 **Structured output enforcement.** Strict validation of LLM responses against declared `response_format` schemas. Deferred because LLM output validation is inherently messy (partial conformance, model-specific structured output support varies), and the failure modes need to be understood before enforcement semantics are specified.
+
+**Parallel execution.** Steps execute sequentially in declaration order. Some workflows contain independent branches that could run concurrently. A future version may introduce parallel execution groups or automatic parallelism based on dependency analysis. Deferred because the sequential model is simpler to reason about, debug, and log, and because the performance bottleneck in most workflows is external API latency rather than step sequencing.
+
+**Spec versioning.** A `version` field on the workflow block declaring which spec version the workflow was written against. This becomes necessary when new step types, expression operators, or execution semantics are added. Deferred from the initial spec to avoid premature versioning before the format stabilizes through real usage.
+
+**Workflow registry.** A package registry for published WorkflowSkills, with semantic versioning, dependency resolution, and discoverability. This is what turns WorkflowSkill from a format into an ecosystem. ClawHub already hosts 10,700+ skills, but they are flat files with no versioning, no dependency graph, and no composability contract. A registry changes that. A team publishes `email-triage@1.2.0`. Another team builds `morning-briefing@1.0.0` that depends on it. When `email-triage` ships a breaking change, semver catches it. When a user searches for "slack notification," they find a tested, versioned workflow they can drop into their own composition. This is the pattern that made npm the engine of the Node ecosystem: small, composable, versioned packages that build on each other. Spec versioning is the prerequisite. Workflow composability (invoking one WorkflowSkill as a step in another) is the enabling feature. The registry is where the compounding value lives. Deferred because it requires both of those foundations, plus decisions about hosting, namespacing, trust verification, and governance that should be informed by real community usage rather than designed in advance.
