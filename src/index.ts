@@ -5,3 +5,4 @@ export * from './types/index.js';
 export { parseSkillMd, parseWorkflowYaml, parseWorkflowFromMd, ParseError } from './parser/index.js';
 export type { ParseErrorDetail } from './parser/index.js';
 export { resolveExpression, interpolatePrompt, LexError, ParseExprError, EvalError } from './expression/index.js';
+export { validateWorkflow } from './validator/index.js';
