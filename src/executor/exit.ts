@@ -7,8 +7,10 @@ import { resolveExpression } from '../expression/index.js';
 
 /**
  * Execute an exit step.
- * Resolves the output expression (if present) and returns the exit signal.
- * The runtime is responsible for halting execution.
+ * Output can be:
+ * - A string expression: resolved against context
+ * - An object literal: each string value starting with $ is resolved, others kept as-is
+ * - Undefined: null output
  */
 export function executeExit(
   step: ExitStep,
@@ -16,7 +18,27 @@ export function executeExit(
 ): ExitOutput {
   let output: unknown = null;
   if (step.output) {
-    output = resolveExpression(step.output, context);
+    if (typeof step.output === 'string') {
+      output = resolveExpression(step.output, context);
+    } else {
+      // Object literal — resolve expression values within it
+      output = resolveOutputObject(step.output, context);
+    }
   }
   return { status: step.status, output };
+}
+
+function resolveOutputObject(
+  obj: Record<string, unknown>,
+  context: RuntimeContext,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (typeof val === 'string' && val.startsWith('$')) {
+      result[key] = resolveExpression(val, context);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
 }

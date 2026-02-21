@@ -103,7 +103,8 @@ const conditionalStepSchema = stepBaseSchema.extend({
 const exitStepSchema = stepBaseSchema.extend({
   type: z.literal('exit'),
   status: z.enum(['success', 'failed']),
-  output: z.string().optional(),
+  // Output can be an expression string or an object literal (values may be expressions)
+  output: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
 });
 
 // Transform steps share type="transform" but differ by operation.

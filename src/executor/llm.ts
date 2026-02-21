@@ -31,18 +31,14 @@ export async function executeLLM(
     );
   }
 
-  // Try to parse JSON response for structured output
+  // Try to parse JSON response for structured output.
+  // The model's response becomes the step's output directly (RFC: "Returns the model's response").
+  // No wrapping — declared outputs are for schema validation, not for naming the output.
   let output: unknown = result.text;
   try {
     output = JSON.parse(result.text);
   } catch {
     // Not JSON — keep as text string
-  }
-
-  // Wrap in first output key if declared
-  const outputKey = Object.keys(step.outputs)[0];
-  if (outputKey) {
-    output = { [outputKey]: output };
   }
 
   return { output, tokens: result.tokens };

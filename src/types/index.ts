@@ -151,8 +151,8 @@ export interface ExitStep extends StepBase {
   type: 'exit';
   /** Termination status. */
   status: ExitStatus;
-  /** Final output expression or literal (optional). */
-  output?: string;
+  /** Final output: expression string, or object literal (values may be expressions). */
+  output?: string | Record<string, unknown>;
 }
 
 /** Union of all step types. */

@@ -399,10 +399,9 @@ describe('LLM executor', () => {
     const ctx = baseContext({ inputs: { text: 'Hello world' } });
     const result = await executeLLM(step, { text: 'Hello world' }, ctx, adapter);
     expect(result.tokens).toEqual({ input: 20, output: 15 });
-    // Output is wrapped in first output key and JSON is parsed
+    // Output is the parsed JSON directly (not wrapped — per RFC)
     const output = result.output as Record<string, unknown>;
-    expect(output.scored).toBeDefined();
-    expect((output.scored as Record<string, unknown>).score).toBe(8);
+    expect(output.score).toBe(8);
   });
 
   it('keeps text response when not valid JSON', async () => {
@@ -419,7 +418,7 @@ describe('LLM executor', () => {
     }));
     const ctx = baseContext({ item: { content: 'Long text...' } });
     const result = await executeLLM(step, {}, ctx, adapter);
-    expect(result.output).toEqual({ summary: 'This is a summary.' });
+    expect(result.output).toBe('This is a summary.');
   });
 
   it('throws retriable StepExecutionError on LLM failure', async () => {

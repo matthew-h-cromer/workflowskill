@@ -126,15 +126,32 @@ export function validateWorkflow(
 
     // Exit: validate output expression references
     if (step.type === 'exit' && step.output) {
-      validateExpressionReferences(
-        step.output,
-        step.id,
-        `${path}.output`,
-        stepMap,
-        stepOrder,
-        branchStepIds,
-        errors,
-      );
+      if (typeof step.output === 'string') {
+        validateExpressionReferences(
+          step.output,
+          step.id,
+          `${path}.output`,
+          stepMap,
+          stepOrder,
+          branchStepIds,
+          errors,
+        );
+      } else {
+        // Object literal — validate expression values within it
+        for (const [key, val] of Object.entries(step.output)) {
+          if (typeof val === 'string' && val.startsWith('$')) {
+            validateExpressionReferences(
+              val,
+              step.id,
+              `${path}.output.${key}`,
+              stepMap,
+              stepOrder,
+              branchStepIds,
+              errors,
+            );
+          }
+        }
+      }
     }
   }
 
