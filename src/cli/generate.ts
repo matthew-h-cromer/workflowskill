@@ -1,31 +1,56 @@
 // CLI: generate command — generate WorkflowSkill YAML from a natural language prompt.
-// This is a stub that produces a template. The full implementation requires
-// an LLM adapter (src/generator/) and the authoring skill (Step 9).
+// Uses the generator module with a mock LLM adapter (produces a template).
+// With a real LLM adapter, the generator performs a validate-fix loop.
 
 import { writeFileSync } from 'node:fs';
+import { generateWorkflow } from '../generator/index.js';
+import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 
-export function generateCommand(
+export async function generateCommand(
   prompt: string,
   options: { output?: string },
-): void {
-  // Generate a template workflow from the prompt
-  const yaml = generateTemplate(prompt);
+): Promise<void> {
+  // Use mock adapter that generates a template
+  // A real integration would use the Anthropic SDK adapter
+  const llmAdapter = new MockLLMAdapter(() => ({
+    text: generateTemplate(prompt),
+    tokens: { input: 0, output: 0 },
+  }));
+
+  const result = await generateWorkflow({
+    prompt,
+    llmAdapter,
+    maxAttempts: 1,
+  });
+
+  const output = result.content;
 
   if (options.output) {
     try {
-      writeFileSync(options.output, yaml, 'utf-8');
+      writeFileSync(options.output, output, 'utf-8');
       console.log(`Workflow written to ${options.output}`);
+      if (!result.valid) {
+        console.warn('Warning: Generated workflow has validation errors:');
+        for (const err of result.errors) {
+          console.warn(`  ${err}`);
+        }
+      }
     } catch {
       console.error(`Error: Cannot write to "${options.output}"`);
       process.exit(1);
     }
   } else {
-    console.log(yaml);
+    console.log(output);
+    if (!result.valid && result.errors.length > 0) {
+      console.warn('\nWarning: Generated workflow has validation errors:');
+      for (const err of result.errors) {
+        console.warn(`  ${err}`);
+      }
+    }
   }
 }
 
 function generateTemplate(prompt: string): string {
-  // Extract a workflow name from the prompt
   const name = prompt
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, '')
@@ -43,19 +68,14 @@ description: ${prompt}
 
 \`\`\`workflow
 inputs:
-  # TODO: Define workflow inputs
   input:
     type: string
 
 outputs:
-  # TODO: Define workflow outputs
   result:
     type: object
 
 steps:
-  # TODO: Implement workflow steps based on:
-  # "${prompt}"
-
   - id: step_1
     type: tool
     description: First step

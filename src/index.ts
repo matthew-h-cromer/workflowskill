@@ -21,3 +21,5 @@ export {
 export type { StepOutput, ConditionalOutput, ExitOutput, DispatchResult } from './executor/index.js';
 export { runWorkflow, WorkflowExecutionError } from './runtime/index.js';
 export type { RunOptions } from './runtime/index.js';
+export { generateWorkflow } from './generator/index.js';
+export type { GenerateResult, GenerateOptions } from './generator/index.js';
