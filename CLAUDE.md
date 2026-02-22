@@ -188,15 +188,15 @@ All 9 steps are implemented and committed:
 
 | Step | Module | Commit |
 |------|--------|--------|
-| 1 | Project scaffolding | `80428a4` |
-| 2 | Type definitions | `604fa8f` |
-| 3 | Parser + test fixtures | `4359b2b` |
-| 4 | Expression evaluator | `991850c` |
-| 5 | Validator | `6aa3d67` |
-| 6 | Step executors + adapters | `3050f96` |
-| 7 | Runtime orchestrator | `18a586e` |
-| 8 | CLI commands | `2aef1db` |
-| 9 | Workflow authoring skill | `248ebef` |
+| 1 | Project scaffolding | `546d467` |
+| 2 | Type definitions | `5be2994` |
+| 3 | Parser + test fixtures | `5097fa2` |
+| 4 | Expression evaluator | `5a66aa3` |
+| 5 | Validator | `1ac6341` |
+| 6 | Step executors + adapters | `2924fc6` |
+| 7 | Runtime orchestrator | `4b029be` |
+| 8 | CLI commands | `99545a6` |
+| 9 | Workflow authoring skill | `8660cfe` |
 
 ## Credential Configuration
 
