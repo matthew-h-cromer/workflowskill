@@ -15,11 +15,12 @@ inputs:
     default: 7
 
 outputs:
-  briefing:
-    type: object
-    properties:
-      important_count: { type: int }
-      emails: { type: array }
+  important_count:
+    type: int
+    source: $steps.format_briefing.output.items.length
+  emails:
+    type: array
+    source: $steps.format_briefing.output.items
 
 steps:
   - id: fetch_emails

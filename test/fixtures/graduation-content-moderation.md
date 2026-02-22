@@ -11,12 +11,15 @@ inputs:
     type: string
 
 outputs:
-  result:
-    type: object
-    properties:
-      evaluated: { type: int }
-      auto_removed: { type: int }
-      queued_for_review: { type: int }
+  evaluated:
+    type: int
+    source: $steps.fetch_posts.output.posts.length
+  auto_removed:
+    type: int
+    source: $steps.filter_high_severity.output.items.length
+  queued_for_review:
+    type: int
+    source: $steps.filter_low_severity.output.items.length
 
 steps:
   - id: fetch_posts

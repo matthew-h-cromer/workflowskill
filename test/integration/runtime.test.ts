@@ -532,3 +532,98 @@ describe('run log structure', () => {
     ).rejects.toThrow(WorkflowExecutionError);
   });
 });
+
+// ─── 11. output-source ──────────────────────────────────────────────────────
+
+describe('output-source workflow', () => {
+  it('maps step output via $output and workflow output via $steps', async () => {
+    const workflow = loadWorkflow('output-source');
+    const tools = new MockToolAdapter();
+    tools.register('http.request', () => ({
+      output: {
+        status: 200,
+        body: { userId: 1, id: 1, title: 'delectus aut autem', completed: false },
+      },
+    }));
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'output-source',
+    });
+
+    expect(log.status).toBe('success');
+    expect(log.steps).toHaveLength(1);
+
+    // Step output should be mapped via $output.body.title and $output.body.userId
+    const fetchRecord = log.steps[0]!;
+    expect(fetchRecord.output).toEqual({ title: 'delectus aut autem', user_id: 1 });
+
+    // Workflow outputs resolved via $steps
+    expect(log.outputs).toEqual({ title: 'delectus aut autem', user_id: 1 });
+  });
+});
+
+// ─── 12. output-source-with-exit ─────────────────────────────────────────────
+
+describe('output-source-with-exit workflow', () => {
+  it('resolves workflow output source when exit does not fire', async () => {
+    const workflow = loadWorkflow('output-source-with-exit');
+    const tools = new MockToolAdapter();
+    tools.register('http.request', () => ({
+      output: {
+        status: 200,
+        body: { title: 'Test Data', items: [1, 2, 3] },
+      },
+    }));
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { should_exit: false },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'output-source-with-exit',
+    });
+
+    expect(log.status).toBe('success');
+
+    // exit was skipped
+    const exitRecord = log.steps.find((s) => s.id === 'early_exit')!;
+    expect(exitRecord.status).toBe('skipped');
+
+    // Workflow outputs resolved via source expressions
+    expect(log.outputs).toEqual({ message: 'Test Data', count: 3 });
+  });
+
+  it('exit output takes precedence over workflow output source', async () => {
+    const workflow = loadWorkflow('output-source-with-exit');
+    const tools = new MockToolAdapter();
+    tools.register('http.request', () => ({
+      output: {
+        status: 200,
+        body: { title: 'Test Data', items: [1, 2, 3] },
+      },
+    }));
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { should_exit: true },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'output-source-with-exit',
+    });
+
+    expect(log.status).toBe('success');
+
+    // exit fired
+    const exitRecord = log.steps.find((s) => s.id === 'early_exit')!;
+    expect(exitRecord.status).toBe('success');
+
+    // Exit output takes precedence
+    expect(log.outputs).toEqual({ message: 'exited early', count: 0 });
+  });
+});

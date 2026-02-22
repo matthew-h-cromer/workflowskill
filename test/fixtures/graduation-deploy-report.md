@@ -14,11 +14,12 @@ inputs:
     default: 24
 
 outputs:
-  report:
-    type: object
-    properties:
-      count: { type: int }
-      deployments: { type: array }
+  count:
+    type: int
+    source: $steps.format_report.output.items.length
+  deployments:
+    type: array
+    source: $steps.format_report.output.items
 
 steps:
   - id: fetch_deploys

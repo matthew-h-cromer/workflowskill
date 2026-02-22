@@ -6,6 +6,7 @@ import type {
   WorkflowInput,
   Step,
   StepInput,
+  StepOutput,
   RuntimeContext,
   ToolAdapter,
   LLMAdapter,
@@ -69,6 +70,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
 
   let workflowStatus: RunStatus = 'success';
   let workflowOutput: unknown = null;
+  let exitFired = false;
   let halted = false;
 
   for (const step of options.workflow.steps) {
@@ -90,6 +92,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
 
     if (result.exit) {
       halted = true;
+      exitFired = true;
       workflowStatus = result.exit.status === 'failed' ? 'failed' : 'success';
       workflowOutput = result.exit.output;
     } else if (result.failed) {
@@ -115,7 +118,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   }
 
   // Build outputs
-  const outputs = buildWorkflowOutputs(options.workflow, workflowOutput);
+  const outputs = buildWorkflowOutputs(options.workflow, workflowOutput, context, exitFired);
 
   const completedAt = new Date();
   const durationMs = completedAt.getTime() - startedAt.getTime();
@@ -264,14 +267,15 @@ async function executeStepLifecycle(
       };
     }
 
-    // Normal output
-    context.steps[step.id] = { output: result.output };
+    // Normal output — apply step output source mapping
+    const mappedOutput = applyStepOutputMapping(step.outputs, result.output, context);
+    context.steps[step.id] = { output: mappedOutput };
     records.push({
       id: step.id,
       executor: step.type,
       status: 'success',
       duration_ms: Math.round(performance.now() - startTime),
-      output: result.output,
+      output: mappedOutput,
       tokens: result.tokens,
     });
     return { records };
@@ -324,7 +328,9 @@ async function executeWithEach(
       );
 
       if (result.kind === 'output') {
-        results.push(result.output);
+        // Apply per-element step output mapping
+        const mappedIterOutput = applyStepOutputMapping(step.outputs, result.output, itemContext);
+        results.push(mappedIterOutput);
         if (result.tokens) {
           totalTokens = totalTokens ?? { input: 0, output: 0 };
           totalTokens.input += result.tokens.input;
@@ -495,14 +501,80 @@ function collectBranchStepIds(steps: Step[]): Set<string> {
   return ids;
 }
 
+/**
+ * Apply step output source mapping.
+ * For each declared output with a `source`, resolve the expression against the raw executor result.
+ * Outputs without `source` pass through from raw output by key name (backwards compatible).
+ */
+function applyStepOutputMapping(
+  stepOutputs: Record<string, StepOutput>,
+  rawOutput: unknown,
+  context: RuntimeContext,
+): unknown {
+  const hasSources = Object.values(stepOutputs).some((o) => o.source);
+  if (!hasSources) return rawOutput;
+
+  // Create a temporary context with $output set to the raw executor result
+  const tempContext: RuntimeContext = { ...context, output: rawOutput };
+  const mapped: Record<string, unknown> = {};
+
+  for (const [key, outputDef] of Object.entries(stepOutputs)) {
+    if (outputDef.source) {
+      mapped[key] = resolveExpression(outputDef.source, tempContext);
+    } else if (rawOutput !== null && typeof rawOutput === 'object' && !Array.isArray(rawOutput)) {
+      // Pass through by key name from raw output
+      mapped[key] = (rawOutput as Record<string, unknown>)[key] ?? null;
+    } else {
+      mapped[key] = null;
+    }
+  }
+
+  return mapped;
+}
+
 function buildWorkflowOutputs(
   workflow: WorkflowDefinition,
   finalOutput: unknown,
+  context: RuntimeContext,
+  exitFired: boolean,
 ): Record<string, unknown> {
   const outputKeys = Object.keys(workflow.outputs);
   if (outputKeys.length === 0) return {};
 
-  // If final output is already an object, try to match declared output keys
+  // If exit fired, use exit output (unchanged behavior)
+  if (exitFired) {
+    if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
+      const outputObj = finalOutput as Record<string, unknown>;
+      const result: Record<string, unknown> = {};
+      for (const key of outputKeys) {
+        result[key] = outputObj[key] ?? null;
+      }
+      return result;
+    }
+    if (outputKeys.length === 1) {
+      return { [outputKeys[0]!]: finalOutput };
+    }
+    return { [outputKeys[0]!]: finalOutput };
+  }
+
+  // Normal completion — resolve workflow output source expressions
+  const hasAnySources = Object.values(workflow.outputs).some((o) => o.source);
+  if (hasAnySources) {
+    const result: Record<string, unknown> = {};
+    for (const [key, outputDef] of Object.entries(workflow.outputs)) {
+      if (outputDef.source) {
+        result[key] = resolveExpression(outputDef.source, context);
+      } else if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
+        // Fall back to key-matching against last step output
+        result[key] = (finalOutput as Record<string, unknown>)[key] ?? null;
+      } else {
+        result[key] = null;
+      }
+    }
+    return result;
+  }
+
+  // No source fields — legacy behavior: match by key name against final output
   if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
     const outputObj = finalOutput as Record<string, unknown>;
     const result: Record<string, unknown> = {};

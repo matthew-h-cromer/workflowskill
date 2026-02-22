@@ -91,6 +91,35 @@ describe('graduation: email triage', () => {
     expect(log.summary.total_tokens).toBe(280);
   });
 
+  it('resolves workflow output source on normal completion', async () => {
+    const { workflow, tools } = setupEmailTriage();
+
+    const llm = new MockLLMAdapter((_model, prompt) => {
+      let score = 3;
+      if (prompt.includes('Urgent') || prompt.includes('incident')) score = 9;
+      if (prompt.includes('deals') || prompt.includes('spam')) score = 1;
+      if (prompt.includes('lunch')) score = 4;
+      return {
+        text: JSON.stringify({ score, summary: `Priority: ${score}` }),
+        tokens: { input: 50, output: 20 },
+      };
+    });
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { max_results: 20, min_score: 7 },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'email-triage',
+    });
+
+    expect(log.status).toBe('success');
+    // Workflow outputs resolved via source: $steps.format_briefing.output.items.*
+    expect(log.outputs.important_count).toBe(2);
+    expect(Array.isArray(log.outputs.emails)).toBe(true);
+    expect((log.outputs.emails as unknown[]).length).toBe(2);
+  });
+
   it('exits early when no important emails', async () => {
     const { workflow, tools } = setupEmailTriage();
 
@@ -113,6 +142,9 @@ describe('graduation: email triage', () => {
     // exit_if_none should trigger (filtered list is empty after filter, sorted list is empty)
     const exitRecord = log.steps.find((s) => s.id === 'exit_if_none')!;
     expect(exitRecord.status).toBe('success');
+
+    // Exit output takes precedence — keys match workflow output keys
+    expect(log.outputs).toEqual({ important_count: 0, emails: [] });
 
     // format_briefing and send_briefing should be skipped
     const formatRecord = log.steps.find((s) => s.id === 'format_briefing');
@@ -207,6 +239,25 @@ describe('graduation: deployment report', () => {
     expect(log.steps.find((s) => s.id === 'post_to_slack')!.status).toBe('success');
   });
 
+  it('resolves workflow output source on normal completion', async () => {
+    const { workflow, tools } = setupDeployReport();
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { repo: 'my-org/web-app' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'deploy-report',
+    });
+
+    expect(log.status).toBe('success');
+    // Workflow outputs resolved via source: $steps.format_report.output.items.*
+    expect(log.outputs.count).toBe(2); // 2 production deployments
+    expect(Array.isArray(log.outputs.deployments)).toBe(true);
+    expect((log.outputs.deployments as unknown[]).length).toBe(2);
+  });
+
   it('exits early when no production deployments', async () => {
     const workflow = loadWorkflow('graduation-deploy-report');
     const tools = new MockToolAdapter();
@@ -232,6 +283,8 @@ describe('graduation: deployment report', () => {
     const exitRecord = log.steps.find((s) => s.id === 'exit_if_none')!;
     expect(exitRecord.status).toBe('success');
     expect(exitRecord.output).toEqual({ count: 0, deployments: [] });
+    // Exit output takes precedence over source
+    expect(log.outputs).toEqual({ count: 0, deployments: [] });
   });
 });
 
@@ -382,6 +435,43 @@ describe('graduation: content moderation', () => {
     expect(queueRecord.status).toBe('success');
   });
 
+  it('resolves workflow output source on normal completion with high severity', async () => {
+    const { workflow, tools } = setupContentModeration();
+
+    const llm = new MockLLMAdapter((_model, prompt) => {
+      if (prompt.includes('terrible people')) {
+        return {
+          text: JSON.stringify({ post_id: 'p2', severity: 'high', reason: 'harassment' }),
+          tokens: { input: 30, output: 15 },
+        };
+      }
+      if (prompt.includes('cheap watches')) {
+        return {
+          text: JSON.stringify({ post_id: 'p3', severity: 'low', reason: 'spam' }),
+          tokens: { input: 30, output: 15 },
+        };
+      }
+      return {
+        text: JSON.stringify({ post_id: prompt.match(/p\d/)?.[0] ?? 'unknown', severity: 'none', reason: '' }),
+        tokens: { input: 30, output: 15 },
+      };
+    });
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { channel_id: 'general' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'content-moderation',
+    });
+
+    expect(log.status).toBe('success');
+    // Workflow outputs resolved via source expressions
+    expect(log.outputs.evaluated).toBe(4); // 4 posts fetched
+    expect(log.outputs.auto_removed).toBe(1); // 1 high severity
+    expect(log.outputs.queued_for_review).toBe(1); // 1 low severity
+  });
+
   it('exits early when no posts', async () => {
     const workflow = loadWorkflow('graduation-content-moderation');
     const tools = new MockToolAdapter();
@@ -405,5 +495,7 @@ describe('graduation: content moderation', () => {
     const exitRecord = log.steps.find((s) => s.id === 'exit_if_none')!;
     expect(exitRecord.status).toBe('success');
     expect(exitRecord.output).toEqual({ evaluated: 0, auto_removed: 0, queued_for_review: 0 });
+    // Exit output takes precedence
+    expect(log.outputs).toEqual({ evaluated: 0, auto_removed: 0, queued_for_review: 0 });
   });
 });
