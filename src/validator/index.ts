@@ -155,6 +155,21 @@ export function validateWorkflow(
     }
   }
 
+  // Validate workflow output source references
+  for (const [outputName, outputDef] of Object.entries(workflow.outputs)) {
+    if (outputDef.source) {
+      const refs = extractStepReferences(outputDef.source);
+      for (const refId of refs) {
+        if (!stepMap.has(refId)) {
+          errors.push({
+            path: `outputs.${outputName}.source`,
+            message: `References undefined step "${refId}"`,
+          });
+        }
+      }
+    }
+  }
+
   // Check for cycles in the step reference graph
   const cycleErrors = detectCycles(workflow.steps, stepMap);
   errors.push(...cycleErrors);

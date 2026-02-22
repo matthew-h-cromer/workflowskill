@@ -206,7 +206,7 @@ description: string
 inputs:
   <name>: { type: string|int|float|boolean|array|object, default: <value> }
 outputs:
-  <name>: { type: string|int|float|boolean|array|object }
+  <name>: { type: string|int|float|boolean|array|object, source: <expression> }
 steps:
   - id: string
     type: tool|llm|transform|conditional|exit
@@ -214,7 +214,7 @@ steps:
     inputs:
       <name>: { type: <type>, source: <expression>, default: <value> }
     outputs:
-      <name>: { type: <type> }
+      <name>: { type: <type>, source: <expression> }
 
     # Tool fields
     tool: string                    # registered tool name
@@ -285,6 +285,8 @@ Every step declares typed inputs and outputs. This serves three purposes:
 
 **Composability contracts.** When workflow composition is supported (see Future Work), input and output schemas are validated across the boundary between parent and child workflows.
 
+**Step input `source`** — a `$`-expression that resolves from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). This wires data from earlier steps or workflow inputs into the current step.
+
 ```yaml
 inputs:
   messages:
@@ -293,12 +295,27 @@ inputs:
     source: $steps.fetch_emails.output.messages
 ```
 
+**Step output `source`** — a `$`-expression that resolves against the raw executor result using the `$output` reference. This maps fields from the executor's raw response into named output keys. Outputs without `source` pass through from the raw result by key name (backwards compatible).
+
 ```yaml
 outputs:
-  scored:
-    type: array
-    items: { type: object, properties: { score: int, summary: string } }
+  title:
+    type: string
+    source: $output.body.title
 ```
+
+**Workflow output `source`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
+
+```yaml
+outputs:
+  title:
+    type: string
+    source: $steps.fetch.output.title
+```
+
+**Resolution order:**
+1. **Step output `source`**: resolved immediately after the executor returns. A temporary context with `$output` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
+2. **Workflow output `source`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `source` resolution.
 
 ### Expression Language
 
@@ -313,6 +330,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
 | `$item` | The current element when inside an `each` iteration |
 | `$index` | The current index when inside an `each` iteration |
+| `$output` | The raw result of the current step's executor (only valid in step output `source`) |
 
 **Properties:**
 
@@ -415,12 +433,13 @@ Execution proceeds in two phases.
 2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
 3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results.
 4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
-5. **Validate output.** Check the executor's return value against the step's declared output schema. If validation fails, treat it as a step failure.
-6. **Handle errors.** If the step failed, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
-7. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
-8. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
+5. **Map outputs.** If any declared output has a `source` field, resolve it against the raw executor result using a temporary context where `$output` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `source` pass through by key name.
+6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.
+7. **Handle errors.** If the step failed, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
+8. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
+9. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
 
-After the last step completes, the runtime validates the workflow's outputs against the declared output schema, emits the complete run log, and returns outputs to the caller.
+After the last step completes, the runtime resolves workflow output `source` expressions from the final runtime context. For each declared workflow output with a `source`, the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
 
 ### Step Executors
 
@@ -561,6 +580,8 @@ A conformant WorkflowSkill runtime must:
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
+9. Resolve step output `source` expressions using the `$output` reference after each step's executor returns.
+10. Resolve workflow output `source` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
 
 A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.
 
@@ -585,11 +606,12 @@ inputs:
     default: 7
 
 outputs:
-  briefing:
-    type: object
-    properties:
-      important_count: { type: int }
-      emails: { type: array }
+  important_count:
+    type: int
+    source: $steps.format_briefing.output.items.length
+  emails:
+    type: array
+    source: $steps.format_briefing.output.items
 
 steps:
   - id: fetch_emails
@@ -606,6 +628,7 @@ steps:
     outputs:
       messages:
         type: array
+        source: $output.messages
     retry:
       max: 3
       delay: "2s"
@@ -736,11 +759,12 @@ inputs:
     default: 24
 
 outputs:
-  report:
-    type: object
-    properties:
-      count: { type: int }
-      deployments: { type: array }
+  count:
+    type: int
+    source: $steps.format_report.output.items.length
+  deployments:
+    type: array
+    source: $steps.format_report.output.items
 
 steps:
   - id: fetch_deploys
@@ -755,7 +779,9 @@ steps:
         type: string
         default: "24h"
     outputs:
-      deployments: { type: array }
+      deployments:
+        type: array
+        source: $output.deployments
     retry:
       max: 3
       delay: "5s"
@@ -841,12 +867,15 @@ inputs:
     type: string
 
 outputs:
-  result:
-    type: object
-    properties:
-      evaluated: { type: int }
-      auto_removed: { type: int }
-      queued_for_review: { type: int }
+  evaluated:
+    type: int
+    source: $steps.fetch_posts.output.posts.length
+  auto_removed:
+    type: int
+    source: $steps.filter_high_severity.output.items.length
+  queued_for_review:
+    type: int
+    source: $steps.filter_low_severity.output.items.length
 
 steps:
   - id: fetch_posts

@@ -350,6 +350,76 @@ describe('validateWorkflow - cycle detection', () => {
   });
 });
 
+// ─── Workflow output source validation ──────────────────────────────────────
+
+describe('validateWorkflow - workflow output source', () => {
+  it('accepts valid workflow output source references', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {
+        title: { type: 'string', source: '$steps.fetch.output.title' },
+      },
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: { title: { type: 'string' } },
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects workflow output source referencing undefined step', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {
+        title: { type: 'string', source: '$steps.nonexistent.output.title' },
+      },
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e =>
+      e.path === 'outputs.title.source' && e.message.includes('nonexistent'),
+    )).toBe(true);
+  });
+
+  it('accepts workflow outputs without source (backwards compatible)', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {
+        result: { type: 'string' },
+      },
+      steps: [
+        {
+          id: 'a',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+  });
+});
+
 // ─── Collects all errors ──────────────────────────────────────────────────────
 
 describe('validateWorkflow - collects all errors', () => {

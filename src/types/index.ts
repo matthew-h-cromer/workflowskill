@@ -26,7 +26,10 @@ export interface WorkflowInput extends FieldSchema {
 }
 
 /** Workflow-level output declaration. */
-export type WorkflowOutput = FieldSchema;
+export interface WorkflowOutput extends FieldSchema {
+  /** Expression that resolves to the output value from the final runtime context. */
+  source?: string;
+}
 
 // ─── Step inputs and outputs ──────────────────────────────────────────────────
 
@@ -37,7 +40,10 @@ export interface StepInput extends FieldSchema {
 }
 
 /** Step-level output declaration. */
-export type StepOutput = FieldSchema;
+export interface StepOutput extends FieldSchema {
+  /** Expression using $output to map from the raw executor result. */
+  source?: string;
+}
 
 // ─── Retry policy ─────────────────────────────────────────────────────────────
 
@@ -307,6 +313,8 @@ export interface RuntimeContext {
   item?: unknown;
   /** Current index when inside an `each` loop. */
   index?: number;
+  /** Raw executor result, set during step output source mapping. */
+  output?: unknown;
 }
 
 // ─── Validation errors ────────────────────────────────────────────────────────

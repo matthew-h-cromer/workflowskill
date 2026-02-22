@@ -244,6 +244,30 @@ describe('resolveExpression', () => {
     expect(resolveExpression('!$item', zeroCtx)).toBe(true);
   });
 
+  // $output reference
+  it('resolves $output as the raw executor result', () => {
+    const outputCtx: RuntimeContext = {
+      inputs: {},
+      steps: {},
+      output: { body: { title: 'Test Title', userId: 42 } },
+    };
+    expect(resolveExpression('$output.body.title', outputCtx)).toBe('Test Title');
+    expect(resolveExpression('$output.body.userId', outputCtx)).toBe(42);
+  });
+
+  it('resolves $output with nested objects', () => {
+    const outputCtx: RuntimeContext = {
+      inputs: {},
+      steps: {},
+      output: { data: { items: [1, 2, 3] } },
+    };
+    expect(resolveExpression('$output.data.items.length', outputCtx)).toBe(3);
+  });
+
+  it('resolves $output as undefined when not set', () => {
+    expect(resolveExpression('$output', ctx)).toBeUndefined();
+  });
+
   // Error cases
   it('throws on unknown reference', () => {
     expect(() => resolveExpression('$unknown', ctx)).toThrow(EvalError);

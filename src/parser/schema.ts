@@ -28,7 +28,9 @@ export const fieldSchema = z.object({
 
 export const workflowInputSchema = fieldSchema;
 
-export const workflowOutputSchema = fieldSchema;
+export const workflowOutputSchema = fieldSchema.extend({
+  source: z.string().optional(),
+});
 
 // ─── Step inputs and outputs ──────────────────────────────────────────────────
 
@@ -36,7 +38,9 @@ export const stepInputSchema = fieldSchema.extend({
   source: z.string().optional(),
 });
 
-export const stepOutputSchema = fieldSchema;
+export const stepOutputSchema = fieldSchema.extend({
+  source: z.string().optional(),
+});
 
 // ─── Retry policy ─────────────────────────────────────────────────────────────
 
