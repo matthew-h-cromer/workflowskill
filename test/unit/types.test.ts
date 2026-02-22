@@ -12,6 +12,10 @@ import type {
   RunLog,
   RuntimeContext,
   ValidationResult,
+  JsonSchema,
+  ToolDescriptor,
+  ToolAdapter,
+  ToolResult,
 } from '../../src/types/index.js';
 
 describe('types', () => {
@@ -165,5 +169,68 @@ describe('types', () => {
       ],
     };
     expect(result.errors).toHaveLength(2);
+  });
+
+  it('ToolDescriptor compiles with full fields', () => {
+    const descriptor: ToolDescriptor = {
+      name: 'gmail.search',
+      description: 'Search Gmail messages',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query' },
+          max_results: { type: 'integer' },
+        },
+        required: ['query'],
+      },
+      outputSchema: {
+        type: 'array',
+        items: { type: 'object' },
+      },
+    };
+    expect(descriptor.name).toBe('gmail.search');
+    expect(descriptor.inputSchema?.properties?.query?.type).toBe('string');
+  });
+
+  it('ToolDescriptor compiles with minimal fields', () => {
+    const descriptor: ToolDescriptor = {
+      name: 'simple_tool',
+      description: 'A simple tool',
+    };
+    expect(descriptor.inputSchema).toBeUndefined();
+    expect(descriptor.outputSchema).toBeUndefined();
+  });
+
+  it('JsonSchema supports nested properties', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        user: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            age: { type: 'integer' },
+          },
+          required: ['name'],
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+      required: ['user'],
+    };
+    expect(schema.properties?.user?.properties?.name?.type).toBe('string');
+    expect(schema.properties?.tags?.items?.type).toBe('string');
+  });
+
+  it('ToolAdapter without list() still satisfies the interface', () => {
+    const adapter: ToolAdapter = {
+      has: (_name: string) => false,
+      invoke: async (_name: string, _args: Record<string, unknown>): Promise<ToolResult> => {
+        return { output: null };
+      },
+    };
+    expect(adapter.has('anything')).toBe(false);
   });
 });

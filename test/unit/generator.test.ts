@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateWorkflow } from '../../src/generator/index.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
+import type { ToolDescriptor } from '../../src/types/index.js';
 
 describe('generateWorkflow', () => {
   it('generates a valid workflow from LLM response', async () => {
@@ -156,5 +157,84 @@ steps:
     expect(result.valid).toBe(true);
     expect(result.content).toContain('```workflow');
     expect(result.content).toContain('---');
+  });
+
+  it('toolDescriptors provides rich context to LLM prompt', async () => {
+    let capturedPrompt = '';
+    const llm = new MockLLMAdapter((_, prompt) => {
+      capturedPrompt = prompt;
+      return {
+        text: `---\nname: test\ndescription: test\n---\n\n# Test\n\n\`\`\`workflow\ninputs: {}\noutputs: {}\nsteps:\n  - id: s1\n    type: tool\n    tool: gmail.search\n    inputs: {}\n    outputs: {}\n\`\`\``,
+        tokens: { input: 100, output: 100 },
+      };
+    });
+
+    const descriptors: ToolDescriptor[] = [
+      {
+        name: 'gmail.search',
+        description: 'Search Gmail messages by query.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The search query' },
+            max_results: { type: 'integer', description: 'Maximum results to return' },
+          },
+          required: ['query'],
+        },
+      },
+    ];
+
+    await generateWorkflow({
+      prompt: 'search emails',
+      llmAdapter: llm,
+      toolDescriptors: descriptors,
+    });
+
+    expect(capturedPrompt).toContain('## Available Tools');
+    expect(capturedPrompt).toContain('### gmail.search');
+    expect(capturedPrompt).toContain('Search Gmail messages by query.');
+    expect(capturedPrompt).toContain('query (string, required): The search query');
+    expect(capturedPrompt).toContain('max_results (integer)');
+  });
+
+  it('toolDescriptors takes precedence over availableTools', async () => {
+    let capturedPrompt = '';
+    const llm = new MockLLMAdapter((_, prompt) => {
+      capturedPrompt = prompt;
+      return {
+        text: `---\nname: test\ndescription: test\n---\n\n# Test\n\n\`\`\`workflow\ninputs: {}\noutputs: {}\nsteps:\n  - id: s1\n    type: tool\n    tool: rich.tool\n    inputs: {}\n    outputs: {}\n\`\`\``,
+        tokens: { input: 100, output: 100 },
+      };
+    });
+
+    await generateWorkflow({
+      prompt: 'do thing',
+      llmAdapter: llm,
+      availableTools: ['plain.tool'],
+      toolDescriptors: [{ name: 'rich.tool', description: 'Rich tool' }],
+    });
+
+    expect(capturedPrompt).toContain('### rich.tool');
+    expect(capturedPrompt).not.toContain('Available tools: plain.tool');
+  });
+
+  it('availableTools still works alone (backward compat)', async () => {
+    let capturedPrompt = '';
+    const llm = new MockLLMAdapter((_, prompt) => {
+      capturedPrompt = prompt;
+      return {
+        text: `---\nname: test\ndescription: test\n---\n\n# Test\n\n\`\`\`workflow\ninputs: {}\noutputs: {}\nsteps:\n  - id: s1\n    type: tool\n    tool: my_tool\n    inputs: {}\n    outputs: {}\n\`\`\``,
+        tokens: { input: 100, output: 100 },
+      };
+    });
+
+    await generateWorkflow({
+      prompt: 'do thing',
+      llmAdapter: llm,
+      availableTools: ['my_tool', 'other_tool'],
+    });
+
+    expect(capturedPrompt).toContain('Available tools: my_tool, other_tool');
+    expect(capturedPrompt).not.toContain('## Available Tools');
   });
 });

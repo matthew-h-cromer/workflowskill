@@ -53,7 +53,21 @@ const runLog = await runWorkflow({
 const generated = await generateWorkflow({
   prompt: 'Triage my daily emails',
   llmAdapter,
-  availableTools: ['gmail.search', 'slack.post_message'],
+  toolDescriptors: [
+    {
+      name: 'gmail.search',
+      description: 'Search Gmail messages by query.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query' },
+          max_results: { type: 'integer', description: 'Maximum results' },
+        },
+        required: ['query'],
+      },
+    },
+    { name: 'slack.post_message', description: 'Post a message to Slack.' },
+  ],
 });
 ```
 
@@ -65,6 +79,7 @@ const generated = await generateWorkflow({
 interface ToolAdapter {
   invoke(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
   has(toolName: string): boolean;
+  list?(): ToolDescriptor[];  // optional — for tool discovery
 }
 
 interface LLMAdapter {
@@ -76,7 +91,7 @@ interface LLMAdapter {
 
 ```bash
 npm run typecheck          # tsc --noEmit
-npm run test               # 150 tests
+npm run test               # 164 tests
 npm run test:coverage      # With coverage report
 npm run lint               # ESLint
 npm run build              # tsdown

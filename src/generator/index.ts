@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { LLMAdapter } from '../types/index.js';
+import type { LLMAdapter, ToolDescriptor } from '../types/index.js';
 import { parseWorkflowFromMd } from '../parser/index.js';
 import { validateWorkflow } from '../validator/index.js';
 
@@ -31,8 +31,10 @@ export interface GenerateOptions {
   llmAdapter: LLMAdapter;
   /** Maximum generation + fix attempts. */
   maxAttempts?: number;
-  /** Available tool names for context. */
+  /** @deprecated Use `toolDescriptors` for rich tool metadata. */
   availableTools?: string[];
+  /** Tool descriptors with name, description, and parameter schemas. */
+  toolDescriptors?: ToolDescriptor[];
 }
 
 /**
@@ -42,7 +44,7 @@ export interface GenerateOptions {
  */
 export async function generateWorkflow(options: GenerateOptions): Promise<GenerateResult> {
   const maxAttempts = options.maxAttempts ?? 3;
-  const systemPrompt = buildSystemPrompt(options.availableTools);
+  const systemPrompt = buildSystemPrompt(options.availableTools, options.toolDescriptors);
 
   let lastContent = '';
   let lastErrors: string[] = [];
@@ -82,7 +84,7 @@ export async function generateWorkflow(options: GenerateOptions): Promise<Genera
 /**
  * Build the system prompt from the authoring skill.
  */
-function buildSystemPrompt(availableTools?: string[]): string {
+function buildSystemPrompt(availableTools?: string[], toolDescriptors?: ToolDescriptor[]): string {
   let prompt: string;
   try {
     prompt = readFileSync(
@@ -94,11 +96,43 @@ function buildSystemPrompt(availableTools?: string[]): string {
     prompt = getInlineSystemPrompt();
   }
 
-  if (availableTools && availableTools.length > 0) {
+  // toolDescriptors takes precedence over availableTools
+  if (toolDescriptors && toolDescriptors.length > 0) {
+    prompt += '\n\n' + formatToolDescriptors(toolDescriptors);
+  } else if (availableTools && availableTools.length > 0) {
     prompt += `\n\nAvailable tools: ${availableTools.join(', ')}`;
   }
 
   return prompt;
+}
+
+/**
+ * Format tool descriptors as a readable markdown block for the LLM prompt.
+ */
+function formatToolDescriptors(descriptors: ToolDescriptor[]): string {
+  const lines = ['## Available Tools', ''];
+
+  for (const tool of descriptors) {
+    lines.push(`### ${tool.name}`);
+    if (tool.description) {
+      lines.push(tool.description);
+    }
+
+    if (tool.inputSchema?.properties) {
+      const required = new Set(tool.inputSchema.required ?? []);
+      lines.push('Parameters:');
+      for (const [param, schema] of Object.entries(tool.inputSchema.properties)) {
+        const typePart = schema.type ? ` (${schema.type}` : ' (';
+        const reqPart = required.has(param) ? ', required)' : ')';
+        const descPart = schema.description ? `: ${schema.description}` : '';
+        lines.push(`  - ${param}${typePart}${reqPart}${descPart}`);
+      }
+    }
+
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }
 
 /**

@@ -250,6 +250,25 @@ export interface RunLog {
 
 // ─── Adapter interfaces ───────────────────────────────────────────────────────
 
+/** Minimal JSON Schema type for tool parameter/output descriptions. */
+export interface JsonSchema {
+  type?: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  enum?: unknown[];
+  [key: string]: unknown;
+}
+
+/** Describes a tool's name, purpose, and parameter schemas. */
+export interface ToolDescriptor {
+  name: string;
+  description: string;
+  inputSchema?: JsonSchema;
+  outputSchema?: JsonSchema;
+}
+
 /** Result from a tool invocation. */
 export interface ToolResult {
   output: unknown;
@@ -261,6 +280,8 @@ export interface ToolAdapter {
   invoke(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
   /** Check whether a tool is available. */
   has(toolName: string): boolean;
+  /** List all available tools with their metadata. Optional for backward compatibility. */
+  list?(): ToolDescriptor[];
 }
 
 /** Result from an LLM call. */

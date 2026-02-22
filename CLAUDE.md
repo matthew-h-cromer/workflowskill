@@ -4,7 +4,7 @@
 
 A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `rfc-workflowskill.md` is the specification (source of truth for all behavior). Target integration platform: OpenClaw.
 
-**Status: Core implementation complete.** All 9 roadmap steps done. 150 tests passing, 92.93% statement / 94.42% line coverage. CLI working end-to-end. Ready for real LLM/tool integration.
+**Status: Core implementation complete.** All 9 roadmap steps done plus tool discovery layer. 164 tests passing. CLI working end-to-end. Ready for real LLM/tool integration.
 
 ## How to Help
 
@@ -79,20 +79,19 @@ npx tsx src/cli/index.ts generate "<prompt>"
 
 ## Test Suite
 
-**150 tests** across 8 test files:
+**164 tests** across 9 test files:
 
 | File | Tests | What It Covers |
 |------|-------|---------------|
-| `test/unit/types.test.ts` | Type compilation checks |
+| `test/unit/types.test.ts` | Type compilation checks (incl. JsonSchema, ToolDescriptor, ToolAdapter) |
 | `test/unit/parser.test.ts` | YAML parsing, Zod validation, malformed input errors |
 | `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation |
 | `test/unit/validator.test.ts` | DAG cycles, type mismatches, missing tools, structural correctness |
 | `test/unit/executor.test.ts` | All 5 executor types: transform, conditional, exit, tool, llm |
-| `test/unit/generator.test.ts` | Generate-validate-fix loop, retry on failure, raw YAML wrapping |
+| `test/unit/generator.test.ts` | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors |
+| `test/unit/adapters.test.ts` | MockToolAdapter: register, list, has, invoke, descriptor storage |
 | `test/integration/runtime.test.ts` | All 10 targeted workflows end-to-end with mock adapters |
 | `test/integration/graduation.test.ts` | 3 RFC examples: email-triage, deploy-report, content-moderation |
-
-**Coverage:** 92.93% statements, 83.69% branches, 97.72% functions, 94.42% lines.
 
 ### Test Fixtures (`test/fixtures/`)
 
@@ -109,14 +108,14 @@ malformed-bad-schema, malformed-bad-yaml, malformed-no-block, malformed-no-front
 
 All public types and functions are re-exported from the package entry point:
 
-- **Types:** All interfaces from `src/types/` (WorkflowDefinition, Step variants, RunLog, etc.)
+- **Types:** All interfaces from `src/types/` (WorkflowDefinition, Step variants, RunLog, JsonSchema, ToolDescriptor, etc.)
 - **Parser:** `parseSkillMd`, `parseWorkflowYaml`, `parseWorkflowFromMd`, `ParseError`
 - **Expression:** `resolveExpression`, `interpolatePrompt`, `LexError`, `ParseExprError`, `EvalError`
 - **Validator:** `validateWorkflow`
 - **Executors:** `dispatch`, `executeTransform`, `executeConditional`, `executeExit`, `executeTool`, `executeLLM`, `StepExecutionError`
 - **Runtime:** `runWorkflow`, `WorkflowExecutionError`
-- **Generator:** `generateWorkflow`
-- **Adapters:** `MockToolAdapter`, `MockLLMAdapter`
+- **Generator:** `generateWorkflow` (supports `toolDescriptors` for rich tool metadata)
+- **Adapters:** `MockToolAdapter` (with `list()` for tool discovery), `MockLLMAdapter`
 
 ## RFC Section Map
 
@@ -148,7 +147,7 @@ The RFC at `rfc-workflowskill.md` defines every type, field, constraint, and run
 - Adapters (`src/adapters/`) isolate all external dependencies (tools, LLM)
 - Every public function has a corresponding test
 - Error messages include context: which step failed, what expression was invalid, expected vs. actual type
-- The `ToolAdapter` interface is the integration boundary: `invoke(toolName, args) → Promise<unknown>`
+- The `ToolAdapter` interface is the integration boundary: `invoke(toolName, args) → Promise<unknown>`, `has(name) → boolean`, optional `list() → ToolDescriptor[]`
 - The `LLMAdapter` interface: `call(model, prompt) → Promise<{ text, tokens }>`
 
 ## Completed Roadmap
