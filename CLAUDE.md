@@ -4,8 +4,6 @@
 
 A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `rfc-workflowskill.md` is the specification (source of truth for all behavior). Target integration platform: OpenClaw.
 
-**Status: Core implementation complete with conversational generation.** All 9 roadmap steps done plus tool discovery layer, real LLM/tool adapters, output source mapping (`$output` for step outputs, `$steps` for workflow outputs), and conversational workflow generation. 265 tests passing. CLI uses real Anthropic API + built-in tools when `ANTHROPIC_API_KEY` is set, falls back to mocks otherwise. Generate command is interactive by default (TTY + API key), with single-shot fallback.
-
 ## How to Help
 
 - **The RFC is the spec.** Read `rfc-workflowskill.md` before modifying any module. If the RFC and the implementation disagree, the RFC wins.
@@ -27,7 +25,7 @@ TypeScript (strict), Node >=20, ESM only. Vitest for tests. Zod for schema valid
 
 ## Architecture
 
-```
+````
 src/
 ├── types/          # TypeScript interfaces mirroring every RFC field and constraint
 ├── parser/         # SKILL.md → typed WorkflowDefinition (extract markdown → parse YAML → Zod validate)
@@ -67,7 +65,7 @@ src/
 test/fixtures/                   # 10 targeted + 3 graduation workflow fixtures
 test/unit/                       # Unit tests (parser, expression, types, validator, executor, generator)
 test/integration/                # Integration tests (runtime, graduation)
-```
+````
 
 **Dependency flow:** types → parser + expression → validator + executor → runtime → cli + generator
 
@@ -86,7 +84,7 @@ test/integration/                # Integration tests (runtime, graduation)
 
 ```
 npm run typecheck          # tsc --noEmit (strict)
-npm run test               # Run all 226 tests (vitest)
+npm run test               # Run all 277 tests (vitest)
 npm run test:watch         # Watch mode
 npm run test:coverage      # With coverage report
 npm run lint               # ESLint
@@ -101,27 +99,27 @@ npx tsx src/cli/index.ts generate "<prompt>"
 
 ## Test Suite
 
-**265 tests** across 17 test files:
+**277 tests** across 17 test files:
 
-| File | Tests | What It Covers |
-|------|-------|---------------|
-| `test/unit/types.test.ts` | Type compilation checks (incl. JsonSchema, ToolDescriptor, ToolAdapter) |
-| `test/unit/parser.test.ts` | YAML parsing, Zod validation, malformed input errors, output source field |
-| `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation, $output reference |
-| `test/unit/validator.test.ts` | DAG cycles, type mismatches, missing tools, structural correctness, workflow output source refs |
-| `test/unit/executor.test.ts` | All 5 executor types: transform, conditional, exit, tool, llm |
-| `test/unit/generator.test.ts` | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors, conversational generation |
-| `test/unit/conversation.test.ts` | Conversation loop: direct generation, multi-turn, tool use, validation retries, abort, max turns |
-| `test/unit/adapters.test.ts` | MockToolAdapter: register, list, has, invoke. MockLLMAdapter: converse delegation, conversation handler |
-| `test/unit/config.test.ts` | loadConfig: env vars, .env fallback, precedence, quote stripping |
-| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, response mapping, responseFormat |
-| `test/unit/http-request.test.ts` | http.request tool: GET/POST, headers, errors, timeout |
-| `test/unit/html-select.test.ts` | html.select tool: CSS selectors, attributes, limit |
-| `test/unit/gmail.test.ts` | Gmail tools: search, read (body decoding), send, error handling |
-| `test/unit/sheets.test.ts` | Sheets tools: read, write, append, error handling |
-| `test/unit/builtin-tool-adapter.test.ts` | BuiltinToolAdapter: create, list, invoke, conditional Google registration |
-| `test/integration/runtime.test.ts` | All 12 targeted workflows end-to-end with mock adapters (incl. output-source) |
-| `test/integration/graduation.test.ts` | 3 RFC examples with flat outputs: email-triage, deploy-report, content-moderation |
+| File                                      | Tests                                                                                                       | What It Covers |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------- |
+| `test/unit/types.test.ts`                 | Type compilation checks (incl. JsonSchema, ToolDescriptor, ToolAdapter)                                     |
+| `test/unit/parser.test.ts`                | YAML parsing, Zod validation, malformed input errors, output source field                                   |
+| `test/unit/expression.test.ts`            | Lexer, parser, evaluator, prompt interpolation, $output reference                                           |
+| `test/unit/validator.test.ts`             | DAG cycles, type mismatches, missing tools, structural correctness, workflow output source refs             |
+| `test/unit/executor.test.ts`              | All 5 executor types: transform, conditional, exit, tool, llm                                               |
+| `test/unit/generator.test.ts`             | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors, conversational generation |
+| `test/unit/conversation.test.ts`          | Conversation loop: direct generation, multi-turn, tool use, validation retries, abort, max turns            |
+| `test/unit/adapters.test.ts`              | MockToolAdapter: register, list, has, invoke. MockLLMAdapter: converse delegation, conversation handler     |
+| `test/unit/config.test.ts`                | loadConfig: env vars, .env fallback, precedence, quote stripping                                            |
+| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, response mapping, responseFormat                                      |
+| `test/unit/http-request.test.ts`          | http.request tool: GET/POST, headers, errors, timeout                                                       |
+| `test/unit/html-select.test.ts`           | html.select tool: CSS selectors, attributes, limit                                                          |
+| `test/unit/gmail.test.ts`                 | Gmail tools: search, read (body decoding), send, error handling                                             |
+| `test/unit/sheets.test.ts`                | Sheets tools: read, write, append, error handling                                                           |
+| `test/unit/builtin-tool-adapter.test.ts`  | BuiltinToolAdapter: create, list, invoke, conditional Google registration                                   |
+| `test/integration/runtime.test.ts`        | All 12 targeted workflows end-to-end with mock adapters (incl. output-source)                               |
+| `test/integration/graduation.test.ts`     | 3 RFC examples with flat outputs: email-triage, deploy-report, content-moderation                           |
 
 ### Test Fixtures (`test/fixtures/`)
 
@@ -152,24 +150,24 @@ All public types and functions are re-exported from the package entry point:
 
 The RFC at `rfc-workflowskill.md` defines every type, field, constraint, and runtime behavior.
 
-| RFC Lines | Section | Relevant Module |
-|-----------|---------|----------------|
-| 44-63 | Context (definitions) | types |
-| 146-192 | Proposal requirements, Authoring Model | generator |
-| 193-253 | YAML structure, step fields | types, parser |
-| 256-259 | Backwards compatibility | parser |
-| 260-320 | Workflow inputs/outputs, step/workflow output `source` | types, parser, runtime |
-| 303-333 | Expression language (incl. `$output` reference) | expression |
-| 334-401 | Step types (tool, llm, transform, conditional, exit) | types, executor |
-| 402-423 | Runtime execution model (two phases, 8-step lifecycle) | runtime |
-| 425-488 | Step executors | executor |
-| 490-499 | Error handling (on_error, retry) | runtime, executor |
-| 501-533 | Run log format | runtime |
-| 535-550 | Runtime boundaries | runtime, adapters |
-| 552-565 | Conformance requirements | validator, runtime |
-| 567-722 | Example 1: Email triage | test/integration/graduation |
-| 723-832 | Example 2: Deployment report | test/integration/graduation |
-| 833-1022 | Example 3: Content moderation | test/integration/graduation |
+| RFC Lines | Section                                                | Relevant Module             |
+| --------- | ------------------------------------------------------ | --------------------------- |
+| 44-63     | Context (definitions)                                  | types                       |
+| 146-192   | Proposal requirements, Authoring Model                 | generator                   |
+| 193-253   | YAML structure, step fields                            | types, parser               |
+| 256-259   | Backwards compatibility                                | parser                      |
+| 260-320   | Workflow inputs/outputs, step/workflow output `source` | types, parser, runtime      |
+| 303-333   | Expression language (incl. `$output` reference)        | expression                  |
+| 334-401   | Step types (tool, llm, transform, conditional, exit)   | types, executor             |
+| 402-423   | Runtime execution model (two phases, 8-step lifecycle) | runtime                     |
+| 425-488   | Step executors                                         | executor                    |
+| 490-499   | Error handling (on_error, retry)                       | runtime, executor           |
+| 501-533   | Run log format                                         | runtime                     |
+| 535-550   | Runtime boundaries                                     | runtime, adapters           |
+| 552-565   | Conformance requirements                               | validator, runtime          |
+| 567-722   | Example 1: Email triage                                | test/integration/graduation |
+| 723-832   | Example 2: Deployment report                           | test/integration/graduation |
+| 833-1022  | Example 3: Content moderation                          | test/integration/graduation |
 
 ## Coding Conventions
 
@@ -197,16 +195,16 @@ The CLI gracefully degrades: no API key → mock adapters with a warning. No Goo
 
 ## Built-in Tools
 
-| Tool | Description | Deps |
-|------|-------------|------|
-| `http.request` | HTTP requests via Node fetch | None (built-in) |
-| `html.select` | CSS selector extraction | cheerio |
-| `gmail.search` | Search Gmail messages | @googleapis/gmail |
-| `gmail.read` | Read full message by ID | @googleapis/gmail |
-| `gmail.send` | Send email via Gmail | @googleapis/gmail |
-| `sheets.read` | Read spreadsheet range | @googleapis/sheets |
-| `sheets.write` | Write to spreadsheet range | @googleapis/sheets |
-| `sheets.append` | Append rows to spreadsheet | @googleapis/sheets |
+| Tool            | Description                  | Deps               |
+| --------------- | ---------------------------- | ------------------ |
+| `http.request`  | HTTP requests via Node fetch | None (built-in)    |
+| `html.select`   | CSS selector extraction      | cheerio            |
+| `gmail.search`  | Search Gmail messages        | @googleapis/gmail  |
+| `gmail.read`    | Read full message by ID      | @googleapis/gmail  |
+| `gmail.send`    | Send email via Gmail         | @googleapis/gmail  |
+| `sheets.read`   | Read spreadsheet range       | @googleapis/sheets |
+| `sheets.write`  | Write to spreadsheet range   | @googleapis/sheets |
+| `sheets.append` | Append rows to spreadsheet   | @googleapis/sheets |
 
 ## Possible Next Steps
 

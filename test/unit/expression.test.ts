@@ -75,6 +75,22 @@ describe('lexer', () => {
   it('throws on unterminated string', () => {
     expect(() => lex('"hello')).toThrow(LexError);
   });
+
+  it('tokenizes bracket indexing with literal', () => {
+    const tokens = lex('$steps.fetch.output.results[0]');
+    const types = tokens.map(t => t.type);
+    expect(types).toContain('LBRACKET');
+    expect(types).toContain('NUMBER');
+    expect(types).toContain('RBRACKET');
+  });
+
+  it('tokenizes bracket indexing with reference', () => {
+    const tokens = lex('$items[$index]');
+    const types = tokens.map(t => t.type);
+    expect(types).toContain('LBRACKET');
+    expect(types).toContain('DOLLAR_REF');
+    expect(types).toContain('RBRACKET');
+  });
 });
 
 // ─── Parser tests ─────────────────────────────────────────────────────────────
@@ -122,6 +138,38 @@ describe('parser', () => {
     if (ast.kind === 'binary') {
       expect(ast.operator).toBe('&&');
       expect(ast.left.kind).toBe('binary');
+    }
+  });
+
+  it('parses bracket index with literal', () => {
+    const ast = parseExpression(lex('$steps.fetch.output.results[0]'));
+    expect(ast.kind).toBe('index_access');
+    if (ast.kind === 'index_access') {
+      expect(ast.object.kind).toBe('property_access');
+      expect(ast.index.kind).toBe('literal');
+      if (ast.index.kind === 'literal') {
+        expect(ast.index.value).toBe(0);
+      }
+    }
+  });
+
+  it('parses bracket index with reference', () => {
+    const ast = parseExpression(lex('$items[$index]'));
+    expect(ast.kind).toBe('index_access');
+    if (ast.kind === 'index_access') {
+      expect(ast.object.kind).toBe('reference');
+      expect(ast.index.kind).toBe('reference');
+    }
+  });
+
+  it('parses chained bracket then dot: $output.body.results[0].title', () => {
+    const ast = parseExpression(lex('$output.body.results[0].title'));
+    // Outermost should be property_access(.title)
+    expect(ast.kind).toBe('property_access');
+    if (ast.kind === 'property_access') {
+      expect(ast.property).toBe('title');
+      // Its object should be index_access([0])
+      expect(ast.object.kind).toBe('index_access');
     }
   });
 
@@ -268,6 +316,39 @@ describe('resolveExpression', () => {
     expect(resolveExpression('$output', ctx)).toBeUndefined();
   });
 
+  // Bracket indexing
+  it('resolves $steps.fetch.output.messages[0]', () => {
+    const result = resolveExpression('$steps.fetch.output.messages[0]', ctx);
+    expect(result).toEqual({ from: 'alice@example.com', subject: 'Hello', score: 9 });
+  });
+
+  it('resolves $steps.fetch.output.messages[1].subject', () => {
+    expect(resolveExpression('$steps.fetch.output.messages[1].subject', ctx)).toBe('Meeting');
+  });
+
+  it('resolves out-of-bounds bracket index to undefined', () => {
+    expect(resolveExpression('$steps.fetch.output.messages[99]', ctx)).toBeUndefined();
+  });
+
+  it('resolves $item[$index] with array item', () => {
+    const arrCtx: RuntimeContext = {
+      inputs: {},
+      steps: {},
+      item: ['a', 'b', 'c'],
+      index: 1,
+    };
+    expect(resolveExpression('$item[$index]', arrCtx)).toBe('b');
+  });
+
+  it('resolves bracket on non-array to undefined', () => {
+    // $inputs.account is a string, not an array
+    expect(resolveExpression('$inputs.account[0]', ctx)).toBeUndefined();
+  });
+
+  it('resolves bracket on null to undefined', () => {
+    expect(resolveExpression('$steps.empty_step.output[0]', ctx)).toBeUndefined();
+  });
+
   // Error cases
   it('throws on unknown reference', () => {
     expect(() => resolveExpression('$unknown', ctx)).toThrow(EvalError);
@@ -329,6 +410,11 @@ describe('interpolatePrompt', () => {
   it('preserves text without references', () => {
     const result = interpolatePrompt('No references here.', ctx);
     expect(result).toBe('No references here.');
+  });
+
+  it('interpolates bracket indexing', () => {
+    const result = interpolatePrompt('Subject: $steps.fetch.output.messages[0].subject', ctx);
+    expect(result).toBe('Subject: Hello');
   });
 
   it('interpolates boolean values', () => {

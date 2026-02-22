@@ -269,8 +269,12 @@ Use `$`-prefixed references to wire data between steps:
 | `$item` | Current item in `each` or transform iteration |
 | `$index` | Current index in iteration |
 | `$output` | Raw executor result (only valid in step output `source`) |
+| `$steps.<id>.output.field[0]` | First element of an array field |
+| `$items[$index]` | Element at computed index |
 
 Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
+
+Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array element access.
 
 ## Authoring Rules
 

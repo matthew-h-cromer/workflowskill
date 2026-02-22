@@ -20,6 +20,8 @@ export type TokenType =
   | 'NOT'          // !
   | 'LPAREN'       // (
   | 'RPAREN'       // )
+  | 'LBRACKET'     // [
+  | 'RBRACKET'     // ]
   | 'EOF';
 
 export interface Token {
@@ -79,6 +81,18 @@ export function lex(input: string): Token[] {
     }
     if (ch === ')') {
       tokens.push({ type: 'RPAREN', value: ')', position: pos });
+      pos++;
+      continue;
+    }
+
+    // Brackets
+    if (ch === '[') {
+      tokens.push({ type: 'LBRACKET', value: '[', position: pos });
+      pos++;
+      continue;
+    }
+    if (ch === ']') {
+      tokens.push({ type: 'RBRACKET', value: ']', position: pos });
       pos++;
       continue;
     }

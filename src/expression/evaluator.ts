@@ -23,6 +23,9 @@ export function evaluate(node: ASTNode, context: RuntimeContext): unknown {
     case 'property_access':
       return resolvePropertyAccess(node, context);
 
+    case 'index_access':
+      return resolveIndexAccess(node, context);
+
     case 'literal':
       return node.value;
 
@@ -68,6 +71,31 @@ function resolvePropertyAccess(
 
   if (typeof obj === 'object') {
     return (obj as Record<string, unknown>)[node.property];
+  }
+
+  return undefined;
+}
+
+function resolveIndexAccess(
+  node: { object: ASTNode; index: ASTNode },
+  context: RuntimeContext,
+): unknown {
+  const obj = evaluate(node.object, context);
+  const idx = evaluate(node.index, context);
+
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+
+  if (Array.isArray(obj) && typeof idx === 'number') {
+    return obj[idx];
+  }
+
+  if (typeof obj === 'object') {
+    const key = typeof idx === 'number' ? String(idx) : idx;
+    if (typeof key === 'string') {
+      return (obj as Record<string, unknown>)[key];
+    }
   }
 
   return undefined;

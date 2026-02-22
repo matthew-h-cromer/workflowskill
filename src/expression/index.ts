@@ -30,9 +30,9 @@ export function resolveExpression(expr: string, context: RuntimeContext): unknow
  * Example: "Score this email: $steps.fetch.output.subject"
  */
 export function interpolatePrompt(template: string, context: RuntimeContext): string {
-  // Match $-references with optional property chains.
-  // Pattern: $identifier(.identifier)* — greedy match on the property chain.
-  return template.replace(/\$([a-zA-Z_][a-zA-Z0-9_]*)(\.[a-zA-Z_][a-zA-Z0-9_]*)*/g, (match) => {
+  // Match $-references with optional property chains and bracket indexing.
+  // Pattern: $identifier(.identifier | [expression])* — greedy match on the postfix chain.
+  return template.replace(/\$([a-zA-Z_][a-zA-Z0-9_]*)(\.[a-zA-Z_][a-zA-Z0-9_]*|\[[^\]]*\])*/g, (match) => {
     try {
       const value = resolveExpression(match, context);
       return stringify(value);

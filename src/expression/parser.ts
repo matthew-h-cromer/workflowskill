@@ -8,6 +8,7 @@ import type { Token, TokenType } from './lexer.js';
 export type ASTNode =
   | ReferenceNode
   | PropertyAccessNode
+  | IndexAccessNode
   | LiteralNode
   | BinaryNode
   | UnaryNode;
@@ -23,6 +24,13 @@ export interface PropertyAccessNode {
   kind: 'property_access';
   object: ASTNode;
   property: string;
+}
+
+/** a[expr] bracket index access */
+export interface IndexAccessNode {
+  kind: 'index_access';
+  object: ASTNode;
+  index: ASTNode;
 }
 
 /** Literal values: number, string, boolean, null */
@@ -145,22 +153,30 @@ export function parseExpression(tokens: Token[]): ASTNode {
     if (tok.type === 'DOLLAR_REF') {
       pos++;
       let node: ASTNode = { kind: 'reference', name: tok.value };
-      // Property chain: .field.field.field
-      while (peek().type === 'DOT') {
-        pos++; // skip dot
-        const prop = current();
-        if (prop.type === 'IDENTIFIER' || prop.type === 'DOLLAR_REF') {
-          pos++;
-          node = { kind: 'property_access', object: node, property: prop.value };
-        } else if (prop.type === 'NUMBER') {
-          // Array index access: .0, .1
-          pos++;
-          node = { kind: 'property_access', object: node, property: prop.value };
+      // Postfix chain: .field or [expr]
+      while (peek().type === 'DOT' || peek().type === 'LBRACKET') {
+        if (peek().type === 'DOT') {
+          pos++; // skip dot
+          const prop = current();
+          if (prop.type === 'IDENTIFIER' || prop.type === 'DOLLAR_REF') {
+            pos++;
+            node = { kind: 'property_access', object: node, property: prop.value };
+          } else if (prop.type === 'NUMBER') {
+            // Array index access: .0, .1
+            pos++;
+            node = { kind: 'property_access', object: node, property: prop.value };
+          } else {
+            throw new ParseExprError(
+              `Expected property name after '.', got ${prop.type}`,
+              prop.position,
+            );
+          }
         } else {
-          throw new ParseExprError(
-            `Expected property name after '.', got ${prop.type}`,
-            prop.position,
-          );
+          // LBRACKET — bracket index access: [expr]
+          pos++; // skip [
+          const indexExpr = parseOr();
+          expect('RBRACKET');
+          node = { kind: 'index_access', object: node, index: indexExpr };
         }
       }
       return node;

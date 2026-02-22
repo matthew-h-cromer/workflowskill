@@ -337,6 +337,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | Syntax | Resolves To |
 |--------|-------------|
 | `<array>.length` | The number of elements in an array |
+| `<array>[<expression>]` | Element at index (0-based). Out-of-bounds → `undefined`. The index is a full expression, enabling both literal (`[0]`) and computed (`[$index]`) access. |
 
 **Operators:**
 
@@ -345,7 +346,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
 | Logical | `&&`, `\|\|`, `!` |
 
-**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses, and comparisons.
+**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), and comparisons.
 
 **Prompt interpolation.** Expressions in `prompt` fields (on LLM steps) follow the same reference resolution rules: `$inputs`, `$steps`, `$item`, and `$index` are resolved and property access works. Comparison and logical operators are not supported in prompt interpolation. The resolved value is coerced to its string representation and inserted at the reference position. Objects and arrays are serialized as JSON. Null values are inserted as the empty string.
 
