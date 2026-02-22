@@ -6,9 +6,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "workflowskill": "dist/cli/index.js"
+    "workflowskill": "dist/cli/index.mjs"
   },
   "scripts": {
+    "prebuild": "tsx scripts/generate-skill-prompt.ts",
     "build": "tsdown src/index.ts src/cli/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -29,7 +30,12 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@googleapis/gmail": "^6.0.0",
+    "@googleapis/sheets": "^9.0.0",
+    "cheerio": "^1.0.0",
     "commander": "^14.0.3",
+    "google-auth-library": "^9.0.0",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
