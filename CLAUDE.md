@@ -4,7 +4,7 @@
 
 A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `rfc-workflowskill.md` is the specification (source of truth for all behavior). Target integration platform: OpenClaw.
 
-**Status: Core implementation complete with output source mapping.** All 9 roadmap steps done plus tool discovery layer, real LLM/tool adapters, and output source mapping (`$output` for step outputs, `$steps` for workflow outputs). 242 tests passing. CLI uses real Anthropic API + built-in tools when `ANTHROPIC_API_KEY` is set, falls back to mocks otherwise.
+**Status: Core implementation complete with conversational generation.** All 9 roadmap steps done plus tool discovery layer, real LLM/tool adapters, output source mapping (`$output` for step outputs, `$steps` for workflow outputs), and conversational workflow generation. 265 tests passing. CLI uses real Anthropic API + built-in tools when `ANTHROPIC_API_KEY` is set, falls back to mocks otherwise. Generate command is interactive by default (TTY + API key), with single-shot fallback.
 
 ## How to Help
 
@@ -59,7 +59,8 @@ src/
 │       └── sheets.ts            # sheets.read, sheets.write, sheets.append
 ├── generator/      # Generate-validate-fix loop for LLM-authored workflows
 │   ├── workflow-author.md  # Skill prompt that teaches LLMs to author workflows
-│   └── skill-prompt.ts     # Auto-generated TS export of workflow-author.md
+│   ├── skill-prompt.ts     # Auto-generated TS export of workflow-author.md
+│   └── conversation.ts     # Multi-turn conversational generation loop
 ├── cli/            # Three commands: validate, run, generate
 └── index.ts        # Single entry point re-exporting all public APIs
 
@@ -100,7 +101,7 @@ npx tsx src/cli/index.ts generate "<prompt>"
 
 ## Test Suite
 
-**242 tests** across 16 test files:
+**265 tests** across 17 test files:
 
 | File | Tests | What It Covers |
 |------|-------|---------------|
@@ -109,8 +110,9 @@ npx tsx src/cli/index.ts generate "<prompt>"
 | `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation, $output reference |
 | `test/unit/validator.test.ts` | DAG cycles, type mismatches, missing tools, structural correctness, workflow output source refs |
 | `test/unit/executor.test.ts` | All 5 executor types: transform, conditional, exit, tool, llm |
-| `test/unit/generator.test.ts` | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors |
-| `test/unit/adapters.test.ts` | MockToolAdapter: register, list, has, invoke, descriptor storage |
+| `test/unit/generator.test.ts` | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors, conversational generation |
+| `test/unit/conversation.test.ts` | Conversation loop: direct generation, multi-turn, tool use, validation retries, abort, max turns |
+| `test/unit/adapters.test.ts` | MockToolAdapter: register, list, has, invoke. MockLLMAdapter: converse delegation, conversation handler |
 | `test/unit/config.test.ts` | loadConfig: env vars, .env fallback, precedence, quote stripping |
 | `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, response mapping, responseFormat |
 | `test/unit/http-request.test.ts` | http.request tool: GET/POST, headers, errors, timeout |
@@ -142,7 +144,7 @@ All public types and functions are re-exported from the package entry point:
 - **Validator:** `validateWorkflow`
 - **Executors:** `dispatch`, `executeTransform`, `executeConditional`, `executeExit`, `executeTool`, `executeLLM`, `StepExecutionError`
 - **Runtime:** `runWorkflow`, `WorkflowExecutionError`
-- **Generator:** `generateWorkflow` (supports `toolDescriptors` for rich tool metadata)
+- **Generator:** `generateWorkflow` (single-shot), `generateWorkflowConversational` (multi-turn), `conversationalGenerate` (low-level loop)
 - **Adapters:** `MockToolAdapter`, `MockLLMAdapter`, `AnthropicLLMAdapter`, `BuiltinToolAdapter`
 - **Config:** `loadConfig` (env vars + `.env` fallback)
 
@@ -178,6 +180,7 @@ The RFC at `rfc-workflowskill.md` defines every type, field, constraint, and run
 - Error messages include context: which step failed, what expression was invalid, expected vs. actual type
 - The `ToolAdapter` interface is the integration boundary: `invoke(toolName, args) → Promise<unknown>`, `has(name) → boolean`, optional `list() → ToolDescriptor[]`
 - The `LLMAdapter` interface: `call(model, prompt) → Promise<{ text, tokens }>`
+- The `ConversationalLLMAdapter` extends `LLMAdapter` with `converse(model, system, messages, tools?) → Promise<ConversationResult>`
 
 ## Completed Roadmap
 

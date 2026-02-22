@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
+import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
+import type { ConversationResult } from '../../src/types/index.js';
 
 describe('MockToolAdapter', () => {
   it('list() returns empty array when no tools registered', () => {
@@ -85,5 +87,63 @@ describe('MockToolAdapter', () => {
     const adapter = new MockToolAdapter();
     const result = await adapter.invoke('missing', {});
     expect(result.error).toContain('not registered');
+  });
+});
+
+describe('MockLLMAdapter', () => {
+  it('converse() delegates to call() when no conversationHandler', async () => {
+    const adapter = new MockLLMAdapter(() => ({
+      text: 'hello from call',
+      tokens: { input: 5, output: 3 },
+    }));
+
+    const result = await adapter.converse(undefined, 'system', [
+      { role: 'user', content: 'hi' },
+    ]);
+
+    expect(result.stopReason).toBe('end_turn');
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]!.type).toBe('text');
+    if (result.content[0]!.type === 'text') {
+      expect(result.content[0]!.text).toBe('hello from call');
+    }
+  });
+
+  it('converse() uses conversationHandler when provided', async () => {
+    const conversationResult: ConversationResult = {
+      content: [{ type: 'tool_use', id: 'call_1', name: 'test.tool', input: {} }],
+      stopReason: 'tool_use',
+      tokens: { input: 10, output: 10 },
+    };
+
+    const adapter = new MockLLMAdapter(undefined, () => conversationResult);
+    const result = await adapter.converse(undefined, 'system', [
+      { role: 'user', content: 'use a tool' },
+    ]);
+
+    expect(result.stopReason).toBe('tool_use');
+    expect(result.content[0]!.type).toBe('tool_use');
+  });
+
+  it('converse() extracts text from content blocks when delegating', async () => {
+    const adapter = new MockLLMAdapter((_, prompt) => ({
+      text: `echo: ${prompt}`,
+      tokens: { input: 5, output: 5 },
+    }));
+
+    const result = await adapter.converse(undefined, 'system', [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'first part' },
+          { type: 'text', text: '\nsecond part' },
+        ],
+      },
+    ]);
+
+    expect(result.content).toHaveLength(1);
+    if (result.content[0]!.type === 'text') {
+      expect(result.content[0]!.text).toContain('first part');
+    }
   });
 });

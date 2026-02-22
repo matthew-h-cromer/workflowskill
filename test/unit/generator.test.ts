@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { generateWorkflow } from '../../src/generator/index.js';
+import { generateWorkflow, generateWorkflowConversational } from '../../src/generator/index.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 import type { ToolDescriptor } from '../../src/types/index.js';
+import type { ConversationEvent } from '../../src/generator/conversation.js';
 
 describe('generateWorkflow', () => {
   it('generates a valid workflow from LLM response', async () => {
@@ -204,5 +205,108 @@ steps:
 
     expect(capturedPrompt).toContain('Available tools: my_tool, other_tool');
     expect(capturedPrompt).not.toContain('## Available Tools');
+  });
+});
+
+const VALID_WORKFLOW = `---
+name: test-wf
+description: test
+---
+
+# Test
+
+\`\`\`workflow
+inputs:
+  q:
+    type: string
+outputs:
+  result:
+    type: string
+steps:
+  - id: s1
+    type: tool
+    tool: test.tool
+    inputs:
+      q:
+        type: string
+        source: $inputs.q
+    outputs:
+      result:
+        type: string
+\`\`\`
+`;
+
+describe('generateWorkflowConversational', () => {
+  it('generates directly when LLM outputs frontmatter', async () => {
+    const llm = new MockLLMAdapter(undefined, () => ({
+      content: [{ type: 'text', text: VALID_WORKFLOW }],
+      stopReason: 'end_turn',
+      tokens: { input: 50, output: 50 },
+    }));
+    const events: ConversationEvent[] = [];
+
+    const result = await generateWorkflowConversational({
+      prompt: 'make a workflow',
+      llmAdapter: llm,
+      getUserInput: async () => null,
+      onEvent: (e) => events.push(e),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.content).toContain('test-wf');
+  });
+
+  it('filters conversation tools to read-only only', async () => {
+    let capturedTools: unknown;
+    const llm = new MockLLMAdapter(undefined, (_model, _system, _messages, tools) => {
+      capturedTools = tools;
+      return {
+        content: [{ type: 'text', text: VALID_WORKFLOW }],
+        stopReason: 'end_turn',
+        tokens: { input: 50, output: 50 },
+      };
+    });
+
+    const descriptors: ToolDescriptor[] = [
+      { name: 'http.request', description: 'HTTP requests' },
+      { name: 'html.select', description: 'CSS selectors' },
+      { name: 'gmail.send', description: 'Send email' },  // write tool — should be excluded
+      { name: 'sheets.write', description: 'Write to sheet' },  // write tool — should be excluded
+    ];
+
+    await generateWorkflowConversational({
+      prompt: 'test',
+      llmAdapter: llm,
+      toolDescriptors: descriptors,
+      getUserInput: async () => null,
+      onEvent: () => {},
+    });
+
+    const tools = capturedTools as Array<{ name: string }>;
+    expect(tools).toHaveLength(2);
+    expect(tools.map((t) => t.name)).toEqual(['http.request', 'html.select']);
+  });
+
+  it('passes toolDescriptors to system prompt', async () => {
+    let capturedSystem = '';
+    const llm = new MockLLMAdapter(undefined, (_model, system) => {
+      capturedSystem = system;
+      return {
+        content: [{ type: 'text', text: VALID_WORKFLOW }],
+        stopReason: 'end_turn',
+        tokens: { input: 50, output: 50 },
+      };
+    });
+
+    await generateWorkflowConversational({
+      prompt: 'test',
+      llmAdapter: llm,
+      toolDescriptors: [{ name: 'http.request', description: 'Make HTTP requests' }],
+      getUserInput: async () => null,
+      onEvent: () => {},
+    });
+
+    expect(capturedSystem).toContain('### http.request');
+    expect(capturedSystem).toContain('Make HTTP requests');
   });
 });

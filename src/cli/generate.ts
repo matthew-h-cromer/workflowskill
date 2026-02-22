@@ -1,14 +1,104 @@
 // CLI: generate command — generate WorkflowSkill YAML from a natural language prompt.
-// Uses the Anthropic LLM adapter when API key is available, falls back to mock template.
+// Interactive by default when API key is set and stdin is a TTY.
+// Falls back to single-shot generation for non-TTY or missing API key.
 
 import { writeFileSync } from 'node:fs';
-import { generateWorkflow } from '../generator/index.js';
+import { createInterface } from 'node:readline';
+import { generateWorkflow, generateWorkflowConversational } from '../generator/index.js';
+import type { ConversationEvent } from '../generator/conversation.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
 import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
 import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 
 export async function generateCommand(
+  prompt: string,
+  options: { output?: string },
+): Promise<void> {
+  const config = loadConfig();
+
+  // Interactive conversation when: API key available + stdin is a TTY
+  if (config.anthropicApiKey && process.stdin.isTTY) {
+    await generateCommandInteractive(prompt, options, config.anthropicApiKey);
+  } else {
+    await generateCommandSingleShot(prompt, options);
+  }
+}
+
+/** Interactive conversational generation via readline. */
+async function generateCommandInteractive(
+  prompt: string,
+  options: { output?: string },
+  apiKey: string,
+): Promise<void> {
+  const config = loadConfig();
+  const llmAdapter = new AnthropicLLMAdapter(apiKey);
+  const toolAdapter = await BuiltinToolAdapter.create(config);
+  const toolDescriptors = toolAdapter.list();
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stderr, // Prompts go to stderr so stdout stays clean for output
+  });
+
+  const getUserInput = (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      rl.question('> ', (answer) => {
+        if (answer.trim().toLowerCase() === '/quit') {
+          resolve(null);
+        } else {
+          resolve(answer);
+        }
+      });
+    });
+  };
+
+  const onEvent = (event: ConversationEvent): void => {
+    switch (event.type) {
+      case 'assistant_message':
+        console.error(`\n${event.text}\n`);
+        break;
+      case 'tool_call':
+        console.error(`[calling ${event.name}...]`);
+        break;
+      case 'tool_result':
+        if (event.isError) {
+          console.error(`[${event.name} error: ${event.output}]`);
+        } else {
+          // Truncate long outputs
+          const preview = event.output.length > 200
+            ? event.output.slice(0, 200) + '...'
+            : event.output;
+          console.error(`[${event.name} → ${preview}]`);
+        }
+        break;
+      case 'generating':
+        console.error('[generating workflow...]');
+        break;
+    }
+  };
+
+  try {
+    const result = await generateWorkflowConversational({
+      prompt,
+      llmAdapter,
+      toolAdapter,
+      toolDescriptors,
+      getUserInput,
+      onEvent,
+    });
+
+    rl.close();
+    outputResult(result.content, result.valid, result.errors, options);
+  } catch (err) {
+    rl.close();
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+/** Single-shot generation (no API key or non-TTY). */
+async function generateCommandSingleShot(
   prompt: string,
   options: { output?: string },
 ): Promise<void> {
@@ -36,15 +126,23 @@ export async function generateCommand(
     maxAttempts: config.anthropicApiKey ? 3 : 1,
   });
 
-  const output = result.content;
+  outputResult(result.content, result.valid, result.errors, options);
+}
 
+/** Write result to file or stdout, with validation warnings. */
+function outputResult(
+  content: string,
+  valid: boolean,
+  errors: string[],
+  options: { output?: string },
+): void {
   if (options.output) {
     try {
-      writeFileSync(options.output, output, 'utf-8');
+      writeFileSync(options.output, content, 'utf-8');
       console.log(`Workflow written to ${options.output}`);
-      if (!result.valid) {
+      if (!valid) {
         console.warn('Warning: Generated workflow has validation errors:');
-        for (const err of result.errors) {
+        for (const err of errors) {
           console.warn(`  ${err}`);
         }
       }
@@ -53,10 +151,10 @@ export async function generateCommand(
       process.exit(1);
     }
   } else {
-    console.log(output);
-    if (!result.valid && result.errors.length > 0) {
+    console.log(content);
+    if (!valid && errors.length > 0) {
       console.warn('\nWarning: Generated workflow has validation errors:');
-      for (const err of result.errors) {
+      for (const err of errors) {
         console.warn(`  ${err}`);
       }
     }
