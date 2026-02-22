@@ -1,26 +1,39 @@
 // CLI: generate command — generate WorkflowSkill YAML from a natural language prompt.
-// Uses the generator module with a mock LLM adapter (produces a template).
-// With a real LLM adapter, the generator performs a validate-fix loop.
+// Uses the Anthropic LLM adapter when API key is available, falls back to mock template.
 
 import { writeFileSync } from 'node:fs';
 import { generateWorkflow } from '../generator/index.js';
+import { loadConfig } from '../config/index.js';
+import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
+import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
 import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 
 export async function generateCommand(
   prompt: string,
   options: { output?: string },
 ): Promise<void> {
-  // Use mock adapter that generates a template
-  // A real integration would use the Anthropic SDK adapter
-  const llmAdapter = new MockLLMAdapter(() => ({
-    text: generateTemplate(prompt),
-    tokens: { input: 0, output: 0 },
-  }));
+  const config = loadConfig();
+  let llmAdapter;
+  let toolDescriptors;
+
+  if (config.anthropicApiKey) {
+    llmAdapter = new AnthropicLLMAdapter(config.anthropicApiKey);
+    const toolAdapter = await BuiltinToolAdapter.create(config);
+    toolDescriptors = toolAdapter.list();
+  } else {
+    // Fallback to mock adapter that generates a template
+    console.warn('Warning: No ANTHROPIC_API_KEY set — generating template only');
+    llmAdapter = new MockLLMAdapter(() => ({
+      text: generateTemplate(prompt),
+      tokens: { input: 0, output: 0 },
+    }));
+  }
 
   const result = await generateWorkflow({
     prompt,
     llmAdapter,
-    maxAttempts: 1,
+    toolDescriptors,
+    maxAttempts: config.anthropicApiKey ? 3 : 1,
   });
 
   const output = result.content;
