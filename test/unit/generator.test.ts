@@ -127,38 +127,6 @@ steps:
     expect(result.attempts).toBe(2);
   });
 
-  it('handles raw YAML response (wraps automatically)', async () => {
-    const llm = new MockLLMAdapter(() => ({
-      text: `inputs:
-  query:
-    type: string
-outputs:
-  result:
-    type: object
-steps:
-  - id: search
-    type: tool
-    tool: search_api
-    inputs:
-      q:
-        type: string
-        source: $inputs.query
-    outputs:
-      results:
-        type: array`,
-      tokens: { input: 50, output: 100 },
-    }));
-
-    const result = await generateWorkflow({
-      prompt: 'search for things',
-      llmAdapter: llm,
-    });
-
-    expect(result.valid).toBe(true);
-    expect(result.content).toContain('```workflow');
-    expect(result.content).toContain('---');
-  });
-
   it('toolDescriptors provides rich context to LLM prompt', async () => {
     let capturedPrompt = '';
     const llm = new MockLLMAdapter((_, prompt) => {

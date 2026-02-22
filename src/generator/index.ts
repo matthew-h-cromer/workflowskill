@@ -2,14 +2,10 @@
 // Uses an LLM adapter with the authoring skill prompt to produce valid YAML,
 // then validates with a parse-validate-fix loop.
 
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { LLMAdapter, ToolDescriptor } from '../types/index.js';
-import { parseWorkflowFromMd } from '../parser/index.js';
+import { parseWorkflowFromMd, ParseError } from '../parser/index.js';
 import { validateWorkflow } from '../validator/index.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { WORKFLOW_AUTHOR_PROMPT } from './skill-prompt.js';
 
 /** Result of workflow generation. */
 export interface GenerateResult {
@@ -85,16 +81,7 @@ export async function generateWorkflow(options: GenerateOptions): Promise<Genera
  * Build the system prompt from the authoring skill.
  */
 function buildSystemPrompt(availableTools?: string[], toolDescriptors?: ToolDescriptor[]): string {
-  let prompt: string;
-  try {
-    prompt = readFileSync(
-      join(__dirname, '../../skills/workflow-author/SKILL.md'),
-      'utf-8',
-    );
-  } catch {
-    // Fallback if skill file not found (e.g., in tests)
-    prompt = getInlineSystemPrompt();
-  }
+  let prompt = WORKFLOW_AUTHOR_PROMPT;
 
   // toolDescriptors takes precedence over availableTools
   if (toolDescriptors && toolDescriptors.length > 0) {
@@ -120,12 +107,21 @@ function formatToolDescriptors(descriptors: ToolDescriptor[]): string {
 
     if (tool.inputSchema?.properties) {
       const required = new Set(tool.inputSchema.required ?? []);
-      lines.push('Parameters:');
+      lines.push('Inputs:');
       for (const [param, schema] of Object.entries(tool.inputSchema.properties)) {
         const typePart = schema.type ? ` (${schema.type}` : ' (';
         const reqPart = required.has(param) ? ', required)' : ')';
         const descPart = schema.description ? `: ${schema.description}` : '';
         lines.push(`  - ${param}${typePart}${reqPart}${descPart}`);
+      }
+    }
+
+    if (tool.outputSchema?.properties) {
+      lines.push('Outputs (accessible via $steps.<id>.output.<field>):');
+      for (const [field, schema] of Object.entries(tool.outputSchema.properties)) {
+        const typePart = schema.type ? ` (${schema.type})` : '';
+        const descPart = schema.description ? `: ${schema.description}` : '';
+        lines.push(`  - ${field}${typePart}${descPart}`);
       }
     }
 
@@ -158,18 +154,7 @@ Please fix the errors and regenerate a valid WorkflowSkill YAML.`;
  * The LLM may return just YAML, or a full SKILL.md with frontmatter.
  */
 function extractWorkflowContent(response: string): string {
-  // If response contains frontmatter, treat as full SKILL.md
-  if (response.includes('---\n') && response.includes('```workflow')) {
-    return response.trim();
-  }
-
-  // If response contains just a workflow block, wrap in SKILL.md format
-  if (response.includes('```workflow')) {
-    return `---\nname: generated-workflow\ndescription: Generated workflow\n---\n\n# Generated Workflow\n\n${response.trim()}\n`;
-  }
-
-  // If response is raw YAML, wrap it
-  return `---\nname: generated-workflow\ndescription: Generated workflow\n---\n\n# Generated Workflow\n\n\`\`\`workflow\n${response.trim()}\n\`\`\`\n`;
+  return response.trim();
 }
 
 /**
@@ -190,38 +175,15 @@ function validateGenerated(content: string): { valid: boolean; errors: string[] 
       }
     }
   } catch (err) {
-    errors.push(err instanceof Error ? err.message : String(err));
+    if (err instanceof ParseError && err.details.length > 0) {
+      for (const detail of err.details) {
+        errors.push(`${detail.path}: ${detail.message}`);
+      }
+    } else {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
   }
 
   return { valid: errors.length === 0, errors };
 }
 
-/**
- * Inline system prompt fallback when the skill file isn't available.
- */
-function getInlineSystemPrompt(): string {
-  return `You are a workflow authoring assistant. Generate valid WorkflowSkill YAML definitions.
-
-A WorkflowSkill has:
-- inputs: typed parameters (type: string | int | float | boolean | array | object)
-- outputs: typed results
-- steps: ordered sequence of tool, llm, transform, conditional, or exit steps
-
-Step types:
-- tool: invoke a registered tool. Fields: tool (name)
-- llm: call a language model. Fields: model (optional), prompt (template with $references)
-- transform: filter/map/sort data. Fields: operation + where/expression/field
-- conditional: branch execution. Fields: condition, then, else
-- exit: terminate early. Fields: status (success|failed), output
-
-Wire steps with $references: $inputs.name, $steps.<id>.output.field, $item, $index
-
-Output format: SKILL.md with frontmatter (---name/description---) and \`\`\`workflow block.
-
-Rules:
-- Minimize LLM steps (use tools/transforms when possible)
-- Steps execute in order; only reference earlier steps
-- Use each for per-item processing
-- Add retry for external API calls
-- Add on_error: ignore for non-critical steps`;
-}
