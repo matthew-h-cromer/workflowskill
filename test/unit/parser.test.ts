@@ -198,11 +198,11 @@ steps:
     outputs:
       title:
         type: string
-        value: $output.body.title
+        value: $result.body.title
 `;
     const result = parseWorkflowYaml(yaml);
     const step = result.steps[0]!;
-    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
   });
 
   it('parses value on workflow outputs', () => {
@@ -229,8 +229,8 @@ steps:
     expect(result.workflow.outputs.title).toEqual({ type: 'string', value: '$steps.fetch.output.title' });
     expect(result.workflow.outputs.user_id).toEqual({ type: 'int', value: '$steps.fetch.output.user_id' });
     const step = result.workflow.steps[0]!;
-    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
-    expect(step.outputs.user_id).toEqual({ type: 'int', value: '$output.body.userId' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
+    expect(step.outputs.user_id).toEqual({ type: 'int', value: '$result.body.userId' });
   });
 
   it('normalizes legacy source to value (backwards compat)', () => {
@@ -242,12 +242,12 @@ steps:
     inputs:
       url: { type: string, source: "$steps.prev.output.url" }
     outputs:
-      title: { type: string, source: "$output.body.title" }
+      title: { type: string, source: "$result.body.title" }
 `;
     const result = parseWorkflowYaml(yaml);
     const step = result.steps[0]!;
     expect(step.inputs.url).toEqual({ type: 'string', value: '$steps.prev.output.url' });
-    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
   });
 
   it('normalizes legacy default to value (backwards compat)', () => {

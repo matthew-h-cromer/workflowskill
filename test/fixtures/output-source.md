@@ -1,6 +1,6 @@
 ---
 name: output-source
-description: Tests step output source mapping with $output and workflow output source with $steps.
+description: Tests step output source mapping with $result and workflow output source with $steps.
 ---
 
 # Output Source Test
@@ -30,8 +30,8 @@ steps:
     outputs:
       title:
         type: string
-        value: $output.body.title
+        value: $result.body.title
       user_id:
         type: int
-        value: $output.body.userId
+        value: $result.body.userId
 ```

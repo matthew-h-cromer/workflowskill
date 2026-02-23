@@ -50,7 +50,7 @@ export function lex(input: string): Token[] {
 
     const ch = input[pos]!;
 
-    // Dollar references: $inputs, $steps, $item, $index
+    // Dollar references: $inputs, $steps, $item, $index, $result
     if (ch === '$') {
       const start = pos;
       pos++; // skip $

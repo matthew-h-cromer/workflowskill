@@ -30,10 +30,10 @@ steps:
     outputs:
       title:
         type: string
-        value: $output.body.title
+        value: $result.body.title
       count:
         type: int
-        value: $output.body.items.length
+        value: $result.body.items.length
 
   - id: early_exit
     type: exit

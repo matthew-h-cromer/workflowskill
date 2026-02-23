@@ -13,7 +13,7 @@ export type ASTNode =
   | BinaryNode
   | UnaryNode;
 
-/** $inputs, $steps, $item, $index */
+/** $inputs, $steps, $item, $index, $result */
 export interface ReferenceNode {
   kind: 'reference';
   name: string; // "inputs", "steps", "item", "index"

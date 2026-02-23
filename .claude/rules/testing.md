@@ -11,7 +11,7 @@ paths:
 | --- | --- |
 | `test/unit/types.test.ts` | Type compilation checks (incl. JsonSchema, ToolDescriptor, ToolAdapter) |
 | `test/unit/parser.test.ts` | YAML parsing, Zod validation, malformed input errors, output source field |
-| `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation, $output reference |
+| `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation, $result reference |
 | `test/unit/validator.test.ts` | DAG cycles, type mismatches, missing tools, structural correctness |
 | `test/unit/executor.test.ts` | All 5 executor types: transform, conditional, exit, tool, llm |
 | `test/unit/generator.test.ts` | Single-shot generation, validation failure, toolDescriptors, conversational |

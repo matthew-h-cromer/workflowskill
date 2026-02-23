@@ -536,7 +536,7 @@ describe('run log structure', () => {
 // ─── 11. output-source ──────────────────────────────────────────────────────
 
 describe('output-source workflow', () => {
-  it('maps step output via $output and workflow output via $steps', async () => {
+  it('maps step output via $result and workflow output via $steps', async () => {
     const workflow = loadWorkflow('output-source');
     const tools = new MockToolAdapter();
     tools.register('http.request', () => ({
@@ -557,7 +557,7 @@ describe('output-source workflow', () => {
     expect(log.status).toBe('success');
     expect(log.steps).toHaveLength(1);
 
-    // Step output should be mapped via $output.body.title and $output.body.userId
+    // Step output should be mapped via $result.body.title and $result.body.userId
     const fetchRecord = log.steps[0]!;
     expect(fetchRecord.output).toEqual({ title: 'delectus aut autem', user_id: 1 });
 

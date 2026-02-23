@@ -298,13 +298,13 @@ inputs:
     value: "GET"
 ```
 
-**Step output `value`** — a `$`-expression that resolves against the raw executor result using the `$output` reference. This maps fields from the executor's raw response into named output keys. Outputs without `value` pass through from the raw result by key name (backwards compatible).
+**Step output `value`** — a `$`-expression that resolves against the raw executor result using the `$result` reference. This maps fields from the executor's raw response into named output keys. Outputs without `value` pass through from the raw result by key name (backwards compatible).
 
 ```yaml
 outputs:
   title:
     type: string
-    value: $output.body.title
+    value: $result.body.title
 ```
 
 **Workflow output `value`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
@@ -317,7 +317,7 @@ outputs:
 ```
 
 **Resolution order:**
-1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$output` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
+1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$result` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
 2. **Workflow output `value`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `value` resolution.
 
 **Backwards compatibility:** The legacy field names `source` and `default` are accepted at parse time and normalized to `value`. `source` → `value` (for expressions), `default` → `value` (for literals). New workflows should use `value` exclusively.
@@ -335,7 +335,7 @@ Expressions appear in `condition` guards, `each` fields, input `value` reference
 | `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
 | `$item` | The current element when inside an `each` iteration |
 | `$index` | The current index when inside an `each` iteration |
-| `$output` | The raw result of the current step's executor (only valid in step output `value`) |
+| `$result` | The raw result of the current step's executor (only valid in step output `value`) |
 
 **Properties:**
 
@@ -439,7 +439,7 @@ Execution proceeds in two phases.
 2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
 3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results.
 4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
-5. **Map outputs.** If any declared output has a `source` field, resolve it against the raw executor result using a temporary context where `$output` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `source` pass through by key name.
+5. **Map outputs.** If any declared output has a `source` field, resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `source` pass through by key name.
 6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.
 7. **Handle errors.** If the step failed, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
 8. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
@@ -586,7 +586,7 @@ A conformant WorkflowSkill runtime must:
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
-9. Resolve step output `value` expressions using the `$output` reference after each step's executor returns.
+9. Resolve step output `value` expressions using the `$result` reference after each step's executor returns.
 10. Resolve workflow output `value` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
 
 A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.
@@ -634,7 +634,7 @@ steps:
     outputs:
       messages:
         type: array
-        value: $output.messages
+        value: $result.messages
     retry:
       max: 3
       delay: "2s"
@@ -787,7 +787,7 @@ steps:
     outputs:
       deployments:
         type: array
-        value: $output.deployments
+        value: $result.deployments
     retry:
       max: 3
       delay: "5s"

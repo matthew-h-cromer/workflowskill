@@ -528,8 +528,8 @@ function applyStepOutputMapping(
   const hasValues = Object.values(stepOutputs).some((o) => o.value !== undefined);
   if (!hasValues) return rawOutput;
 
-  // Create a temporary context with $output set to the raw executor result
-  const tempContext: RuntimeContext = { ...context, output: rawOutput };
+  // Create a temporary context with $result set to the raw executor result
+  const tempContext: RuntimeContext = { ...context, result: rawOutput };
   const mapped: Record<string, unknown> = {};
 
   for (const [key, outputDef] of Object.entries(stepOutputs)) {

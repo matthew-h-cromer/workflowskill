@@ -30,7 +30,7 @@ export type WorkflowOutput = FieldSchema;
 /** Step-level input declaration. `value` is either a literal or $-expression resolved at runtime. */
 export type StepInput = FieldSchema;
 
-/** Step-level output declaration. `value` uses $output to map from raw executor result. */
+/** Step-level output declaration. `value` uses $result to map from raw executor result. */
 export type StepOutput = FieldSchema;
 
 // ─── Retry policy ─────────────────────────────────────────────────────────────
@@ -369,8 +369,8 @@ export interface RuntimeContext {
   item?: unknown;
   /** Current index when inside an `each` loop. */
   index?: number;
-  /** Raw executor result, set during step output source mapping. */
-  output?: unknown;
+  /** Raw executor result, set during step output value mapping. */
+  result?: unknown;
 }
 
 // ─── Validation errors ────────────────────────────────────────────────────────

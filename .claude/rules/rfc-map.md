@@ -9,7 +9,7 @@ Read the relevant RFC section in `rfc-workflowskill.md` before modifying the cor
 | 193-253 | YAML structure, step fields | types, parser |
 | 256-259 | Backwards compatibility | parser |
 | 260-320 | Workflow inputs/outputs, step/workflow output `source` | types, parser, runtime |
-| 303-333 | Expression language (incl. `$output` reference) | expression |
+| 303-333 | Expression language (incl. `$result` reference) | expression |
 | 334-401 | Step types (tool, llm, transform, conditional, exit) | types, executor |
 | 402-423 | Runtime execution model (two phases, 8-step lifecycle) | runtime |
 | 425-488 | Step executors | executor |

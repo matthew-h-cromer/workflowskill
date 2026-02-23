@@ -98,7 +98,7 @@ steps:
     outputs:
       <name>:
         type: <type>
-        value: <$expression>      # optional — maps from $output (raw executor result)
+        value: <$expression>      # optional — maps from $result (raw executor result)
     # Optional common fields:
     condition: <expression>     # guard: skip if false
     each: <expression>          # iterate over array
@@ -131,7 +131,7 @@ steps:
   outputs:
     result:
       type: object
-      value: $output.data           # map from raw executor result
+      value: $result.data           # map from raw executor result
 ```
 
 ### LLM Step
@@ -270,13 +270,13 @@ outputs:
 
 **Use `value` on workflow outputs** to explicitly declare where each output comes from. This eliminates the need for a trailing exit step just to produce outputs. Reserve exit steps for conditional early termination.
 
-**Step output `value`** maps fields from the raw executor result using `$output`:
+**Step output `value`** maps fields from the raw executor result using `$result`:
 
 ```yaml
 outputs:
   title:
     type: string
-    value: $output.body.title                # maps from raw tool/LLM response
+    value: $result.body.title                # maps from raw tool/LLM response
 ```
 
 This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `value` pass through from the raw result by key name.
@@ -292,7 +292,7 @@ Use `$`-prefixed references to wire data between steps:
 | `$steps.<id>.output.field` | A specific field from output |
 | `$item` | Current item in `each` or transform iteration |
 | `$index` | Current index in iteration |
-| `$output` | Raw executor result (only valid in step output `value`) |
+| `$result` | Raw executor result (only valid in step output `value`) |
 | `$steps.<id>.output.field[0]` | First element of an array field |
 | `$items[$index]` | Element at computed index |
 
@@ -306,7 +306,7 @@ Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array ele
 2. **Use the cheapest model.** `haiku` for classification/scoring, `sonnet` for complex reasoning.
 3. **Always declare inputs and outputs.** They enable validation and composability.
 4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
-5. **Use `value` on step outputs** to map fields from the raw executor result using `$output`. This is useful when the tool returns a nested or differently-shaped object.
+5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. This is useful when the tool returns a nested or differently-shaped object.
 6. **Use `each` for per-item processing.** Don't ask the LLM to process arrays — iterate.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
@@ -361,7 +361,7 @@ steps:
     outputs:
       name:
         type: string
-        value: $output.result.name
+        value: $result.result.name
 \`\`\`
 
 ## Validation
@@ -374,6 +374,6 @@ After generating, verify:
 - [ ] No cycles in step references
 - [ ] `each` not used on exit or conditional steps
 - [ ] Workflow outputs have `value` mapping to `$steps` references
-- [ ] Step output `value` uses `$output` (not `$steps`)
+- [ ] Step output `value` uses `$result` (not `$steps`)
 
 If validation fails, fix the errors and regenerate.

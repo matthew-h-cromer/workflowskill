@@ -162,8 +162,8 @@ describe('parser', () => {
     }
   });
 
-  it('parses chained bracket then dot: $output.body.results[0].title', () => {
-    const ast = parseExpression(lex('$output.body.results[0].title'));
+  it('parses chained bracket then dot: $result.body.results[0].title', () => {
+    const ast = parseExpression(lex('$result.body.results[0].title'));
     // Outermost should be property_access(.title)
     expect(ast.kind).toBe('property_access');
     if (ast.kind === 'property_access') {
@@ -292,28 +292,28 @@ describe('resolveExpression', () => {
     expect(resolveExpression('!$item', zeroCtx)).toBe(true);
   });
 
-  // $output reference
-  it('resolves $output as the raw executor result', () => {
-    const outputCtx: RuntimeContext = {
+  // $result reference
+  it('resolves $result as the raw executor result', () => {
+    const resultCtx: RuntimeContext = {
       inputs: {},
       steps: {},
-      output: { body: { title: 'Test Title', userId: 42 } },
+      result: { body: { title: 'Test Title', userId: 42 } },
     };
-    expect(resolveExpression('$output.body.title', outputCtx)).toBe('Test Title');
-    expect(resolveExpression('$output.body.userId', outputCtx)).toBe(42);
+    expect(resolveExpression('$result.body.title', resultCtx)).toBe('Test Title');
+    expect(resolveExpression('$result.body.userId', resultCtx)).toBe(42);
   });
 
-  it('resolves $output with nested objects', () => {
-    const outputCtx: RuntimeContext = {
+  it('resolves $result with nested objects', () => {
+    const resultCtx: RuntimeContext = {
       inputs: {},
       steps: {},
-      output: { data: { items: [1, 2, 3] } },
+      result: { data: { items: [1, 2, 3] } },
     };
-    expect(resolveExpression('$output.data.items.length', outputCtx)).toBe(3);
+    expect(resolveExpression('$result.data.items.length', resultCtx)).toBe(3);
   });
 
-  it('resolves $output as undefined when not set', () => {
-    expect(resolveExpression('$output', ctx)).toBeUndefined();
+  it('resolves $result as undefined when not set', () => {
+    expect(resolveExpression('$result', ctx)).toBeUndefined();
   });
 
   // Bracket indexing

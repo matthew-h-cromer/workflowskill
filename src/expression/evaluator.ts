@@ -47,8 +47,8 @@ function resolveReference(name: string, context: RuntimeContext): unknown {
       return context.item;
     case 'index':
       return context.index;
-    case 'output':
-      return context.output;
+    case 'result':
+      return context.result;
     default:
       throw new EvalError(`Unknown reference: $${name}`);
   }
