@@ -10,7 +10,7 @@ Each example lives in its own subdirectory containing:
 |------|-------------|
 | `<name>.md` | The workflow definition (SKILL.md format) |
 | `transcript.txt` | The conversational `workflowskill generate` session that produced it |
-| `output.txt` | The JSON run log from `workflowskill run` |
+| `run.json` | The JSON run log from `workflowskill run` |
 
 ## Examples
 
