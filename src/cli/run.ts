@@ -1,7 +1,7 @@
 // CLI: run command — execute a workflow and print the run log.
 
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { parseSkillMd, parseWorkflowFromMd } from '../parser/index.js';
 import { ParseError } from '../parser/index.js';
 import { runWorkflow, WorkflowExecutionError } from '../runtime/index.js';
@@ -13,7 +13,7 @@ import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 
 export async function runCommand(
   file: string,
-  options: { input?: string },
+  options: { input?: string; logDir?: string },
 ): Promise<void> {
   let content: string;
   try {
@@ -106,7 +106,17 @@ export async function runCommand(
       workflowName,
     });
 
-    console.log(JSON.stringify(log, null, 2));
+    const json = JSON.stringify(log, null, 2);
+
+    // Persist run log to disk (platform responsibility per spec Runtime Boundaries)
+    const logDir = options.logDir ?? 'runs';
+    mkdirSync(logDir, { recursive: true });
+    const safeTimestamp = log.started_at.replace(/:/g, '-');
+    const logFile = join(logDir, `${log.workflow}-${safeTimestamp}.json`);
+    writeFileSync(logFile, json + '\n', 'utf-8');
+    console.error(`Run log written to ${logFile}`);
+
+    console.log(json);
     process.exit(log.status === 'success' ? 0 : 1);
   } catch (err) {
     if (err instanceof WorkflowExecutionError) {

@@ -23,6 +23,7 @@ program
   .command('run <file>')
   .description('Execute a workflow SKILL.md file')
   .option('-i, --input <json>', 'Workflow inputs as JSON string', '{}')
+  .option('-l, --log-dir <dir>', 'Directory to write run logs', 'runs')
   .action(runCommand);
 
 program
