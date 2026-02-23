@@ -30,7 +30,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.78.0",
     "@googleapis/gmail": "^6.0.0",
     "@googleapis/sheets": "^9.0.0",
     "cheerio": "^1.0.0",
