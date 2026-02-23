@@ -56,12 +56,12 @@ When you can converse with the user and use tools, follow this process before ge
 
 ### Phase 2: Research
 - If the workflow involves APIs, web services, or web scraping, use your **server-side tools** to investigate before generating:
-  1. **`web_search`** — Search for the site's HTML structure, API documentation, CSS class naming conventions, or known scraping patterns. Example: "craigslist search results HTML structure CSS selectors".
-  2. **`web_fetch`** — Fetch the actual target URL to inspect the raw HTML. Look for:
+  1. **`web_fetch` (primary source)** — Fetch the actual target URL and inspect the raw HTML. This is the ground truth. Look for:
      - The repeating container element (e.g., `li.result-row`, `div.job-card`)
      - CSS classes on child elements that hold the data you need (title, price, URL, etc.)
      - Whether data lives in element text, attributes (`href`, `data-*`), or both
-  3. **Verify selectors** — Cross-reference what `web_search` says with what `web_fetch` returns. Sites change their markup; never assume selectors from documentation are current.
+  2. **`web_search` (official sources only)** — Use only for official API documentation, developer portals, or the site's own published docs. Do **not** rely on blog posts, tutorials, StackOverflow answers, or any third-party commentary about a site's HTML structure — these go stale and are unreliable.
+  3. **Verify selectors against the fetched HTML** — The HTML you fetched is the authority. Confirm every selector you plan to use appears in the actual markup. Search results are supplementary context at best.
 - Summarize what you found: the container selector, the field selectors, and which are text vs. attributes.
 - **Do not guess selectors.** If you cannot verify the HTML structure, tell the user what you need.
 
@@ -363,10 +363,12 @@ Always use `fields` mode for structured extraction (returns array of objects). W
 
 ### Research is mandatory
 
-**Before writing selectors, you MUST inspect the actual HTML.** Use `web_fetch` during the conversation to fetch the target page and identify:
+**Before writing selectors, you MUST inspect the actual HTML.** Use `web_fetch` during the conversation to fetch the target page — the fetched HTML is the source of truth, not external guides or tutorials. Identify:
 - The repeating container selector (the element that wraps one result)
 - The sub-selectors for each field within that container
 - Whether data is in text content or element attributes
+
+Every selector must be verified against the actual fetched markup. Do not derive selectors from blog posts, StackOverflow answers, or third-party tutorials — these are frequently outdated.
 
 If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML, tell the user — the workflow will need a different approach.
 
