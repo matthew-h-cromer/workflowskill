@@ -3,7 +3,6 @@
 // Falls back to single-shot generation for non-TTY or missing API key.
 
 import { writeFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import pc from 'picocolors';
 import { generateWorkflow, generateWorkflowConversational } from '../generator/index.js';
 import type { ConversationEvent } from '../generator/conversation.js';
@@ -39,55 +38,71 @@ async function generateCommandInteractive(
   const toolAdapter = await BuiltinToolAdapter.create(config);
   const toolDescriptors = toolAdapter.list();
 
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stderr, // Prompts go to stderr so stdout stays clean for output
-  });
-
   const promptStr = '\n' + pc.bold(pc.blue('❯ '));
+
+  // Raw mode input: distinguishes Enter (\r) from paste newlines (\n).
+  // This lets users paste multiline content and keep editing before submitting.
   const getUserInput = (): Promise<string | null> => {
     return new Promise((resolve) => {
-      const lines: string[] = [];
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      let pasteDetected = false;
-
-      const submit = (): void => {
-        rl.removeListener('line', onLine);
-        const input = lines.join('\n');
-        if (input.trim().toLowerCase() === '/quit') {
-          resolve(null);
-        } else {
-          resolve(input);
-        }
-      };
-
-      const onLine = (line: string): void => {
-        if (pasteDetected) {
-          // After paste, empty Enter submits; non-empty appends more
-          if (line === '') {
-            submit();
-          } else {
-            lines.push(line);
-          }
-          return;
-        }
-
-        lines.push(line);
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          if (lines.length === 1) {
-            // Single line typed normally — submit immediately
-            submit();
-          } else {
-            // Multi-line paste detected — wait for Enter to submit
-            pasteDetected = true;
-            process.stderr.write(pc.dim('  (multiline paste detected — press Enter to send)\n'));
-          }
-        }, 50); // 50ms debounce distinguishes paste from typing
-      };
-
       process.stderr.write(promptStr);
-      rl.on('line', onLine);
+      let input = '';
+      let inEscSeq = false; // True while consuming an ANSI escape sequence
+
+      const cleanup = (): void => {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener('data', onData);
+        process.stdin.pause();
+      };
+
+      const onData = (chunk: Buffer): void => {
+        for (const char of chunk.toString('utf8')) {
+          const code = char.charCodeAt(0);
+
+          // Skip ANSI escape sequences (arrow keys, function keys, etc.)
+          if (inEscSeq) {
+            if (/[A-Za-z~]/.test(char)) inEscSeq = false;
+            continue;
+          }
+          if (code === 0x1b) { inEscSeq = true; continue; }
+
+          if (char === '\r') {
+            // Enter key — submit
+            cleanup();
+            process.stderr.write('\n');
+            resolve(input.trim().toLowerCase() === '/quit' ? null : input);
+            return;
+          }
+          if (code === 0x03 || code === 0x04) {
+            // Ctrl+C / Ctrl+D
+            cleanup();
+            process.stderr.write('\n');
+            if (code === 0x03) process.exit(130);
+            resolve(null);
+            return;
+          }
+          if (code === 0x7f || code === 0x08) {
+            // Backspace
+            if (input.length > 0) {
+              input = input.slice(0, -1);
+              process.stderr.write('\b \b');
+            }
+            continue;
+          }
+          if (char === '\n') {
+            // Newline from paste — buffer it and display a line break
+            input += '\n';
+            process.stderr.write('\r\n');
+            continue;
+          }
+          // Regular printable character
+          input += char;
+          process.stderr.write(char);
+        }
+      };
+
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on('data', onData);
     });
   };
 
@@ -125,7 +140,6 @@ async function generateCommandInteractive(
       onEvent,
     });
 
-    rl.close();
     // Skip file write if workflow_generated event already wrote the file
     if (fileWritten && result.valid) {
       process.stderr.write(`  ${pc.bold(pc.green('✓'))} ${pc.green('Workflow accepted:')} ${pc.bold(pc.white(options.output ?? ''))}\n\n`);
@@ -133,7 +147,6 @@ async function generateCommandInteractive(
       outputResult(result.content, result.valid, result.errors, options);
     }
   } catch (err) {
-    rl.close();
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
