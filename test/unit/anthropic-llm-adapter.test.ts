@@ -4,11 +4,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the Anthropic SDK before importing the adapter
 const createMock = vi.fn();
+const streamMock = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
   return {
     default: class MockAnthropic {
-      messages = { create: createMock };
+      messages = { create: createMock, stream: streamMock };
       constructor(_opts: unknown) {
         // Record the constructor call for assertions
         MockAnthropic.lastOpts = _opts;
@@ -348,6 +349,156 @@ describe('AnthropicLLMAdapter', () => {
       );
 
       expect(result.stopReason).toBe('pause_turn');
+    });
+  });
+
+  describe('converseStream()', () => {
+    function makeMockStream(events: Array<{ type: string; [key: string]: unknown }>, finalMsg: {
+      content: Array<{ type: string; [key: string]: unknown }>;
+      stop_reason: string;
+      usage: { input_tokens: number; output_tokens: number };
+    }) {
+      const asyncIterable = {
+        async *[Symbol.asyncIterator]() {
+          for (const event of events) {
+            yield event;
+          }
+        },
+      };
+      return {
+        [Symbol.asyncIterator]: asyncIterable[Symbol.asyncIterator].bind(asyncIterable),
+        finalMessage: () => Promise.resolve(finalMsg),
+      };
+    }
+
+    it('sends correct params to client.messages.stream()', () => {
+      const mockStream = makeMockStream([], {
+        content: [{ type: 'text', text: 'hi' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 5 },
+      });
+      streamMock.mockReturnValueOnce(mockStream);
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      adapter.converseStream(undefined, 'system prompt', [{ role: 'user', content: 'hello' }]);
+
+      expect(streamMock).toHaveBeenCalledWith({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: 'system prompt',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [
+          { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+          { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 5 },
+        ],
+      });
+    });
+
+    it('yields text_delta events for text content blocks', async () => {
+      const mockStream = makeMockStream([
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'world!' } },
+        { type: 'content_block_stop', index: 0 },
+      ], {
+        content: [{ type: 'text', text: 'Hello world!' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 5 },
+      });
+      streamMock.mockReturnValueOnce(mockStream);
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const streaming = adapter.converseStream(undefined, 'sys', [{ role: 'user', content: 'hi' }]);
+
+      const events = [];
+      for await (const event of streaming.events) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: 'block_start', index: 0, blockType: 'text' },
+        { type: 'text_delta', delta: 'Hello ' },
+        { type: 'text_delta', delta: 'world!' },
+        { type: 'block_stop', index: 0 },
+        { type: 'done' },
+      ]);
+    });
+
+    it('yields thinking_delta events for thinking blocks', async () => {
+      const mockStream = makeMockStream([
+        { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Let me think...' } },
+        { type: 'content_block_stop', index: 0 },
+      ], {
+        content: [{ type: 'thinking', thinking: 'Let me think...' }, { type: 'text', text: 'Here.' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 5 },
+      });
+      streamMock.mockReturnValueOnce(mockStream);
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const streaming = adapter.converseStream(undefined, 'sys', [{ role: 'user', content: 'hi' }]);
+
+      const events = [];
+      for await (const event of streaming.events) {
+        events.push(event);
+      }
+
+      expect(events.some((e) => e.type === 'thinking_delta' && e.delta === 'Let me think...')).toBe(true);
+    });
+
+    it('yields block_start with name for server_tool_use blocks', async () => {
+      const mockStream = makeMockStream([
+        { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'test' } } },
+        { type: 'content_block_stop', index: 0 },
+      ], {
+        content: [{ type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'test' } }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 10 },
+      });
+      streamMock.mockReturnValueOnce(mockStream);
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const streaming = adapter.converseStream(undefined, 'sys', [{ role: 'user', content: 'search' }]);
+
+      const events = [];
+      for await (const event of streaming.events) {
+        events.push(event);
+      }
+
+      const blockStart = events.find((e) => e.type === 'block_start');
+      expect(blockStart).toEqual({
+        type: 'block_start',
+        index: 0,
+        blockType: 'server_tool_use',
+        name: 'web_search',
+        input: { query: 'test' },
+      });
+    });
+
+    it('result promise resolves to correct ConversationResult', async () => {
+      const mockStream = makeMockStream([
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello!' } },
+        { type: 'content_block_stop', index: 0 },
+      ], {
+        content: [{ type: 'text', text: 'Hello!' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+      streamMock.mockReturnValueOnce(mockStream);
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const streaming = adapter.converseStream(undefined, 'sys', [{ role: 'user', content: 'hi' }]);
+
+      // Consume events to completion
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _event of streaming.events) { /* drain */ }
+
+      const result = await streaming.result;
+      expect(result.content).toEqual([{ type: 'text', text: 'Hello!' }]);
+      expect(result.stopReason).toBe('end_turn');
+      expect(result.tokens).toEqual({ input: 10, output: 5 });
     });
   });
 });

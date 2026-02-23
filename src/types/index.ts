@@ -337,6 +337,38 @@ export interface ConversationalLLMAdapter extends LLMAdapter {
   ): Promise<ConversationResult>
 }
 
+// ─── Streaming types ─────────────────────────────────────────────────────────
+
+/** Streaming event from the adapter during a conversation turn. */
+export type StreamEvent =
+  | { type: 'text_delta'; delta: string }
+  | { type: 'thinking_delta'; delta: string }
+  | { type: 'block_start'; index: number; blockType: string; name?: string; input?: Record<string, unknown> }
+  | { type: 'block_stop'; index: number }
+  | { type: 'done' }
+
+/** Handle for a streaming conversation turn. */
+export interface StreamingConversation {
+  events: AsyncIterable<StreamEvent>
+  result: Promise<ConversationResult>
+}
+
+/** Adapter that supports streaming responses. */
+export interface StreamingLLMAdapter extends ConversationalLLMAdapter {
+  converseStream(
+    model: string | undefined,
+    system: string,
+    messages: ConversationMessage[],
+  ): StreamingConversation
+}
+
+/** Runtime type guard: does this adapter support streaming? */
+export function isStreamingAdapter(
+  adapter: ConversationalLLMAdapter
+): adapter is StreamingLLMAdapter {
+  return 'converseStream' in adapter && typeof (adapter as Record<string, unknown>).converseStream === 'function';
+}
+
 // ─── Runtime context ──────────────────────────────────────────────────────────
 
 /** Runtime context available during step execution. */

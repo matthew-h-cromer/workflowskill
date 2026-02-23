@@ -1,13 +1,16 @@
-// Anthropic LLM adapter — implements ConversationalLLMAdapter using the Anthropic SDK.
+// Anthropic LLM adapter — implements StreamingLLMAdapter using the Anthropic SDK.
 // Uses server-side tools (web_search, web_fetch) for research during generation conversations.
+// Supports both blocking converse() and streaming converseStream() for real-time output.
 
 import Anthropic from '@anthropic-ai/sdk';
 import type {
   LLMResult,
-  ConversationalLLMAdapter,
   ConversationMessage,
   ConversationResult,
   ConversationContent,
+  StreamEvent,
+  StreamingConversation,
+  StreamingLLMAdapter,
 } from '../types/index.js';
 
 /** Model alias map: short names → full model IDs. */
@@ -90,7 +93,7 @@ function mapContentToParam(block: ConversationContent): Anthropic.Messages.Conte
   return block.raw as Anthropic.Messages.ContentBlockParam;
 }
 
-export class AnthropicLLMAdapter implements ConversationalLLMAdapter {
+export class AnthropicLLMAdapter implements StreamingLLMAdapter {
   private client: Anthropic;
 
   constructor(apiKey: string) {
@@ -167,4 +170,76 @@ export class AnthropicLLMAdapter implements ConversationalLLMAdapter {
       },
     };
   }
+
+  converseStream(
+    model: string | undefined,
+    system: string,
+    messages: ConversationMessage[],
+  ): StreamingConversation {
+    const sdkMessages: Anthropic.MessageParam[] = messages.map((msg) => {
+      if (typeof msg.content === 'string') {
+        return { role: msg.role, content: msg.content };
+      }
+      const blocks: Anthropic.Messages.ContentBlockParam[] = msg.content.map(mapContentToParam);
+      return { role: msg.role, content: blocks };
+    });
+
+    const stream = this.client.messages.stream({
+      model: resolveModel(model, DEFAULT_CONVERSE_MODEL),
+      max_tokens: 4096,
+      system,
+      messages: sdkMessages,
+      tools: SERVER_TOOLS,
+    });
+
+    const events = streamToEvents(stream);
+
+    const result = stream.finalMessage().then((msg): ConversationResult => {
+      const content: ConversationContent[] = [];
+      for (const block of msg.content) {
+        const mapped = mapContentBlock(block);
+        if (mapped) content.push(mapped);
+      }
+      return {
+        content,
+        stopReason: msg.stop_reason as ConversationResult['stopReason'],
+        tokens: {
+          input: msg.usage.input_tokens,
+          output: msg.usage.output_tokens,
+        },
+      };
+    });
+
+    return { events, result };
+  }
+}
+
+/** Convert a MessageStream's raw SSE events into our StreamEvent type. */
+async function* streamToEvents(
+  stream: AsyncIterable<Anthropic.MessageStreamEvent>,
+): AsyncGenerator<StreamEvent> {
+  for await (const event of stream) {
+    if (event.type === 'content_block_start') {
+      const block = event.content_block;
+      const blockType = block.type;
+      const entry: StreamEvent = { type: 'block_start', index: event.index, blockType };
+      // Attach name/input for server_tool_use blocks
+      if (blockType === 'server_tool_use' && 'name' in block) {
+        (entry as { name?: string }).name = (block as { name: string }).name;
+        (entry as { input?: Record<string, unknown> }).input = (block as { input: Record<string, unknown> }).input;
+      }
+      yield entry;
+    } else if (event.type === 'content_block_delta') {
+      const delta = event.delta;
+      if (delta.type === 'text_delta') {
+        yield { type: 'text_delta', delta: delta.text };
+      } else if (delta.type === 'thinking_delta') {
+        yield { type: 'thinking_delta', delta: delta.thinking };
+      }
+      // Skip input_json_delta, citations_delta, signature_delta
+    } else if (event.type === 'content_block_stop') {
+      yield { type: 'block_stop', index: event.index };
+    }
+  }
+  yield { type: 'done' };
 }

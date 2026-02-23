@@ -9,7 +9,7 @@ export { validateWorkflow } from './validator/index.js';
 export { MockToolAdapter } from './adapters/mock-tool-adapter.js';
 export type { ToolHandler } from './adapters/mock-tool-adapter.js';
 export { MockLLMAdapter } from './adapters/mock-llm-adapter.js';
-export type { LLMHandler, ConversationHandler } from './adapters/mock-llm-adapter.js';
+export type { LLMHandler, ConversationHandler, StreamingConversationHandler } from './adapters/mock-llm-adapter.js';
 export { AnthropicLLMAdapter } from './adapters/anthropic-llm-adapter.js';
 export { BuiltinToolAdapter } from './adapters/builtin-tool-adapter.js';
 export { loadConfig } from './config/index.js';

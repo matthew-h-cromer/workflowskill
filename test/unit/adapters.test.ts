@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 import type { ConversationResult } from '../../src/types/index.js';
+import { isStreamingAdapter } from '../../src/types/index.js';
 
 describe('MockToolAdapter', () => {
   it('list() returns empty array when no tools registered', () => {
@@ -145,5 +146,58 @@ describe('MockLLMAdapter', () => {
     if (result.content[0]!.type === 'text') {
       expect(result.content[0]!.text).toContain('first part');
     }
+  });
+
+  it('isStreamingAdapter() returns true for MockLLMAdapter', () => {
+    const adapter = new MockLLMAdapter();
+    expect(isStreamingAdapter(adapter)).toBe(true);
+  });
+
+  it('converseStream() synthesizes stream from converse() by default', async () => {
+    const adapter = new MockLLMAdapter(() => ({
+      text: 'streamed text',
+      tokens: { input: 5, output: 3 },
+    }));
+
+    const streaming = adapter.converseStream(undefined, 'system', [
+      { role: 'user', content: 'hi' },
+    ]);
+
+    const events = [];
+    for await (const event of streaming.events) {
+      events.push(event);
+    }
+
+    // Should have a text_delta and done event
+    expect(events.some((e) => e.type === 'text_delta')).toBe(true);
+    expect(events[events.length - 1]!.type).toBe('done');
+
+    const result = await streaming.result;
+    expect(result.content[0]!.type).toBe('text');
+  });
+
+  it('converseStream() uses streamingHandler when provided', async () => {
+    const adapter = new MockLLMAdapter(undefined, undefined, () => ({
+      events: (async function* () {
+        yield { type: 'text_delta' as const, delta: 'custom' };
+        yield { type: 'done' as const };
+      })(),
+      result: Promise.resolve({
+        content: [{ type: 'text' as const, text: 'custom' }],
+        stopReason: 'end_turn' as const,
+        tokens: { input: 1, output: 1 },
+      }),
+    }));
+
+    const streaming = adapter.converseStream(undefined, 'sys', [
+      { role: 'user', content: 'test' },
+    ]);
+
+    const events = [];
+    for await (const event of streaming.events) {
+      events.push(event);
+    }
+
+    expect(events[0]).toEqual({ type: 'text_delta', delta: 'custom' });
   });
 });

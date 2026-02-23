@@ -4,8 +4,10 @@
 
 import { writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import pc from 'picocolors';
 import { generateWorkflow, generateWorkflowConversational } from '../generator/index.js';
 import type { ConversationEvent } from '../generator/conversation.js';
+import { renderEvent } from './format.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
 import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
@@ -42,9 +44,10 @@ async function generateCommandInteractive(
     output: process.stderr, // Prompts go to stderr so stdout stays clean for output
   });
 
+  const promptStr = '\n' + pc.bold(pc.blue('❯ '));
   const getUserInput = (): Promise<string | null> => {
     return new Promise((resolve) => {
-      rl.question('> ', (answer) => {
+      rl.question(promptStr, (answer) => {
         if (answer.trim().toLowerCase() === '/quit') {
           resolve(null);
         } else {
@@ -57,45 +60,25 @@ async function generateCommandInteractive(
   let fileWritten = false;
 
   const onEvent = (event: ConversationEvent): void => {
-    switch (event.type) {
-      case 'assistant_message':
-        console.error(`\n${event.text}\n`);
-        break;
-      case 'tool_call':
-        console.error(`[calling ${event.name}...]`);
-        break;
-      case 'tool_result':
-        if (event.isError) {
-          console.error(`[${event.name} error: ${event.output}]`);
-        } else {
-          // Truncate long outputs
-          const preview = event.output.length > 200
-            ? event.output.slice(0, 200) + '...'
-            : event.output;
-          console.error(`[${event.name} → ${preview}]`);
-        }
-        break;
-      case 'generating':
-        console.error('[generating workflow...]');
-        break;
-      case 'workflow_generated':
-        if (options.output) {
-          try {
-            writeFileSync(options.output, event.content, 'utf-8');
-            fileWritten = true;
-            console.error(`Workflow written to ${options.output}`);
-            if (!event.valid) {
-              console.error('Warning: Generated workflow has validation errors:');
-              for (const err of event.errors) {
-                console.error(`  ${err}`);
-              }
+    if (event.type === 'workflow_generated') {
+      if (options.output) {
+        try {
+          writeFileSync(options.output, event.content, 'utf-8');
+          fileWritten = true;
+          process.stderr.write(`\n  ${pc.bold(pc.green('✓'))} ${pc.green('Workflow written to')} ${pc.bold(pc.white(options.output))}\n`);
+          if (!event.valid) {
+            process.stderr.write(`  ${pc.yellow('⚠ Validation errors:')}\n`);
+            for (const err of event.errors) {
+              process.stderr.write(`    ${pc.dim('•')} ${pc.yellow(err)}\n`);
             }
-            console.error('Press Enter to accept, or type feedback to iterate:');
-          } catch {
-            console.error(`Error: Cannot write to "${options.output}"`);
           }
+          process.stderr.write(`\n  ${pc.dim('Press Enter to accept, or type feedback to iterate.')}\n\n`);
+        } catch {
+          process.stderr.write(`\n  ${pc.red('✗')} ${pc.red(`Cannot write to "${options.output}"`)}\n\n`);
         }
-        break;
+      }
+    } else {
+      renderEvent(event);
     }
   };
 
@@ -111,7 +94,7 @@ async function generateCommandInteractive(
     rl.close();
     // Skip file write if workflow_generated event already wrote the file
     if (fileWritten && result.valid) {
-      console.log(`Workflow accepted: ${options.output}`);
+      process.stderr.write(`  ${pc.bold(pc.green('✓'))} ${pc.green('Workflow accepted:')} ${pc.bold(pc.white(options.output ?? ''))}\n\n`);
     } else {
       outputResult(result.content, result.valid, result.errors, options);
     }

@@ -4,6 +4,9 @@ import type { ConversationEvent } from '../../src/generator/conversation.js';
 import type {
   ConversationalLLMAdapter,
   ConversationResult,
+  StreamEvent,
+  StreamingConversation,
+  StreamingLLMAdapter,
 } from '../../src/types/index.js';
 
 // Valid workflow SKILL.md content for testing
@@ -374,5 +377,101 @@ describe('conversationalGenerate', () => {
     const msgEvents = events.filter((e) => e.type === 'assistant_message');
     expect(msgEvents).toHaveLength(1);
     expect(msgEvents[0]!.type === 'assistant_message' && msgEvents[0]!.text).toContain("Here's the workflow");
+  });
+
+  describe('streaming mode', () => {
+    function makeStreamingAdapter(
+      streamResponses: Array<{ events: StreamEvent[]; result: ConversationResult }>,
+    ): StreamingLLMAdapter {
+      let callIndex = 0;
+      return {
+        call: vi.fn(async () => ({ text: '', tokens: { input: 0, output: 0 } })),
+        converse: vi.fn(async () => {
+          const r = streamResponses[callIndex] ?? streamResponses[streamResponses.length - 1]!;
+          return r.result;
+        }),
+        converseStream: vi.fn((): StreamingConversation => {
+          const resp = streamResponses[callIndex++] ?? streamResponses[streamResponses.length - 1]!;
+          async function* gen() {
+            for (const event of resp.events) {
+              yield event;
+            }
+          }
+          return { events: gen(), result: Promise.resolve(resp.result) };
+        }),
+      };
+    }
+
+    it('emits text_delta events when adapter supports streaming', async () => {
+      const adapter = makeStreamingAdapter([{
+        events: [
+          { type: 'text_delta', delta: VALID_WORKFLOW },
+          { type: 'done' },
+        ],
+        result: textResult(VALID_WORKFLOW),
+      }]);
+      const events: ConversationEvent[] = [];
+
+      const result = await conversationalGenerate({
+        initialPrompt: 'make a workflow',
+        systemPrompt: 'test',
+        llmAdapter: adapter,
+        getUserInput: async () => '',
+        onEvent: (e) => events.push(e),
+        validateGenerated: () => ({ valid: true, errors: [] }),
+      });
+
+      expect(result.valid).toBe(true);
+      expect(events.some((e) => e.type === 'stream_start')).toBe(true);
+      expect(events.some((e) => e.type === 'text_delta')).toBe(true);
+      expect(events.some((e) => e.type === 'stream_end')).toBe(true);
+      // converseStream should be called, not converse
+      expect(adapter.converseStream).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits tool_call events during streaming for server tools', async () => {
+      const adapter = makeStreamingAdapter([{
+        events: [
+          { type: 'block_start', index: 0, blockType: 'server_tool_use', name: 'web_search', input: { query: 'test' } },
+          { type: 'block_stop', index: 0 },
+          { type: 'text_delta', delta: VALID_WORKFLOW },
+          { type: 'done' },
+        ],
+        result: textResult(VALID_WORKFLOW),
+      }]);
+      const events: ConversationEvent[] = [];
+
+      await conversationalGenerate({
+        initialPrompt: 'make a workflow',
+        systemPrompt: 'test',
+        llmAdapter: adapter,
+        getUserInput: async () => '',
+        onEvent: (e) => events.push(e),
+        validateGenerated: () => ({ valid: true, errors: [] }),
+      });
+
+      expect(events.some((e) => e.type === 'tool_call' && e.name === 'web_search')).toBe(true);
+    });
+
+    it('falls back to non-streaming for non-streaming adapters', async () => {
+      const adapter = makeAdapter([textResult(VALID_WORKFLOW)]);
+      const events: ConversationEvent[] = [];
+
+      const result = await conversationalGenerate({
+        initialPrompt: 'make a workflow',
+        systemPrompt: 'test',
+        llmAdapter: adapter,
+        getUserInput: async () => '',
+        onEvent: (e) => events.push(e),
+        validateGenerated: () => ({ valid: true, errors: [] }),
+      });
+
+      expect(result.valid).toBe(true);
+      // Should NOT have streaming events
+      expect(events.some((e) => e.type === 'stream_start')).toBe(false);
+      expect(events.some((e) => e.type === 'text_delta')).toBe(false);
+      // converse should be called (not converseStream)
+      expect(adapter.converse).toHaveBeenCalled();
+    });
   });
 });

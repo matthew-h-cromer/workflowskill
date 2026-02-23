@@ -1,12 +1,14 @@
 // Conversational workflow generation — multi-turn loop with server-side tools.
 // The LLM can ask questions, use web_search/web_fetch for research, and propose before generating.
 // Server-side tools are handled entirely by Anthropic's servers — no local execution needed.
+// Supports streaming output when the adapter implements StreamingLLMAdapter.
 
 import type {
   ConversationalLLMAdapter,
   ConversationMessage,
   ConversationContent,
 } from '../types/index.js';
+import { isStreamingAdapter } from '../types/index.js';
 import type { GenerateResult } from './index.js';
 
 // ─── Event types for UI rendering ──────────────────────────────────────────
@@ -16,7 +18,12 @@ export type ConversationEvent =
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; name: string; output: string; isError: boolean }
   | { type: 'generating' }
-  | { type: 'workflow_generated'; content: string; valid: boolean; errors: string[] };
+  | { type: 'workflow_generated'; content: string; valid: boolean; errors: string[] }
+  // Streaming events
+  | { type: 'text_delta'; delta: string }
+  | { type: 'thinking_delta'; delta: string }
+  | { type: 'stream_start' }
+  | { type: 'stream_end' };
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -46,6 +53,9 @@ export interface ConversationLoopOptions {
  * until it's ready to generate, signaled by starting its response with `---` (frontmatter).
  * Server-side tools (web_search, web_fetch) are handled by Anthropic's servers — the adapter
  * returns their results as opaque blocks that are passed through in conversation history.
+ *
+ * When the adapter supports streaming (StreamingLLMAdapter), text deltas are emitted in
+ * real-time via `text_delta` and `thinking_delta` events.
  */
 export async function conversationalGenerate(
   options: ConversationLoopOptions,
@@ -67,27 +77,52 @@ export async function conversationalGenerate(
 
   let attempts = 0;
   let lastContent = '';
+  const streaming = isStreamingAdapter(llmAdapter);
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    const response = await llmAdapter.converse(
-      model,
-      systemPrompt,
-      messages,
-    );
+    let response;
+
+    if (streaming) {
+      const stream = llmAdapter.converseStream(model, systemPrompt, messages);
+      onEvent({ type: 'stream_start' });
+
+      for await (const event of stream.events) {
+        if (event.type === 'text_delta') {
+          onEvent({ type: 'text_delta', delta: event.delta });
+        } else if (event.type === 'thinking_delta') {
+          onEvent({ type: 'thinking_delta', delta: event.delta });
+        } else if (event.type === 'block_start' && event.blockType === 'server_tool_use' && event.name) {
+          onEvent({ type: 'tool_call', name: event.name, args: event.input ?? {} });
+        } else if (event.type === 'block_start') {
+          // Result blocks from server-side tools (web_search_tool_result, web_fetch_tool_result)
+          if (event.blockType === 'web_search_tool_result' || event.blockType === 'web_fetch_tool_result') {
+            const toolName = event.blockType === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
+            onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+          }
+        }
+      }
+
+      onEvent({ type: 'stream_end' });
+      response = await stream.result;
+    } else {
+      response = await llmAdapter.converse(model, systemPrompt, messages);
+    }
 
     // Append assistant response to conversation history
     messages.push({ role: 'assistant', content: response.content });
 
-    // Emit events for server-side tool blocks (for UI visibility)
-    for (const block of response.content) {
-      if (block.type === 'server_tool') {
-        const raw = block.raw as { type?: string; name?: string; input?: unknown };
-        if (raw.type === 'server_tool_use' && raw.name) {
-          onEvent({ type: 'tool_call', name: raw.name, args: (raw.input ?? {}) as Record<string, unknown> });
-        }
-        if (raw.type === 'web_search_tool_result' || raw.type === 'web_fetch_tool_result') {
-          const toolName = raw.type === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
-          onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+    // Emit events for server-side tool blocks (for non-streaming or supplementary visibility)
+    if (!streaming) {
+      for (const block of response.content) {
+        if (block.type === 'server_tool') {
+          const raw = block.raw as { type?: string; name?: string; input?: unknown };
+          if (raw.type === 'server_tool_use' && raw.name) {
+            onEvent({ type: 'tool_call', name: raw.name, args: (raw.input ?? {}) as Record<string, unknown> });
+          }
+          if (raw.type === 'web_search_tool_result' || raw.type === 'web_fetch_tool_result') {
+            const toolName = raw.type === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
+            onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+          }
         }
       }
     }
@@ -144,8 +179,8 @@ export async function conversationalGenerate(
       continue;
     }
 
-    // Conversation message — show to user and get response
-    if (text) {
+    // Conversation message — show to user and get response (only if not streaming)
+    if (!streaming && text) {
       onEvent({ type: 'assistant_message', text });
     }
 
