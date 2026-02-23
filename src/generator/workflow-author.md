@@ -186,6 +186,24 @@ Transform steps operate on **arrays only** (filter, map, sort). They require an 
       type: array
 ```
 
+**Correlating parallel arrays with `$index`:**
+```yaml
+# Zip results from two steps into combined objects:
+- id: combine
+  type: transform
+  operation: map
+  expression:
+    name: $item
+    score: $steps.get_scores.output.results[$index]
+  inputs:
+    items:
+      type: array
+      source: $steps.get_names.output.results
+  outputs:
+    combined:
+      type: array
+```
+
 ### Transform Step (sort)
 ```yaml
 - id: sort_results
@@ -292,6 +310,7 @@ Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array ele
 12. **`condition` on a `conditional` step is the branch condition**, not a guard.
 13. **Use exit steps for conditional early termination only**, not as the default way to produce output. Exit output keys must match the declared workflow output keys.
 14. **Transform steps are for arrays only.** Never use a transform to extract fields from a single object.
+15. **Never use LLM steps for data restructuring** — zipping arrays, reformatting objects, combining fields from multiple steps. Use transform `map` with `$index` to correlate parallel arrays at zero token cost.
 
 ## Output Format
 
