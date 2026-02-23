@@ -55,10 +55,15 @@ When you can converse with the user and use tools, follow this process before ge
 - Bad: "What do you want to do?" Good: "Should results be filtered by date, category, or both?"
 
 ### Phase 2: Research
-- If the workflow involves APIs or web services, use available tools to investigate:
-  - Call http.request to probe endpoints and discover response shapes
-  - Call html.select to inspect web page structure
-- Summarize what you learned.
+- If the workflow involves APIs, web services, or web scraping, use your **server-side tools** to investigate before generating:
+  1. **`web_search`** — Search for the site's HTML structure, API documentation, CSS class naming conventions, or known scraping patterns. Example: "craigslist search results HTML structure CSS selectors".
+  2. **`web_fetch`** — Fetch the actual target URL to inspect the raw HTML. Look for:
+     - The repeating container element (e.g., `li.result-row`, `div.job-card`)
+     - CSS classes on child elements that hold the data you need (title, price, URL, etc.)
+     - Whether data lives in element text, attributes (`href`, `data-*`), or both
+  3. **Verify selectors** — Cross-reference what `web_search` says with what `web_fetch` returns. Sites change their markup; never assume selectors from documentation are current.
+- Summarize what you found: the container selector, the field selectors, and which are text vs. attributes.
+- **Do not guess selectors.** If you cannot verify the HTML structure, tell the user what you need.
 
 ### Phase 3: Propose
 - Describe your plan: what steps, what tools, how data flows.
@@ -299,6 +304,71 @@ Use `$`-prefixed references to wire data between steps:
 Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
 
 Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array element access.
+
+## Web Scraping Pattern
+
+When a workflow fetches HTML and extracts structured data, follow this recipe:
+
+### Step pattern: fetch → guard → extract
+
+```yaml
+steps:
+  - id: fetch_page
+    type: tool
+    tool: http.request
+    retry: { max: 3, delay: "2s", backoff: 1.5 }
+    inputs:
+      url: { type: string, value: "https://example.com/search" }
+      method: { type: string, value: "GET" }
+      headers:
+        type: object
+        value: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" }
+    outputs:
+      html: { type: string, value: $result.body }
+
+  - id: guard_empty
+    type: exit
+    condition: $steps.fetch_page.output.html == ""
+    status: success
+    output: { results: [] }
+
+  - id: extract_data
+    type: tool
+    tool: html.select
+    inputs:
+      html: { type: string, value: $steps.fetch_page.output.html }
+      selector: { type: string, value: "li.result-item" }
+      fields:
+        type: object
+        value:
+          title: "h3.title"
+          url: "a.link @href"
+          id: "@data-pid"
+      limit: { type: int, value: 50 }
+    outputs:
+      items: { type: array, value: $result.results }
+```
+
+### `html.select` field specs
+
+The `fields` input maps field names to extraction specs. Each spec targets child elements within the matched container:
+
+| Spec | Extracts | Example |
+|------|----------|---------|
+| `"h3.title"` | Text content of sub-selector | `title: "h3.title"` |
+| `"a.link @href"` | Attribute from sub-selector | `url: "a.link @href"` |
+| `"@data-pid"` | Attribute from the container itself | `id: "@data-pid"` |
+
+Always use `fields` mode for structured extraction (returns array of objects). Without `fields`, `html.select` returns an array of text strings.
+
+### Research is mandatory
+
+**Before writing selectors, you MUST inspect the actual HTML.** Use `web_fetch` during the conversation to fetch the target page and identify:
+- The repeating container selector (the element that wraps one result)
+- The sub-selectors for each field within that container
+- Whether data is in text content or element attributes
+
+If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML, tell the user — the workflow will need a different approach.
 
 ## Authoring Rules
 
