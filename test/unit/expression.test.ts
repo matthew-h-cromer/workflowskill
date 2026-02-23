@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveExpression, interpolatePrompt, LexError, ParseExprError, EvalError } from '../../src/expression/index.js';
+import { resolveExpression, interpolatePrompt, resolveTemplate, containsTemplate, LexError, ParseExprError, EvalError } from '../../src/expression/index.js';
 import type { RuntimeContext } from '../../src/types/index.js';
 import { lex } from '../../src/expression/lexer.js';
 import { parseExpression } from '../../src/expression/parser.js';
@@ -68,12 +68,8 @@ describe('lexer', () => {
     expect(tokens.map(t => t.type)).toEqual(['BOOLEAN', 'BOOLEAN', 'NULL', 'EOF']);
   });
 
-  it('tokenizes + as PLUS', () => {
-    const tokens = lex('$inputs.base + ".json"');
-    expect(tokens.map(t => t.type)).toEqual([
-      'DOLLAR_REF', 'DOT', 'IDENTIFIER', 'PLUS', 'STRING', 'EOF',
-    ]);
-    expect(tokens[3]!.value).toBe('+');
+  it('throws on + as unexpected character', () => {
+    expect(() => lex('$inputs.base + ".json"')).toThrow(LexError);
   });
 
   it('throws on unexpected character', () => {
@@ -178,42 +174,6 @@ describe('parser', () => {
       expect(ast.property).toBe('title');
       // Its object should be index_access([0])
       expect(ast.object.kind).toBe('index_access');
-    }
-  });
-
-  it('parses additive expression', () => {
-    const ast = parseExpression(lex('"https://api.example.com/item/" + $item + ".json"'));
-    expect(ast.kind).toBe('binary');
-    if (ast.kind === 'binary') {
-      expect(ast.operator).toBe('+');
-      // Left side is another + binary (left-associative)
-      expect(ast.left.kind).toBe('binary');
-      if (ast.left.kind === 'binary') {
-        expect(ast.left.operator).toBe('+');
-      }
-    }
-  });
-
-  it('parses additive left-associative chaining', () => {
-    // a + b + c → (a + b) + c
-    const ast = parseExpression(lex('"a" + "b" + "c"'));
-    expect(ast.kind).toBe('binary');
-    if (ast.kind === 'binary') {
-      expect(ast.operator).toBe('+');
-      expect(ast.left.kind).toBe('binary');
-    }
-  });
-
-  it('+ has higher precedence than comparison', () => {
-    // $item + 1 == 5  →  ($item + 1) == 5, not $item + (1 == 5)
-    const ast = parseExpression(lex('$item + 1 == 5'));
-    expect(ast.kind).toBe('binary');
-    if (ast.kind === 'binary') {
-      expect(ast.operator).toBe('==');
-      expect(ast.left.kind).toBe('binary');
-      if (ast.left.kind === 'binary') {
-        expect(ast.left.operator).toBe('+');
-      }
     }
   });
 
@@ -393,34 +353,6 @@ describe('resolveExpression', () => {
     expect(resolveExpression('$steps.empty_step.output[0]', ctx)).toBeUndefined();
   });
 
-  // + operator
-  it('concatenates two strings', () => {
-    expect(resolveExpression('"hello" + " " + "world"', ctx)).toBe('hello world');
-  });
-
-  it('coerces number to string when one side is string', () => {
-    expect(resolveExpression('"item/" + $inputs.threshold', ctx)).toBe('item/7');
-  });
-
-  it('adds two numbers', () => {
-    expect(resolveExpression('$inputs.threshold + 3', ctx)).toBe(10);
-  });
-
-  it('builds a dynamic URL via concatenation', () => {
-    const urlCtx: RuntimeContext = {
-      inputs: { base: 'https://api.example.com/item/' },
-      steps: {},
-      item: 101,
-    };
-    expect(resolveExpression('$inputs.base + $item + ".json"', urlCtx)).toBe(
-      'https://api.example.com/item/101.json',
-    );
-  });
-
-  it('coerces null to empty string in concatenation', () => {
-    expect(resolveExpression('"prefix-" + $steps.empty_step.output', ctx)).toBe('prefix-');
-  });
-
   // Error cases
   it('throws on unknown reference', () => {
     expect(() => resolveExpression('$unknown', ctx)).toThrow(EvalError);
@@ -492,5 +424,81 @@ describe('interpolatePrompt', () => {
   it('interpolates boolean values', () => {
     const result = interpolatePrompt('Enabled: $inputs.enabled', ctx);
     expect(result).toBe('Enabled: true');
+  });
+});
+
+// ─── containsTemplate tests ───────────────────────────────────────────────────
+
+describe('containsTemplate', () => {
+  it('returns true for a ${} block', () => {
+    expect(containsTemplate('${inputs.query}')).toBe(true);
+  });
+
+  it('returns true for template inside a string', () => {
+    expect(containsTemplate('https://example.com?q=${inputs.query}')).toBe(true);
+  });
+
+  it('returns false for a bare $-reference', () => {
+    expect(containsTemplate('$inputs.query')).toBe(false);
+  });
+
+  it('returns false for a plain string', () => {
+    expect(containsTemplate('GET')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(containsTemplate('')).toBe(false);
+  });
+});
+
+// ─── resolveTemplate tests ────────────────────────────────────────────────────
+
+describe('resolveTemplate', () => {
+  it('preserves type for whole-value ${ref}', () => {
+    expect(resolveTemplate('${inputs.threshold}', ctx)).toBe(7);
+  });
+
+  it('preserves array type for whole-value ${ref}', () => {
+    const result = resolveTemplate('${steps.fetch.output.messages}', ctx);
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it('interpolates multiple ${} blocks into a string', () => {
+    const urlCtx: RuntimeContext = {
+      inputs: { base: 'https://api.example.com/item/' },
+      steps: {},
+      item: 101,
+    };
+    expect(resolveTemplate('${inputs.base}${item}.json', urlCtx)).toBe(
+      'https://api.example.com/item/101.json',
+    );
+  });
+
+  it('interpolates a ${} block with surrounding text', () => {
+    expect(resolveTemplate('https://example.com?q=${inputs.account}', ctx)).toBe(
+      'https://example.com?q=user@example.com',
+    );
+  });
+
+  it('coerces number to string in multi-block template', () => {
+    expect(resolveTemplate('limit=${inputs.threshold}', ctx)).toBe('limit=7');
+  });
+
+  it('coerces null to empty string in multi-block template', () => {
+    expect(resolveTemplate('val=${steps.empty_step.output}', ctx)).toBe('val=');
+  });
+
+  it('resolves nested property access inside ${}', () => {
+    expect(resolveTemplate('subject=${steps.fetch.output.messages[0].subject}', ctx)).toBe(
+      'subject=Hello',
+    );
+  });
+
+  it('escapes $${ to literal ${', () => {
+    expect(resolveTemplate('prefix$${literal}suffix', ctx)).toBe('prefix${literal}suffix');
+  });
+
+  it('throws on unknown reference inside ${}', () => {
+    expect(() => resolveTemplate('${unknown.field}', ctx)).toThrow(EvalError);
   });
 });

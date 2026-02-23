@@ -46,10 +46,41 @@ export function interpolatePrompt(template: string, context: RuntimeContext): st
 }
 
 /**
+ * Returns true if the string contains at least one ${...} template block.
+ */
+export function containsTemplate(value: string): boolean {
+  return /\$\{[^}]+\}/.test(value);
+}
+
+/**
+ * Resolve a ${...} template string against a runtime context.
+ *
+ * Two modes:
+ * - Whole-value `${ref}` (nothing else) — type is preserved (not coerced to string).
+ * - Multi-block — each `${ref}` is evaluated and spliced into the surrounding string.
+ *   Use `$${` to produce a literal `${` inside a template.
+ *
+ * Inside `${...}`, references omit the leading `$` (the `$` is part of the delimiter).
+ * Example: `"https://example.com?q=${inputs.query}"` → resolves `$inputs.query`.
+ */
+export function resolveTemplate(template: string, context: RuntimeContext): unknown {
+  // Whole-value ${ref} — preserve the typed result
+  const single = template.match(/^\$\{([^}]+)\}$/);
+  if (single) {
+    return resolveExpression('$' + single[1]!, context);
+  }
+  // Multi-block: interpolate all ${...} blocks; ${ is the escape for literal ${
+  return template.replace(/\$\$\{|\$\{([^}]+)\}/g, (match, expr?: string) => {
+    if (match === '$${') return '${';
+    return stringify(resolveExpression('$' + expr!, context));
+  });
+}
+
+/**
  * Coerce a value to its string representation for prompt interpolation.
  * Per the spec: objects/arrays → JSON, null → empty string.
  */
-function stringify(value: unknown): string {
+export function stringify(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);

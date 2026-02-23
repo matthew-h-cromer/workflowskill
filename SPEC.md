@@ -228,13 +228,12 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 
 | Category | Operators |
 |----------|-----------|
-| Concatenation / Addition | `+` |
 | Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
 | Logical | `&&`, `\|\|`, `!` |
 
-**Concatenation / Addition (`+`).** When either operand is a string, both are coerced to strings and the results are concatenated. `null` and `undefined` coerce to `""`. Numbers and booleans coerce via `String()`. Objects and arrays coerce via `JSON.stringify()`. When both operands are numbers, the result is numeric addition. Precedence: tighter than comparison, looser than unary `!`. Primary use case: constructing dynamic URLs in `each` loops (e.g., `$inputs.base_url + $item + ".json"`).
+**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), and comparisons.
 
-**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), concatenation/addition, and comparisons.
+**Template interpolation.** String values containing `${...}` are treated as templates. Each `${ref}` block is evaluated as a reference and its result is spliced into the surrounding string. References inside `${...}` omit the leading `$` (e.g., `${inputs.query}`, `${steps.fetch.output.body}`). If the entire value is a single `${ref}` with no surrounding text, the typed result is preserved (not coerced to string). Use `$${` to produce a literal `${`. Template interpolation applies to `value` fields on step inputs, step outputs, and workflow outputs. Primary use case: constructing dynamic URLs in `each` loops (e.g., `"${inputs.base_url}${item}.json"`).
 
 **Prompt interpolation.** Expressions in `prompt` fields (on LLM steps) follow the same reference resolution rules: `$inputs`, `$steps`, `$item`, and `$index` are resolved and property access works. Comparison and logical operators are not supported in prompt interpolation. The resolved value is coerced to its string representation and inserted at the reference position. Objects and arrays are serialized as JSON. Null values are inserted as the empty string.
 

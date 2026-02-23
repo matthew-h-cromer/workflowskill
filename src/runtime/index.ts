@@ -20,24 +20,22 @@ import type {
   ValidationError,
   RuntimeEvent,
 } from '../types/index.js';
-import { resolveExpression } from '../expression/index.js';
+import { resolveExpression, resolveTemplate, containsTemplate } from '../expression/index.js';
 import { validateWorkflow } from '../validator/index.js';
 import { dispatch, StepExecutionError } from '../executor/index.js';
 import type { DispatchResult } from '../executor/index.js';
 
-/** Returns true if value is a $-expression string. */
-function isExpression(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith('$');
-}
-
-/** Resolve a value: if it's a $-expression, evaluate it; if it starts with $$, strip one $; otherwise return as-is. */
+/** Resolve a value field:
+ * 1. starts with $$ → strip one $ (literal escape)
+ * 2. contains ${...} → template interpolation
+ * 3. starts with $ → whole expression
+ * 4. otherwise → literal
+ */
 function resolveValue(value: unknown, context: RuntimeContext): unknown {
-  if (typeof value === 'string' && value.startsWith('$$')) {
-    return value.slice(1); // $$ escape → literal $
-  }
-  if (isExpression(value)) {
-    return resolveExpression(value, context);
-  }
+  if (typeof value !== 'string') return value;
+  if (value.startsWith('$$')) return value.slice(1);
+  if (containsTemplate(value)) return resolveTemplate(value, context);
+  if (value.startsWith('$')) return resolveExpression(value, context);
   return value;
 }
 

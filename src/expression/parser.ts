@@ -39,7 +39,7 @@ export interface LiteralNode {
   value: string | number | boolean | null;
 }
 
-/** Binary operations: ==, !=, >, <, >=, <=, &&, ||, + */
+/** Binary operations: ==, !=, >, <, >=, <=, &&, || */
 export interface BinaryNode {
   kind: 'binary';
   operator: string;
@@ -90,8 +90,7 @@ export function parseExpression(tokens: Token[]): ASTNode {
   // expression     → or_expr
   // or_expr        → and_expr ( "||" and_expr )*
   // and_expr       → comparison ( "&&" comparison )*
-  // comparison     → additive ( ("==" | "!=" | ">" | "<" | ">=" | "<=") additive )?
-  // additive       → unary ( "+" unary )*
+  // comparison     → unary ( ("==" | "!=" | ">" | "<" | ">=" | "<=") unary )?
   // unary          → "!" unary | primary
   // primary        → reference_chain | literal | "(" expression ")"
 
@@ -118,20 +117,9 @@ export function parseExpression(tokens: Token[]): ASTNode {
   }
 
   function parseComparison(): ASTNode {
-    let left = parseAdditive();
+    let left = parseUnary();
     const t = peek().type;
     if (t === 'EQ' || t === 'NEQ' || t === 'GT' || t === 'GTE' || t === 'LT' || t === 'LTE') {
-      const op = current().value;
-      pos++;
-      const right = parseAdditive();
-      left = { kind: 'binary', operator: op, left, right };
-    }
-    return left;
-  }
-
-  function parseAdditive(): ASTNode {
-    let left = parseUnary();
-    while (peek().type === 'PLUS') {
       const op = current().value;
       pos++;
       const right = parseUnary();

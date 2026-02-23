@@ -1,6 +1,6 @@
 ---
 name: each-tool-dynamic-url
-description: Tool step with each iteration that constructs dynamic URLs using the + operator.
+description: Tool step with each iteration that constructs dynamic URLs using template interpolation.
 ---
 
 # Each Tool Dynamic URL
@@ -33,7 +33,7 @@ steps:
     inputs:
       url:
         type: string
-        value: $inputs.base_url + $item + ".json"
+        value: "${inputs.base_url}${item}.json"
     outputs:
       title:
         type: string

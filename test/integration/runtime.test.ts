@@ -711,7 +711,7 @@ describe('step record inputs', () => {
 // ─── 13. each-tool-dynamic-url ───────────────────────────────────────────────
 
 describe('each-tool-dynamic-url workflow', () => {
-  it('constructs dynamic URLs per-iteration using + operator and maps $result output', async () => {
+  it('constructs dynamic URLs per-iteration using template interpolation and maps $result output', async () => {
     const workflow = loadWorkflow('each-tool-dynamic-url');
 
     const capturedUrls: string[] = [];
