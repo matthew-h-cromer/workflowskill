@@ -11,6 +11,7 @@
 - [Security Considerations](#security-considerations)
 - [Adoption Path](#adoption-path)
 - [Future Work](#future-work)
+- [Appendix: Use Case Taxonomy](#appendix-use-case-taxonomy)
 
 ## Executive Summary
 
@@ -51,6 +52,8 @@ This is a structural misalignment. Any agent platform that implements the AgentS
 ### Workflows Are Prevalent
 
 Nine of the top ten autonomous agent use cases are multi-step workflows. A recent analysis identified: email triage, daily briefings, calendar management, content research pipelines, developer workflow automation, finance tracking, smart home automation, research and shopping, and meal planning. Each follows the same pattern: fetch data, process it, filter or transform it, deliver a result. Only the personal knowledge base (primarily retrieval, not orchestration) sits outside that pattern.
+
+But the pattern extends well beyond developer and enterprise contexts. Everyday personal automations — checking if shoes are back in stock, monitoring apartment listings, tracking grocery prices, compiling a morning news briefing, logging expenses from email receipts — follow the identical structure. A [use case taxonomy](#appendix-use-case-taxonomy) identifies 14 distinct categories spanning monitoring, aggregation, planning, content creation, comparison, and more. Workflows aren't a technical niche. They're how people want to use agents in their daily lives.
 
 The supply side confirms this. Of ClawHub's ~3,300 legitimate skills, the Productivity category (25% of the registry) is explicitly described as "email automation and workflow optimization." Business skills (4.6%) are "enterprise workflow solutions." Development skills (29.7%) contain CI/CD pipelines, deployment automation, and monitoring workflows. Accounting for overlap, roughly 35-50% of meaningfully used skills involve multi-step orchestration rather than single-tool API documentation.
 
@@ -190,3 +193,91 @@ The following capabilities are considered for inclusion once the core specificat
 **Spec versioning.** A `version` field on the workflow block declaring which spec version the workflow was written against. This becomes necessary when new step types, expression operators, or execution semantics are added. Deferred from the initial spec to avoid premature versioning before the format stabilizes through real usage.
 
 **Workflow registry.** A package registry for published WorkflowSkills, with semantic versioning, dependency resolution, and discoverability. This is what turns WorkflowSkill from a format into an ecosystem. ClawHub already hosts 10,700+ skills, but they are flat files with no versioning, no dependency graph, and no composability contract. A registry changes that. A team publishes `email-triage@1.2.0`. Another team builds `morning-briefing@1.0.0` that depends on it. When `email-triage` ships a breaking change, semver catches it. When a user searches for "slack notification," they find a tested, versioned workflow they can drop into their own composition. This is the pattern that made npm the engine of the Node ecosystem: small, composable, versioned packages that build on each other. Spec versioning is the prerequisite. Workflow composability (invoking one WorkflowSkill as a step in another) is the enabling feature. The registry is where the compounding value lives. Deferred because it requires both of those foundations, plus decisions about hosting, namespacing, trust verification, and governance that should be informed by real community usage rather than designed in advance.
+
+## Appendix: Use Case Taxonomy
+
+Workflow use cases organized by the fundamental job the workflow performs. Each category includes example workflows that follow the WorkflowSkill pattern: fetch data, process it, deliver a result.
+
+### Watch & Alert — "Tell me when something changes"
+Passive monitoring on a schedule. Exit quietly when nothing's happening, surface it when something matters.
+- **Restock checker:** Monitor a product page for a specific shoe size; alert when available
+- **Price drop alert:** Watch a product listing; alert when price falls below a threshold
+- **Job posting monitor:** Scrape a company careers page daily for new positions matching keywords
+
+### Collect & Digest — "Gather scattered info, give me the highlights"
+Aggregate content from multiple sources into a single, filtered summary delivered on a schedule.
+- **Morning news briefing:** Fetch headlines from several RSS feeds, deduplicate, summarize top stories
+- **Email triage digest:** Search inbox for unread messages, score by importance, format a prioritized summary
+- **Local events roundup:** Scrape a city events calendar, filter by category and date, deliver a weekly digest
+
+### Track & Log — "Record this over time so I can see patterns"
+Periodic capture of a value or state that accumulates into a history useful for review or trending.
+- **Grocery price tracker:** Fetch prices for a shopping list weekly; log to a spreadsheet for comparison
+- **Expenses from email:** Parse receipt emails daily; append line items to an expense log
+- **Fitness log:** Pull yesterday's activity from a health API; append a daily summary row to a sheet
+
+### Compare & Decide — "Help me pick between options"
+Fetch structured data about multiple candidates, normalize it, and surface a comparison or recommendation.
+- **Product comparison:** Scrape specs and prices for two or three models; format a side-by-side table
+- **Restaurant picker:** Pull ratings and hours for nearby options; filter open ones and rank by score
+- **Subscription audit:** List active recurring charges from bank emails; flag duplicates and unused services
+
+### Plan & Prepare — "Help me get ready for something"
+Combine multiple data sources into a structured plan or checklist tailored to an upcoming event.
+- **Trip itinerary:** Fetch weather forecast, transit options, and attraction hours; compile a day-by-day plan
+- **Meal plan from sales:** Scrape the weekly grocery circular; suggest a meal plan built around what's on sale
+- **Party shopping list:** Take a guest list and menu; estimate quantities and generate a categorized shopping list
+
+### Create & Draft — "Write this for me based on data I have"
+Generate structured text (listings, messages, documents) by combining a template with live or stored data.
+- **For-sale listing:** Take item details and photos; draft a Craigslist-style listing with title, description, and price
+- **Thank-you notes:** Pull a list of gift-givers and gifts from a spreadsheet; draft a personalized note for each
+- **Cover letter:** Fetch a job description; draft a tailored cover letter against a stored resume summary
+
+### Discover & Recommend — "Find something good that fits my situation"
+Query or search based on current context (what's in the fridge, what's on tonight) and return ranked options.
+- **What to watch tonight:** Fetch new releases on streaming services; filter by genre preferences and runtime
+- **Recipe from fridge:** Take a list of on-hand ingredients; retrieve and rank recipes that use them
+- **Gift ideas:** Take a recipient's age, interests, and budget; search and return ranked gift suggestions
+
+### Verify & Check — "Make sure this is safe / correct / okay"
+Validate a document, product, or situation against known rules, databases, or requirements.
+- **Allergen checker:** Fetch a restaurant's menu; flag dishes containing a specified allergen
+- **Lease reviewer:** Parse a lease document; flag non-standard clauses against a checklist of tenant-friendly terms
+- **Product recall checker:** Take a list of household appliances; check a recall database for each model number
+
+### Maintain & Manage — "Keep this thing running without me thinking about it"
+Ongoing housekeeping tasks that prevent problems or keep a system in a healthy state.
+- **Bill payment monitor:** Fetch recent bank transactions; alert if a recurring bill hasn't cleared by its due date
+- **Warranty tracker:** Pull purchase dates from email receipts; alert when a warranty is approaching expiration
+- **Pantry restock:** Compare a pantry list to a minimum-stock threshold; generate a reorder list for low items
+
+### Transform & Reformat — "Convert this from one form to another"
+Take raw data in one format and restructure it into another without judgment or inference.
+- **Receipt to expense report:** Parse receipt emails; convert line items into an expense report spreadsheet row
+- **Contact extraction:** Parse an email thread; extract names, titles, and email addresses into a contact list
+- **Booking confirmation parser:** Parse hotel and flight confirmation emails; output a unified trip summary
+
+### Communicate & Respond — "Handle this routine communication for me"
+Send, route, or organize messages based on incoming data and simple rules.
+- **RSVP tracker:** Monitor email for responses to an invitation; tally yes/no/maybe counts in a spreadsheet
+- **Follow-up reminder:** Check a CRM for contacts with no activity in 30 days; draft and queue follow-up emails
+- **Review responder:** Fetch new product reviews below a rating threshold; draft polite response templates
+
+### Learn & Research — "Compile what's known about this topic"
+Gather, synthesize, and structure information from multiple sources into a useful reference document.
+- **How-to compiler:** Search for tutorials on a task; extract key steps and consolidate into a single guide
+- **Product deep-dive:** Fetch reviews, spec sheets, and forum discussions for a product; summarize pros and cons
+- **DIY feasibility check:** Fetch material costs and tool requirements for a project; estimate total cost and complexity
+
+### Seasonal & Life Event — "Help me get through this thing that only happens once a year"
+Workflows triggered by calendar events or life milestones with bounded scope and a clear completion state.
+- **Back-to-school supplies:** Fetch a school's supply list; compare against last year's purchases; output a delta list
+- **Tax document collector:** Search email for W-2, 1099, and statement PDFs; list what's arrived and what's missing
+- **Garage sale pricer:** Take a list of items to sell; look up comparable sold listings; suggest prices for each
+
+### Small Business & Side Hustle — "Run this part of my business automatically"
+Lightweight operational workflows for sole proprietors and small teams without dedicated ops staff.
+- **Competitor pricing check:** Scrape prices for key SKUs from a competitor's site; compare to your own pricing
+- **Inventory alert:** Check stock levels via an e-commerce API; alert when any item falls below reorder threshold
+- **Client follow-up:** Fetch overdue invoices from a billing tool; draft a polite follow-up email for each
