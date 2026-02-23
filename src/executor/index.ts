@@ -16,7 +16,7 @@ import { executeTool } from './tool.js';
 import { executeLLM } from './llm.js';
 
 export { StepExecutionError } from './types.js';
-export type { StepOutput, ConditionalOutput, ExitOutput } from './types.js';
+export type { StepOutput, ConditionalOutput, ExitOutput, StepErrorContext } from './types.js';
 export { executeTransform } from './transform.js';
 export { executeConditional } from './conditional.js';
 export { executeExit } from './exit.js';

@@ -378,6 +378,29 @@ describe('Tool executor', () => {
       expect((e as StepExecutionError).retriable).toBe(true);
     }
   });
+
+  it('includes tool name in error context', async () => {
+    const step = makeStep<ToolStep>({
+      id: 'failing',
+      type: 'tool',
+      tool: 'my_api',
+      inputs: {},
+      outputs: {},
+    });
+    const adapter = new MockToolAdapter();
+    adapter.register('my_api', () => ({
+      output: null,
+      error: 'Not found',
+    }));
+    try {
+      await executeTool(step, {}, adapter);
+    } catch (e) {
+      expect(e).toBeInstanceOf(StepExecutionError);
+      const err = e as StepExecutionError;
+      expect(err.context).toBeDefined();
+      expect(err.context!.tool).toBe('my_api');
+    }
+  });
 });
 
 // ─── LLM executor ──────────────────────────────────────────────────────────

@@ -321,10 +321,11 @@ describe('error-fail workflow', () => {
 
     expect(log.status).toBe('failed');
 
-    // failing_tool should be recorded as failed
+    // failing_tool should be recorded as failed with enriched error
     const failingRecord = log.steps.find((s) => s.id === 'failing_tool')!;
     expect(failingRecord.status).toBe('failed');
-    expect(failingRecord.error).toBe('Connection refused');
+    expect(failingRecord.error).toBe('Tool "unreliable_api": Connection refused');
+    expect(failingRecord.inputs).toBeDefined();
 
     // process step should be skipped (workflow halted)
     const processRecord = log.steps.find((s) => s.id === 'process')!;
@@ -354,10 +355,11 @@ describe('error-ignore workflow', () => {
 
     expect(log.status).toBe('success');
 
-    // failing_tool recorded as failed but workflow continues
+    // failing_tool recorded as failed with enriched error but workflow continues
     const failingRecord = log.steps.find((s) => s.id === 'failing_tool')!;
     expect(failingRecord.status).toBe('failed');
-    expect(failingRecord.error).toBe('Service unavailable');
+    expect(failingRecord.error).toBe('Tool "unreliable_api": Service unavailable');
+    expect(failingRecord.inputs).toBeDefined();
 
     // process step still runs (gets null from failed step)
     const processRecord = log.steps.find((s) => s.id === 'process')!;
@@ -398,6 +400,12 @@ describe('retry-backoff workflow', () => {
     const record = log.steps[0]!;
     expect(record.status).toBe('success');
     expect(record.output).toEqual({ data: { success: true, attempt: 3 } });
+    // Should have retry data: 2 attempts before success
+    expect(record.retries).toBeDefined();
+    expect(record.retries!.attempts).toBe(2);
+    expect(record.retries!.errors).toHaveLength(2);
+    expect(record.retries!.errors[0]).toBe('Temporary failure');
+    expect(record.retries!.errors[1]).toBe('Temporary failure');
   }, 10000); // longer timeout for retries with actual delays
 
   it('fails after exhausting retries', async () => {
@@ -422,7 +430,12 @@ describe('retry-backoff workflow', () => {
     expect(log.status).toBe('failed');
     const record = log.steps[0]!;
     expect(record.status).toBe('failed');
-    expect(record.error).toBe('Permanent failure');
+    expect(record.error).toBe('Tool "flaky_api": Permanent failure');
+    // Should have retry data: 3 retry attempts that all failed
+    expect(record.retries).toBeDefined();
+    expect(record.retries!.attempts).toBe(3);
+    expect(record.retries!.errors).toHaveLength(3);
+    expect(record.retries!.errors[0]).toBe('Permanent failure');
   }, 10000);
 });
 
@@ -625,5 +638,66 @@ describe('output-source-with-exit workflow', () => {
 
     // Exit output takes precedence
     expect(log.outputs).toEqual({ message: 'exited early', count: 0 });
+  });
+});
+
+// ─── Step record inputs ──────────────────────────────────────────────────────
+
+describe('step record inputs', () => {
+  it('records resolved inputs on successful steps', async () => {
+    const workflow = loadWorkflow('echo');
+    const tools = new MockToolAdapter();
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { message: 'hello' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'echo',
+    });
+
+    const echoRecord = log.steps.find((s) => s.id === 'echo')!;
+    expect(echoRecord.inputs).toEqual({ data: 'hello' });
+  });
+
+  it('records resolved inputs on tool steps', async () => {
+    const workflow = loadWorkflow('two-step-pipe');
+    const tools = new MockToolAdapter();
+    tools.register('search', (args) => ({
+      output: { results: [{ title: `Result for ${args.query}`, url: 'https://example.com' }] },
+    }));
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { query: 'test' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'two-step-pipe',
+    });
+
+    const fetchRecord = log.steps.find((s) => s.id === 'fetch')!;
+    expect(fetchRecord.inputs).toEqual({ query: 'test' });
+  });
+
+  it('does not include inputs on skipped steps', async () => {
+    const workflow = loadWorkflow('branch');
+    const tools = new MockToolAdapter();
+    tools.register('validate', () => ({ output: { valid: true } }));
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { value: 42 },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'branch',
+    });
+
+    const skippedRecords = log.steps.filter((s) => s.status === 'skipped');
+    for (const rec of skippedRecords) {
+      expect(rec.inputs).toBeUndefined();
+    }
   });
 });

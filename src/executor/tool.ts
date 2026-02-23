@@ -18,7 +18,7 @@ export async function executeTool(
   const result = await toolAdapter.invoke(step.tool, resolvedInputs);
   if (result.error) {
     // Tool errors are considered retriable (network issues, rate limits, transient failures)
-    throw new StepExecutionError(result.error, true);
+    throw new StepExecutionError(result.error, true, { tool: step.tool });
   }
   return { output: result.output };
 }

@@ -13,6 +13,7 @@ import type {
   RunLog,
   RunStatus,
   StepRecord,
+  RetryRecord,
   TokenUsage,
   ExitStatus,
   ValidationError,
@@ -209,7 +210,7 @@ async function executeStepLifecycle(
   }
 
   // 2. Resolve inputs
-  const resolvedInputs = resolveInputs(step.inputs, context);
+  const resolvedInputs = resolveInputs(step.inputs, context, step.id);
 
   // 3. Iterate (each) — if present, execute once per element
   if (step.each) {
@@ -226,7 +227,7 @@ async function executeStepLifecycle(
 
   // 4-7. Dispatch with retry + error handling
   try {
-    const result = await dispatchWithRetry(
+    const { result, retries } = await dispatchWithRetry(
       step,
       resolvedInputs,
       context,
@@ -242,7 +243,9 @@ async function executeStepLifecycle(
         executor: 'exit',
         status: 'success',
         duration_ms: Math.round(performance.now() - startTime),
+        inputs: resolvedInputs,
         output: result.output,
+        retries,
       });
       return { records, exit: { status: result.status, output: result.output } };
     }
@@ -271,7 +274,9 @@ async function executeStepLifecycle(
         executor: 'conditional',
         status: 'success',
         duration_ms: Math.round(performance.now() - startTime),
+        inputs: resolvedInputs,
         output: conditionalOutput,
+        retries,
       });
       // Then the branch step records
       records.push(...branchRecords.records);
@@ -291,13 +296,15 @@ async function executeStepLifecycle(
       executor: step.type,
       status: 'success',
       duration_ms: Math.round(performance.now() - startTime),
+      inputs: resolvedInputs,
       output: mappedOutput,
       tokens: result.tokens,
+      retries,
     });
     return { records };
   } catch (err) {
     // 6. Handle errors — apply on_error policy
-    return handleStepError(step, err, context, startTime);
+    return handleStepError(step, err, context, startTime, resolvedInputs);
   }
 }
 
@@ -324,8 +331,11 @@ async function executeWithEach(
     );
   }
 
+  // Resolve inputs with the base context (before iteration) for the record
+  const baseResolvedInputs = resolveInputs(step.inputs, context, step.id);
   const results: unknown[] = [];
   let totalTokens: TokenUsage | undefined;
+  let totalRetries: RetryRecord | undefined;
 
   try {
     for (let i = 0; i < eachArray.length; i++) {
@@ -334,14 +344,20 @@ async function executeWithEach(
         item: eachArray[i],
         index: i,
       };
-      const iterInputs = resolveInputs(step.inputs, itemContext);
-      const result = await dispatchWithRetry(
+      const iterInputs = resolveInputs(step.inputs, itemContext, step.id);
+      const { result, retries } = await dispatchWithRetry(
         step,
         iterInputs,
         itemContext,
         toolAdapter,
         llmAdapter,
       );
+
+      if (retries) {
+        totalRetries = totalRetries ?? { attempts: 0, errors: [] };
+        totalRetries.attempts += retries.attempts;
+        totalRetries.errors.push(...retries.errors);
+      }
 
       if (result.kind === 'output') {
         // Apply per-element step output mapping
@@ -355,7 +371,7 @@ async function executeWithEach(
       }
     }
   } catch (err) {
-    return handleStepError(step, err, context, startTime);
+    return handleStepError(step, err, context, startTime, baseResolvedInputs, totalRetries);
   }
 
   context.steps[step.id] = { output: results };
@@ -364,9 +380,11 @@ async function executeWithEach(
     executor: step.type,
     status: 'success',
     duration_ms: Math.round(performance.now() - startTime),
+    inputs: baseResolvedInputs,
     iterations: eachArray.length,
     tokens: totalTokens,
     output: results,
+    retries: totalRetries,
   });
 
   return { records };
@@ -411,30 +429,46 @@ async function executeBranch(
 
 // ─── Retry logic ──────────────────────────────────────────────────────────
 
+/** Result from dispatchWithRetry: the dispatch result plus any retry tracking. */
+interface RetryDispatchResult {
+  result: DispatchResult;
+  retries?: RetryRecord;
+}
+
 async function dispatchWithRetry(
   step: Step,
   resolvedInputs: Record<string, unknown>,
   context: RuntimeContext,
   toolAdapter: ToolAdapter,
   llmAdapter: LLMAdapter,
-): Promise<DispatchResult> {
+): Promise<RetryDispatchResult> {
   const retryPolicy = 'retry' in step ? step.retry : undefined;
   const maxRetries = retryPolicy?.max ?? 0;
   const baseDelay = retryPolicy ? parseDelay(retryPolicy.delay) : 0;
   const backoff = retryPolicy?.backoff ?? 1;
 
-  let retries = 0;
+  let attempts = 0;
+  const retryErrors: string[] = [];
 
   for (;;) {
     try {
-      return await dispatch(step, resolvedInputs, context, toolAdapter, llmAdapter);
+      const result = await dispatch(step, resolvedInputs, context, toolAdapter, llmAdapter);
+      const retries = attempts > 0 ? { attempts, errors: retryErrors } : undefined;
+      return { result, retries };
     } catch (err) {
       const isRetriable =
-        err instanceof StepExecutionError && err.retriable && retries < maxRetries;
-      if (!isRetriable) throw err;
+        err instanceof StepExecutionError && err.retriable && attempts < maxRetries;
+      if (!isRetriable) {
+        // Attach accumulated retry info to the error for handleStepError
+        if (attempts > 0 && err instanceof Error) {
+          (err as ErrorWithRetries).__retries = { attempts, errors: retryErrors };
+        }
+        throw err;
+      }
 
-      retries++;
-      const delay = baseDelay * Math.pow(backoff, retries - 1);
+      retryErrors.push(err instanceof Error ? err.message : String(err));
+      attempts++;
+      const delay = baseDelay * Math.pow(backoff, attempts - 1);
       await sleep(delay);
     }
   }
@@ -442,13 +476,26 @@ async function dispatchWithRetry(
 
 // ─── Error handling ────────────────────────────────────────────────────────
 
+/** Error augmented with retry info by dispatchWithRetry. */
+interface ErrorWithRetries extends Error {
+  __retries?: RetryRecord;
+}
+
 function handleStepError(
   step: Step,
   err: unknown,
   context: RuntimeContext,
   startTime: number,
+  resolvedInputs?: Record<string, unknown>,
+  retries?: RetryRecord,
 ): LifecycleResult {
-  const errorMessage = err instanceof Error ? err.message : String(err);
+  // Enrich error message with context (tool name, expression)
+  let errorMessage = err instanceof Error ? err.message : String(err);
+  if (err instanceof StepExecutionError && err.context?.tool) {
+    errorMessage = `Tool "${err.context.tool}": ${errorMessage}`;
+  }
+  // Extract retry info attached by dispatchWithRetry if not passed explicitly
+  const effectiveRetries = retries ?? (err instanceof Error ? (err as ErrorWithRetries).__retries : undefined);
   const onError = step.on_error ?? 'fail';
   const durationMs = Math.round(performance.now() - startTime);
 
@@ -459,7 +506,9 @@ function handleStepError(
     executor: step.type,
     status: 'failed',
     duration_ms: durationMs,
+    inputs: resolvedInputs,
     error: errorMessage,
+    retries: effectiveRetries,
   };
 
   if (onError === 'ignore') {
@@ -476,11 +525,22 @@ function handleStepError(
 function resolveInputs(
   stepInputs: Record<string, StepInput>,
   context: RuntimeContext,
+  stepId?: string,
 ): Record<string, unknown> {
   const resolved: Record<string, unknown> = {};
   for (const [key, input] of Object.entries(stepInputs)) {
     if (input.value !== undefined) {
-      resolved[key] = resolveValue(input.value, context);
+      try {
+        resolved[key] = resolveValue(input.value, context);
+      } catch (err) {
+        const expr = typeof input.value === 'string' ? input.value : JSON.stringify(input.value);
+        const prefix = stepId ? `Step "${stepId}" input "${key}"` : `Input "${key}"`;
+        throw new StepExecutionError(
+          `${prefix}: failed to resolve expression ${expr}: ${err instanceof Error ? err.message : String(err)}`,
+          false,
+          { expression: typeof input.value === 'string' ? input.value : undefined },
+        );
+      }
     }
     // If no value, the key is omitted (not set to null)
   }

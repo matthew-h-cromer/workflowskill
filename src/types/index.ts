@@ -182,6 +182,14 @@ export interface TokenUsage {
   output: number;
 }
 
+/** Retry tracking for a step that was retried. */
+export interface RetryRecord {
+  /** Number of retry attempts (not counting the initial try). */
+  attempts: number;
+  /** Error messages from each failed attempt. */
+  errors: string[];
+}
+
 /** Status of a step in the run log. */
 export type StepRunStatus = 'success' | 'failed' | 'skipped';
 
@@ -197,6 +205,8 @@ export interface StepRecord {
   reason?: string;
   /** Wall-clock time for this step in milliseconds. */
   duration_ms: number;
+  /** Resolved inputs that were passed to the executor. */
+  inputs?: Record<string, unknown>;
   /** Number of iterations (if each was used). */
   iterations?: number;
   /** Token counts (LLM steps only). */
@@ -205,6 +215,8 @@ export interface StepRecord {
   output?: unknown;
   /** Error details if the step failed. */
   error?: string;
+  /** Retry tracking (only present when retries occurred). */
+  retries?: RetryRecord;
 }
 
 /** Aggregate summary in the run log. */
