@@ -79,12 +79,12 @@ If the user's request is clear enough to proceed directly, skip to Phase 4.
 inputs:                           # object keyed by name — NOT an array
   <name>:
     type: string | int | float | boolean | array | object
-    default: <optional>
+    value: <optional>             # default value for optional inputs
 
 outputs:                          # object keyed by name — NOT an array
   <name>:
     type: string | int | float | boolean | array | object
-    source: <$expression>         # optional — resolves from $steps context after all steps
+    value: <$expression>          # optional — resolves from $steps context after all steps
 
 steps:
   - id: <unique_identifier>
@@ -94,12 +94,11 @@ steps:
     inputs:                       # object keyed by name (the field is "inputs", not "params")
       <name>:
         type: <type>              # required
-        source: <$expression>     # optional — ONLY for $-references
-        default: <literal>        # optional — for literal values
+        value: <$expression or literal>  # the value: expression ($-prefixed) or literal
     outputs:
       <name>:
         type: <type>
-        source: <$expression>     # optional — maps from $output (raw executor result)
+        value: <$expression>      # optional — maps from $output (raw executor result)
     # Optional common fields:
     condition: <expression>     # guard: skip if false
     each: <expression>          # iterate over array
@@ -112,8 +111,10 @@ steps:
 
 **Step input rules:**
 - Every step input requires `type`.
-- Use `source` to reference runtime data: `source: $inputs.query`, `source: $steps.prev.output.field`
-- Use `default` for literal values: `default: "https://example.com"`, `default: "GET"`
+- Use `value` for both expressions and literals. Strings starting with `$` are auto-detected as expressions.
+- Expressions: `value: $inputs.query`, `value: $steps.prev.output.field`
+- Literals: `value: "https://example.com"`, `value: "GET"`
+- To use a literal string starting with `$`, escape with `$$`: `value: "$$100"` → `"$100"`
 - A bare value like `url: "https://example.com"` is invalid — it must be an object with `type`.
 
 ## Step Type Reference
@@ -126,11 +127,11 @@ steps:
   inputs:
     param:
       type: string
-      source: $inputs.query
+      value: $inputs.query
   outputs:
     result:
       type: object
-      source: $output.data          # map from raw executor result
+      value: $output.data           # map from raw executor result
 ```
 
 ### LLM Step
@@ -144,7 +145,7 @@ steps:
   inputs:
     data:
       type: object
-      source: $steps.fetch_data.output.result
+      value: $steps.fetch_data.output.result
   outputs:
     analysis:
       type: object
@@ -163,7 +164,7 @@ Transform steps operate on **arrays only** (filter, map, sort). They require an 
   inputs:
     items:
       type: array
-      source: $steps.previous.output.items
+      value: $steps.previous.output.items
   outputs:
     items:
       type: array
@@ -180,7 +181,7 @@ Transform steps operate on **arrays only** (filter, map, sort). They require an 
   inputs:
     items:
       type: array
-      source: $steps.previous.output.items
+      value: $steps.previous.output.items
   outputs:
     items:
       type: array
@@ -201,7 +202,7 @@ When you have parallel arrays from different steps that need to be combined into
   inputs:
     items:
       type: array
-      source: $steps.extract_titles.output.titles
+      value: $steps.extract_titles.output.titles
   outputs:
     items:
       type: array
@@ -219,7 +220,7 @@ This is a pure data operation — never use an LLM step to merge or zip arrays.
   inputs:
     items:
       type: array
-      source: $steps.previous.output.items
+      value: $steps.previous.output.items
   outputs:
     items:
       type: array
@@ -249,36 +250,36 @@ Use exit steps for **conditional early termination** — to stop the workflow wh
     items: []
 ```
 
-For normal workflow output, prefer `source` on workflow outputs instead of a trailing exit step.
+For normal workflow output, prefer `value` on workflow outputs instead of a trailing exit step.
 
 ## How Workflow Outputs Are Resolved
 
-Workflow outputs use `source` to map data from step results:
+Workflow outputs use `value` to map data from step results:
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $steps.fetch.output.title        # resolved after all steps complete
+    value: $steps.fetch.output.title         # resolved after all steps complete
 ```
 
 **Resolution rules:**
-1. **Normal completion** — each workflow output with `source` is resolved from the final runtime context using `$steps` references.
+1. **Normal completion** — each workflow output with `value` (an expression) is resolved from the final runtime context using `$steps` references.
 2. **Exit step fires** — the exit step's `output` takes precedence. Its keys are matched against the declared workflow output keys.
-3. **No source, no exit** — outputs are matched by key name against the last executed step's output (legacy behavior).
+3. **No value, no exit** — outputs are matched by key name against the last executed step's output (legacy behavior).
 
-**Use `source` on workflow outputs** to explicitly declare where each output comes from. This eliminates the need for a trailing exit step just to produce outputs. Reserve exit steps for conditional early termination.
+**Use `value` on workflow outputs** to explicitly declare where each output comes from. This eliminates the need for a trailing exit step just to produce outputs. Reserve exit steps for conditional early termination.
 
-**Step output `source`** maps fields from the raw executor result using `$output`:
+**Step output `value`** maps fields from the raw executor result using `$output`:
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $output.body.title               # maps from raw tool/LLM response
+    value: $output.body.title                # maps from raw tool/LLM response
 ```
 
-This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `source` pass through from the raw result by key name.
+This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `value` pass through from the raw result by key name.
 
 ## Expression Language
 
@@ -291,7 +292,7 @@ Use `$`-prefixed references to wire data between steps:
 | `$steps.<id>.output.field` | A specific field from output |
 | `$item` | Current item in `each` or transform iteration |
 | `$index` | Current index in iteration |
-| `$output` | Raw executor result (only valid in step output `source`) |
+| `$output` | Raw executor result (only valid in step output `value`) |
 | `$steps.<id>.output.field[0]` | First element of an array field |
 | `$items[$index]` | Element at computed index |
 
@@ -304,8 +305,8 @@ Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array ele
 1. **Minimize LLM steps.** Every step that can be a tool or transform SHOULD be. LLM steps cost tokens.
 2. **Use the cheapest model.** `haiku` for classification/scoring, `sonnet` for complex reasoning.
 3. **Always declare inputs and outputs.** They enable validation and composability.
-4. **Use `source` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
-5. **Use `source` on step outputs** to map fields from the raw executor result using `$output`. This is useful when the tool returns a nested or differently-shaped object.
+4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
+5. **Use `value` on step outputs** to map fields from the raw executor result using `$output`. This is useful when the tool returns a nested or differently-shaped object.
 6. **Use `each` for per-item processing.** Don't ask the LLM to process arrays — iterate.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
@@ -342,12 +343,12 @@ description: Fetches data and outputs a specific field
 inputs:
   id:
     type: string
-    default: "1"
+    value: "1"
 
 outputs:
   name:
     type: string
-    source: $steps.fetch.output.name
+    value: $steps.fetch.output.name
 
 steps:
   - id: fetch
@@ -356,11 +357,11 @@ steps:
     inputs:
       id:
         type: string
-        source: $inputs.id
+        value: $inputs.id
     outputs:
       name:
         type: string
-        source: $output.result.name
+        value: $output.result.name
 \`\`\`
 
 ## Validation
@@ -372,7 +373,7 @@ After generating, verify:
 - [ ] Input/output types are consistent between connected steps
 - [ ] No cycles in step references
 - [ ] `each` not used on exit or conditional steps
-- [ ] Workflow outputs have `source` mapping to `$steps` references
-- [ ] Step output `source` uses `$output` (not `$steps`)
+- [ ] Workflow outputs have `value` mapping to `$steps` references
+- [ ] Step output `value` uses `$output` (not `$steps`)
 
 If validation fails, fix the errors and regenerate.

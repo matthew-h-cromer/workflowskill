@@ -9,15 +9,15 @@ description: Tests that exit output takes precedence over workflow output source
 inputs:
   should_exit:
     type: boolean
-    default: false
+    value: false
 
 outputs:
   message:
     type: string
-    source: $steps.fetch.output.title
+    value: $steps.fetch.output.title
   count:
     type: int
-    source: $steps.fetch.output.count
+    value: $steps.fetch.output.count
 
 steps:
   - id: fetch
@@ -26,14 +26,14 @@ steps:
     inputs:
       url:
         type: string
-        default: "https://api.example.com/data"
+        value: "https://api.example.com/data"
     outputs:
       title:
         type: string
-        source: $output.body.title
+        value: $output.body.title
       count:
         type: int
-        source: $output.body.items.length
+        value: $output.body.items.length
 
   - id: early_exit
     type: exit

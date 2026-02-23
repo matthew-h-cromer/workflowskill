@@ -22,6 +22,22 @@ import { validateWorkflow } from '../validator/index.js';
 import { dispatch, StepExecutionError } from '../executor/index.js';
 import type { DispatchResult } from '../executor/index.js';
 
+/** Returns true if value is a $-expression string. */
+function isExpression(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith('$');
+}
+
+/** Resolve a value: if it's a $-expression, evaluate it; if it starts with $$, strip one $; otherwise return as-is. */
+function resolveValue(value: unknown, context: RuntimeContext): unknown {
+  if (typeof value === 'string' && value.startsWith('$$')) {
+    return value.slice(1); // $$ escape → literal $
+  }
+  if (isExpression(value)) {
+    return resolveExpression(value, context);
+  }
+  return value;
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export class WorkflowExecutionError extends Error {
@@ -463,12 +479,10 @@ function resolveInputs(
 ): Record<string, unknown> {
   const resolved: Record<string, unknown> = {};
   for (const [key, input] of Object.entries(stepInputs)) {
-    if (input.source) {
-      resolved[key] = resolveExpression(input.source, context);
-    } else if (input.default !== undefined) {
-      resolved[key] = input.default;
+    if (input.value !== undefined) {
+      resolved[key] = resolveValue(input.value, context);
     }
-    // If no source and no default, the key is omitted (not set to null)
+    // If no value, the key is omitted (not set to null)
   }
   return resolved;
 }
@@ -481,8 +495,8 @@ function applyDefaults(
 ): Record<string, unknown> {
   const result = { ...provided };
   for (const [key, def] of Object.entries(schema)) {
-    if (!(key in result) && def.default !== undefined) {
-      result[key] = def.default;
+    if (!(key in result) && def.value !== undefined) {
+      result[key] = def.value;
     }
   }
   return result;
@@ -502,25 +516,25 @@ function collectBranchStepIds(steps: Step[]): Set<string> {
 }
 
 /**
- * Apply step output source mapping.
- * For each declared output with a `source`, resolve the expression against the raw executor result.
- * Outputs without `source` pass through from raw output by key name (backwards compatible).
+ * Apply step output value mapping.
+ * For each declared output with a `value` expression, resolve against the raw executor result.
+ * Outputs without `value` pass through from raw output by key name (backwards compatible).
  */
 function applyStepOutputMapping(
   stepOutputs: Record<string, StepOutput>,
   rawOutput: unknown,
   context: RuntimeContext,
 ): unknown {
-  const hasSources = Object.values(stepOutputs).some((o) => o.source);
-  if (!hasSources) return rawOutput;
+  const hasValues = Object.values(stepOutputs).some((o) => o.value !== undefined);
+  if (!hasValues) return rawOutput;
 
   // Create a temporary context with $output set to the raw executor result
   const tempContext: RuntimeContext = { ...context, output: rawOutput };
   const mapped: Record<string, unknown> = {};
 
   for (const [key, outputDef] of Object.entries(stepOutputs)) {
-    if (outputDef.source) {
-      mapped[key] = resolveExpression(outputDef.source, tempContext);
+    if (outputDef.value !== undefined) {
+      mapped[key] = resolveValue(outputDef.value, tempContext);
     } else if (rawOutput !== null && typeof rawOutput === 'object' && !Array.isArray(rawOutput)) {
       // Pass through by key name from raw output
       mapped[key] = (rawOutput as Record<string, unknown>)[key] ?? null;
@@ -557,13 +571,13 @@ function buildWorkflowOutputs(
     return { [outputKeys[0]!]: finalOutput };
   }
 
-  // Normal completion — resolve workflow output source expressions
-  const hasAnySources = Object.values(workflow.outputs).some((o) => o.source);
-  if (hasAnySources) {
+  // Normal completion — resolve workflow output value expressions
+  const hasAnyValues = Object.values(workflow.outputs).some((o) => o.value !== undefined);
+  if (hasAnyValues) {
     const result: Record<string, unknown> = {};
     for (const [key, outputDef] of Object.entries(workflow.outputs)) {
-      if (outputDef.source) {
-        result[key] = resolveExpression(outputDef.source, context);
+      if (outputDef.value !== undefined) {
+        result[key] = resolveValue(outputDef.value, context);
       } else if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
         // Fall back to key-matching against last step output
         result[key] = (finalOutput as Record<string, unknown>)[key] ?? null;
@@ -574,7 +588,7 @@ function buildWorkflowOutputs(
     return result;
   }
 
-  // No source fields — legacy behavior: match by key name against final output
+  // No value fields — legacy behavior: match by key name against final output
   if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
     const outputObj = finalOutput as Record<string, unknown>;
     const result: Record<string, unknown> = {};

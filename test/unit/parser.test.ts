@@ -186,31 +186,31 @@ describe('parseWorkflowFromMd', () => {
 
 // ─── Output source parsing ───────────────────────────────────────────────────
 
-describe('output source field', () => {
-  it('parses source on step outputs', () => {
+describe('value field (unified source/default)', () => {
+  it('parses value on step outputs', () => {
     const yaml = `
 steps:
   - id: fetch
     type: tool
     tool: http.request
     inputs:
-      url: { type: string, default: "https://example.com" }
+      url: { type: string, value: "https://example.com" }
     outputs:
       title:
         type: string
-        source: $output.body.title
+        value: $output.body.title
 `;
     const result = parseWorkflowYaml(yaml);
     const step = result.steps[0]!;
-    expect(step.outputs.title).toEqual({ type: 'string', source: '$output.body.title' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
   });
 
-  it('parses source on workflow outputs', () => {
+  it('parses value on workflow outputs', () => {
     const yaml = `
 outputs:
   name:
     type: string
-    source: $steps.fetch.output.name
+    value: $steps.fetch.output.name
 steps:
   - id: fetch
     type: tool
@@ -220,16 +220,53 @@ steps:
       name: { type: string }
 `;
     const result = parseWorkflowYaml(yaml);
-    expect(result.outputs.name).toEqual({ type: 'string', source: '$steps.fetch.output.name' });
+    expect(result.outputs.name).toEqual({ type: 'string', value: '$steps.fetch.output.name' });
   });
 
   it('parses output-source fixture', () => {
     const content = readFixture('output-source.md');
     const result = parseSkillMd(content);
-    expect(result.workflow.outputs.title).toEqual({ type: 'string', source: '$steps.fetch.output.title' });
-    expect(result.workflow.outputs.user_id).toEqual({ type: 'int', source: '$steps.fetch.output.user_id' });
+    expect(result.workflow.outputs.title).toEqual({ type: 'string', value: '$steps.fetch.output.title' });
+    expect(result.workflow.outputs.user_id).toEqual({ type: 'int', value: '$steps.fetch.output.user_id' });
     const step = result.workflow.steps[0]!;
-    expect(step.outputs.title).toEqual({ type: 'string', source: '$output.body.title' });
-    expect(step.outputs.user_id).toEqual({ type: 'int', source: '$output.body.userId' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
+    expect(step.outputs.user_id).toEqual({ type: 'int', value: '$output.body.userId' });
+  });
+
+  it('normalizes legacy source to value (backwards compat)', () => {
+    const yaml = `
+steps:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs:
+      url: { type: string, source: "$steps.prev.output.url" }
+    outputs:
+      title: { type: string, source: "$output.body.title" }
+`;
+    const result = parseWorkflowYaml(yaml);
+    const step = result.steps[0]!;
+    expect(step.inputs.url).toEqual({ type: 'string', value: '$steps.prev.output.url' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$output.body.title' });
+  });
+
+  it('normalizes legacy default to value (backwards compat)', () => {
+    const yaml = `
+inputs:
+  method:
+    type: string
+    default: "GET"
+steps:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs:
+      method: { type: string, default: "POST" }
+    outputs: {}
+`;
+    const result = parseWorkflowYaml(yaml);
+    expect(result.inputs.method).toEqual({ type: 'string', value: 'GET' });
+    const step = result.steps[0]!;
+    expect(step.inputs.method).toEqual({ type: 'string', value: 'POST' });
   });
 });

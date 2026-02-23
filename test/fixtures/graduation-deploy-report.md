@@ -11,15 +11,15 @@ inputs:
     type: string
   hours:
     type: int
-    default: 24
+    value: 24
 
 outputs:
   count:
     type: int
-    source: $steps.format_report.output.items.length
+    value: $steps.format_report.output.items.length
   deployments:
     type: array
-    source: $steps.format_report.output.items
+    value: $steps.format_report.output.items
 
 steps:
   - id: fetch_deploys
@@ -29,10 +29,10 @@ steps:
     inputs:
       repo:
         type: string
-        source: $inputs.repo
+        value: $inputs.repo
       since:
         type: string
-        default: "24h"
+        value: "24h"
     outputs:
       deployments: { type: array }
     retry:
@@ -48,7 +48,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.fetch_deploys.output.deployments
+        value: $steps.fetch_deploys.output.deployments
     outputs:
       items: { type: array }
 
@@ -70,7 +70,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_production.output.items
+        value: $steps.filter_production.output.items
     outputs:
       items: { type: array }
 
@@ -87,7 +87,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.sort_recent.output.items
+        value: $steps.sort_recent.output.items
     outputs:
       items: { type: array }
 
@@ -98,10 +98,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#deployments"
+        value: "#deployments"
       blocks:
         type: array
-        source: $steps.format_report.output.items
+        value: $steps.format_report.output.items
     outputs:
       ok: { type: boolean }
 ```

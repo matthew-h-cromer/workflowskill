@@ -27,7 +27,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.fetch.output.records
+        value: $steps.fetch.output.records
     outputs:
       sorted:
         type: array
@@ -41,7 +41,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.sort_by_score.output.sorted
+        value: $steps.sort_by_score.output.sorted
     outputs:
       mapped:
         type: array

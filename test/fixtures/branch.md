@@ -20,7 +20,7 @@ steps:
     inputs:
       value:
         type: int
-        source: $inputs.value
+        value: $inputs.value
     outputs:
       valid:
         type: boolean

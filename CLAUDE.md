@@ -76,9 +76,10 @@ test/integration/                # Integration tests (runtime, graduation)
 - **ExitStep.output** supports both `string` (expression) and `Record<string, unknown>` (object literal with resolvable values). The RFC examples use both forms.
 - **Branch steps** (those referenced in conditional then/else) are collected upfront and skipped during sequential execution, only run when selected by a conditional.
 - **`each` iteration** is handled by the runtime, not the executor. The runtime calls the executor once per item with `$item`/`$index` in context.
-- **Step output `source`** uses `$output` to map from the raw executor result. Resolved immediately after dispatch, before storing in context. Per-element mapping in `each` loops.
-- **Workflow output `source`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
-- **Backwards compatibility** — outputs without `source` use legacy key-matching behavior.
+- **Unified `value` field** replaces legacy `source` and `default` on step/workflow inputs and outputs. Strings starting with `$` are auto-detected as expressions; all others are literals. Escape literal `$` with `$$` (e.g., `value: "$$100"` → `"$100"`). Parser normalizes legacy `source`/`default` to `value` via Zod transforms for backwards compatibility.
+- **Step output `value`** uses `$output` to map from the raw executor result. Resolved immediately after dispatch, before storing in context. Per-element mapping in `each` loops.
+- **Workflow output `value`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
+- **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
 
 ## Development Commands
 

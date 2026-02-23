@@ -12,35 +12,83 @@ const schemaTypeEnum = z.enum(['string', 'int', 'float', 'boolean', 'array', 'ob
 // This is sufficient for validation — we don't need infinite depth.
 const nestedFieldSchema = z.object({
   type: schemaTypeEnum,
+  value: z.unknown().optional(),
+  // Backwards compat: accept legacy `default` and normalize to `value`
   default: z.unknown().optional(),
   items: z.record(z.string(), z.unknown()).optional(),
   properties: z.record(z.string(), z.unknown()).optional(),
+}).transform((obj) => {
+  const { default: legacy, ...rest } = obj;
+  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
+  return rest;
 });
 
 export const fieldSchema = z.object({
   type: schemaTypeEnum,
+  value: z.unknown().optional(),
+  // Backwards compat: accept legacy `default` and normalize to `value`
   default: z.unknown().optional(),
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
+}).transform((obj) => {
+  const { default: legacy, ...rest } = obj;
+  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
+  return rest;
 });
 
 // ─── Workflow inputs and outputs ──────────────────────────────────────────────
 
 export const workflowInputSchema = fieldSchema;
 
-export const workflowOutputSchema = fieldSchema.extend({
+// Workflow outputs: accept legacy `source`, normalize to `value`
+const workflowOutputBaseSchema = z.object({
+  type: schemaTypeEnum,
+  value: z.unknown().optional(),
+  default: z.unknown().optional(),
   source: z.string().optional(),
+  items: nestedFieldSchema.optional(),
+  properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
+}).transform((obj) => {
+  const { source, default: legacy, ...rest } = obj;
+  if (rest.value === undefined && source !== undefined) rest.value = source;
+  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
+  return rest;
 });
+export const workflowOutputSchema = workflowOutputBaseSchema;
 
 // ─── Step inputs and outputs ──────────────────────────────────────────────────
 
-export const stepInputSchema = fieldSchema.extend({
+// Step inputs: accept legacy `source`, normalize to `value`
+const stepInputBaseSchema = z.object({
+  type: schemaTypeEnum,
+  value: z.unknown().optional(),
+  default: z.unknown().optional(),
   source: z.string().optional(),
+  items: nestedFieldSchema.optional(),
+  properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
+}).transform((obj) => {
+  const { source, default: legacy, ...rest } = obj;
+  if (rest.value === undefined && source !== undefined) rest.value = source;
+  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
+  return rest;
 });
+export const stepInputSchema = stepInputBaseSchema;
 
-export const stepOutputSchema = fieldSchema.extend({
+// Step outputs: accept legacy `source`, normalize to `value`
+const stepOutputBaseSchema = z.object({
+  type: schemaTypeEnum,
+  value: z.unknown().optional(),
+  default: z.unknown().optional(),
   source: z.string().optional(),
+  items: nestedFieldSchema.optional(),
+  properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
+}).transform((obj) => {
+  const { source, default: legacy, ...rest } = obj;
+  if (rest.value === undefined && source !== undefined) rest.value = source;
+  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
+  return rest;
 });
+export const stepOutputSchema = stepOutputBaseSchema;
 
 // ─── Retry policy ─────────────────────────────────────────────────────────────
 

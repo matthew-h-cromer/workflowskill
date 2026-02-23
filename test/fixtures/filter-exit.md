@@ -9,7 +9,7 @@ description: Transform filter with conditional and early exit.
 inputs:
   threshold:
     type: int
-    default: 7
+    value: 7
 outputs:
   urgent:
     type: array
@@ -30,7 +30,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.fetch.output.items
+        value: $steps.fetch.output.items
     outputs:
       filtered:
         type: array

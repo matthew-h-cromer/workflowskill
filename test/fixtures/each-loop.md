@@ -20,7 +20,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $inputs.items
+        value: $inputs.items
     outputs:
       documents:
         type: array
@@ -36,7 +36,7 @@ steps:
     inputs:
       document:
         type: object
-        source: $item
+        value: $item
     outputs:
       summary:
         type: string

@@ -28,7 +28,7 @@ steps:
     inputs:
       data:
         type: object
-        source: $steps.failing_tool.output.data
+        value: $steps.failing_tool.output.data
     outputs:
       result:
         type: string

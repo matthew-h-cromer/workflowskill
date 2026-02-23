@@ -78,13 +78,13 @@ export function validateWorkflow(
       });
     }
 
-    // Validate $steps references in input sources
+    // Validate $steps references in input values (expressions)
     for (const [inputName, input] of Object.entries(step.inputs)) {
-      if (input.source) {
+      if (typeof input.value === 'string' && input.value.startsWith('$')) {
         validateSourceReference(
-          input.source,
+          input.value,
           step.id,
-          `${path}.inputs.${inputName}.source`,
+          `${path}.inputs.${inputName}.value`,
           stepMap,
           stepOrder,
           branchStepIds,
@@ -155,14 +155,14 @@ export function validateWorkflow(
     }
   }
 
-  // Validate workflow output source references
+  // Validate workflow output value references (expressions)
   for (const [outputName, outputDef] of Object.entries(workflow.outputs)) {
-    if (outputDef.source) {
-      const refs = extractStepReferences(outputDef.source);
+    if (typeof outputDef.value === 'string' && outputDef.value.startsWith('$')) {
+      const refs = extractStepReferences(outputDef.value);
       for (const refId of refs) {
         if (!stepMap.has(refId)) {
           errors.push({
-            path: `outputs.${outputName}.source`,
+            path: `outputs.${outputName}.value`,
             message: `References undefined step "${refId}"`,
           });
         }
@@ -310,8 +310,8 @@ function detectCycles(
 
     // Collect all $steps references from inputs, conditions, each, output
     for (const input of Object.values(step.inputs)) {
-      if (input.source) {
-        for (const ref of extractStepReferences(input.source)) {
+      if (typeof input.value === 'string' && input.value.startsWith('$')) {
+        for (const ref of extractStepReferences(input.value)) {
           stepDeps.add(ref);
         }
       }

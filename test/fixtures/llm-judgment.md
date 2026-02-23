@@ -20,7 +20,7 @@ steps:
     inputs:
       account:
         type: string
-        source: $inputs.account
+        value: $inputs.account
     outputs:
       messages:
         type: array
@@ -36,7 +36,7 @@ steps:
     inputs:
       messages:
         type: array
-        source: $steps.fetch_emails.output.messages
+        value: $steps.fetch_emails.output.messages
     outputs:
       scored:
         type: array

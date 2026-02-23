@@ -20,7 +20,7 @@ steps:
     inputs:
       query:
         type: string
-        source: $inputs.query
+        value: $inputs.query
     outputs:
       results:
         type: array
@@ -32,7 +32,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.fetch.output.results
+        value: $steps.fetch.output.results
     outputs:
       mapped:
         type: array

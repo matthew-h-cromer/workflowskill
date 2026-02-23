@@ -217,7 +217,7 @@ describe('validateWorkflow - reference validation', () => {
           inputs: {
             data: {
               type: 'array',
-              source: '$steps.nonexistent.output.data',
+              value: '$steps.nonexistent.output.data',
             },
           },
           outputs: {},
@@ -242,7 +242,7 @@ describe('validateWorkflow - reference validation', () => {
           inputs: {
             data: {
               type: 'array',
-              source: '$steps.second.output.data',
+              value: '$steps.second.output.data',
             },
           },
           outputs: {},
@@ -327,7 +327,7 @@ describe('validateWorkflow - cycle detection', () => {
           type: 'transform',
           operation: 'map',
           inputs: {
-            data: { type: 'array', source: '$steps.b.output.data' },
+            data: { type: 'array', value: '$steps.b.output.data' },
           },
           outputs: {},
           expression: { value: '$item' },
@@ -337,7 +337,7 @@ describe('validateWorkflow - cycle detection', () => {
           type: 'transform',
           operation: 'map',
           inputs: {
-            data: { type: 'array', source: '$steps.a.output.data' },
+            data: { type: 'array', value: '$steps.a.output.data' },
           },
           outputs: {},
           expression: { value: '$item' },
@@ -357,7 +357,7 @@ describe('validateWorkflow - workflow output source', () => {
     const wf: WorkflowDefinition = {
       inputs: {},
       outputs: {
-        title: { type: 'string', source: '$steps.fetch.output.title' },
+        title: { type: 'string', value: '$steps.fetch.output.title' },
       },
       steps: [
         {
@@ -378,7 +378,7 @@ describe('validateWorkflow - workflow output source', () => {
     const wf: WorkflowDefinition = {
       inputs: {},
       outputs: {
-        title: { type: 'string', source: '$steps.nonexistent.output.title' },
+        title: { type: 'string', value: '$steps.nonexistent.output.title' },
       },
       steps: [
         {
@@ -394,7 +394,7 @@ describe('validateWorkflow - workflow output source', () => {
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e =>
-      e.path === 'outputs.title.source' && e.message.includes('nonexistent'),
+      e.path === 'outputs.title.value' && e.message.includes('nonexistent'),
     )).toBe(true);
   });
 
@@ -441,7 +441,7 @@ describe('validateWorkflow - collects all errors', () => {
           type: 'tool',
           tool: 'missing_tool_2',
           inputs: {
-            data: { type: 'array', source: '$steps.nonexistent.output.data' },
+            data: { type: 'array', value: '$steps.nonexistent.output.data' },
           },
           outputs: {},
         },

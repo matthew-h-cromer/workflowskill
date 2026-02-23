@@ -13,13 +13,13 @@ inputs:
 outputs:
   evaluated:
     type: int
-    source: $steps.fetch_posts.output.posts.length
+    value: $steps.fetch_posts.output.posts.length
   auto_removed:
     type: int
-    source: $steps.filter_high_severity.output.items.length
+    value: $steps.filter_high_severity.output.items.length
   queued_for_review:
     type: int
-    source: $steps.filter_low_severity.output.items.length
+    value: $steps.filter_low_severity.output.items.length
 
 steps:
   - id: fetch_posts
@@ -29,10 +29,10 @@ steps:
     inputs:
       channel_id:
         type: string
-        source: $inputs.channel_id
+        value: $inputs.channel_id
       since:
         type: string
-        default: "1h"
+        value: "1h"
     outputs:
       posts: { type: array }
 
@@ -69,7 +69,7 @@ steps:
     inputs:
       post:
         type: object
-        source: $item
+        value: $item
     outputs:
       post_id: { type: string }
       severity: { type: string }
@@ -83,7 +83,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.evaluate_posts.output
+        value: $steps.evaluate_posts.output
     outputs:
       items: { type: array }
 
@@ -104,7 +104,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       items: { type: array }
 
@@ -115,7 +115,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       items: { type: array }
 
@@ -139,10 +139,10 @@ steps:
     inputs:
       post_id:
         type: string
-        source: $item.post_id
+        value: $item.post_id
       reason:
         type: string
-        source: $item.reason
+        value: $item.reason
     outputs:
       removed: { type: boolean }
 
@@ -153,10 +153,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#moderation-urgent"
+        value: "#moderation-urgent"
       blocks:
         type: array
-        source: $steps.filter_high_severity.output.items
+        value: $steps.filter_high_severity.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
@@ -168,10 +168,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#moderation-log"
+        value: "#moderation-log"
       blocks:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
@@ -185,10 +185,10 @@ steps:
     inputs:
       post_id:
         type: string
-        source: $item.post_id
+        value: $item.post_id
       reason:
         type: string
-        source: $item.reason
+        value: $item.reason
     outputs:
       queued: { type: boolean }
 ```

@@ -9,7 +9,7 @@ description: Simplest workflow - one transform step that passes input to output.
 inputs:
   message:
     type: string
-    default: "hello"
+    value: "hello"
 outputs:
   result:
     type: string
@@ -21,7 +21,7 @@ steps:
     inputs:
       data:
         type: string
-        source: $inputs.message
+        value: $inputs.message
     outputs:
       mapped:
         type: string

@@ -9,8 +9,8 @@ export type SchemaType = 'string' | 'int' | 'float' | 'boolean' | 'array' | 'obj
 /** Schema for a single field (workflow inputs, step inputs/outputs). */
 export interface FieldSchema {
   type: SchemaType;
-  /** Default value for optional fields. */
-  default?: unknown;
+  /** Value: literal or $-expression. Replaces legacy `source`/`default`. */
+  value?: unknown;
   /** For array types: describes element shape. */
   items?: FieldSchema;
   /** For object types: describes property shapes. */
@@ -19,31 +19,19 @@ export interface FieldSchema {
 
 // ─── Workflow inputs and outputs ──────────────────────────────────────────────
 
-/** Workflow-level input parameter declaration. */
-export interface WorkflowInput extends FieldSchema {
-  /** Default value makes this input optional. */
-  default?: unknown;
-}
+/** Workflow-level input parameter declaration. `value` provides default for optional inputs. */
+export type WorkflowInput = FieldSchema;
 
-/** Workflow-level output declaration. */
-export interface WorkflowOutput extends FieldSchema {
-  /** Expression that resolves to the output value from the final runtime context. */
-  source?: string;
-}
+/** Workflow-level output declaration. `value` is an expression resolving to the output from final runtime context. */
+export type WorkflowOutput = FieldSchema;
 
 // ─── Step inputs and outputs ──────────────────────────────────────────────────
 
-/** Step-level input declaration. Includes an expression source for wiring. */
-export interface StepInput extends FieldSchema {
-  /** Expression that resolves to the value at runtime (e.g., $steps.fetch.output.messages). */
-  source?: string;
-}
+/** Step-level input declaration. `value` is either a literal or $-expression resolved at runtime. */
+export type StepInput = FieldSchema;
 
-/** Step-level output declaration. */
-export interface StepOutput extends FieldSchema {
-  /** Expression using $output to map from the raw executor result. */
-  source?: string;
-}
+/** Step-level output declaration. `value` uses $output to map from raw executor result. */
+export type StepOutput = FieldSchema;
 
 // ─── Retry policy ─────────────────────────────────────────────────────────────
 

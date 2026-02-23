@@ -9,15 +9,15 @@ description: Tests step output source mapping with $output and workflow output s
 inputs:
   url:
     type: string
-    default: "https://api.example.com/todos/1"
+    value: "https://api.example.com/todos/1"
 
 outputs:
   title:
     type: string
-    source: $steps.fetch.output.title
+    value: $steps.fetch.output.title
   user_id:
     type: int
-    source: $steps.fetch.output.user_id
+    value: $steps.fetch.output.user_id
 
 steps:
   - id: fetch
@@ -26,12 +26,12 @@ steps:
     inputs:
       url:
         type: string
-        source: $inputs.url
+        value: $inputs.url
     outputs:
       title:
         type: string
-        source: $output.body.title
+        value: $output.body.title
       user_id:
         type: int
-        source: $output.body.userId
+        value: $output.body.userId
 ```

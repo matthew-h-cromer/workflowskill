@@ -204,17 +204,17 @@ description: string
 ````yaml
 ```workflow
 inputs:
-  <name>: { type: string|int|float|boolean|array|object, default: <value> }
+  <name>: { type: string|int|float|boolean|array|object, value: <literal> }
 outputs:
-  <name>: { type: string|int|float|boolean|array|object, source: <expression> }
+  <name>: { type: string|int|float|boolean|array|object, value: <expression> }
 steps:
   - id: string
     type: tool|llm|transform|conditional|exit
     description: string
     inputs:
-      <name>: { type: <type>, source: <expression>, default: <value> }
+      <name>: { type: <type>, value: <expression or literal> }
     outputs:
-      <name>: { type: <type>, source: <expression> }
+      <name>: { type: <type>, value: <expression> }
 
     # Tool fields
     tool: string                    # registered tool name
@@ -285,41 +285,46 @@ Every step declares typed inputs and outputs. This serves three purposes:
 
 **Composability contracts.** When workflow composition is supported (see Future Work), input and output schemas are validated across the boundary between parent and child workflows.
 
-**Step input `source`** — a `$`-expression that resolves from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). This wires data from earlier steps or workflow inputs into the current step.
+**Step input `value`** — a `$`-expression or literal. Strings starting with `$` are auto-detected as expressions and resolved from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). Non-expression values are used as literals. To use a literal string starting with `$`, escape with `$$` (e.g., `value: "$$100"` → `"$100"`).
 
 ```yaml
 inputs:
   messages:
     type: array
     items: { type: object, properties: { from: string, subject: string, body: string } }
-    source: $steps.fetch_emails.output.messages
+    value: $steps.fetch_emails.output.messages
+  method:
+    type: string
+    value: "GET"
 ```
 
-**Step output `source`** — a `$`-expression that resolves against the raw executor result using the `$output` reference. This maps fields from the executor's raw response into named output keys. Outputs without `source` pass through from the raw result by key name (backwards compatible).
+**Step output `value`** — a `$`-expression that resolves against the raw executor result using the `$output` reference. This maps fields from the executor's raw response into named output keys. Outputs without `value` pass through from the raw result by key name (backwards compatible).
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $output.body.title
+    value: $output.body.title
 ```
 
-**Workflow output `source`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
+**Workflow output `value`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $steps.fetch.output.title
+    value: $steps.fetch.output.title
 ```
 
 **Resolution order:**
-1. **Step output `source`**: resolved immediately after the executor returns. A temporary context with `$output` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
-2. **Workflow output `source`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `source` resolution.
+1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$output` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
+2. **Workflow output `value`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `value` resolution.
+
+**Backwards compatibility:** The legacy field names `source` and `default` are accepted at parse time and normalized to `value`. `source` → `value` (for expressions), `default` → `value` (for literals). New workflows should use `value` exclusively.
 
 ### Expression Language
 
-Expressions appear in `condition` guards, `each` fields, input `source` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
+Expressions appear in `condition` guards, `each` fields, input `value` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
 
 **References:**
 
@@ -330,7 +335,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
 | `$item` | The current element when inside an `each` iteration |
 | `$index` | The current index when inside an `each` iteration |
-| `$output` | The raw result of the current step's executor (only valid in step output `source`) |
+| `$output` | The raw result of the current step's executor (only valid in step output `value`) |
 
 **Properties:**
 
@@ -581,8 +586,8 @@ A conformant WorkflowSkill runtime must:
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
-9. Resolve step output `source` expressions using the `$output` reference after each step's executor returns.
-10. Resolve workflow output `source` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
+9. Resolve step output `value` expressions using the `$output` reference after each step's executor returns.
+10. Resolve workflow output `value` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
 
 A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.
 
@@ -601,18 +606,18 @@ Five of the seven steps consume zero tokens. The LLM step uses Haiku for simple 
 inputs:
   max_results:
     type: int
-    default: 20
+    value: 20
   min_score:
     type: int
-    default: 7
+    value: 7
 
 outputs:
   important_count:
     type: int
-    source: $steps.format_briefing.output.items.length
+    value: $steps.format_briefing.output.items.length
   emails:
     type: array
-    source: $steps.format_briefing.output.items
+    value: $steps.format_briefing.output.items
 
 steps:
   - id: fetch_emails
@@ -622,14 +627,14 @@ steps:
     inputs:
       query:
         type: string
-        default: "is:unread newer_than:1d"
+        value: "is:unread newer_than:1d"
       max_results:
         type: int
-        source: $inputs.max_results
+        value: $inputs.max_results
     outputs:
       messages:
         type: array
-        source: $output.messages
+        value: $output.messages
     retry:
       max: 3
       delay: "2s"
@@ -660,7 +665,7 @@ steps:
     inputs:
       email:
         type: object
-        source: $item
+        value: $item
     outputs:
       from: { type: string }
       subject: { type: string }
@@ -675,7 +680,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.score_emails.output
+        value: $steps.score_emails.output
     outputs:
       items: { type: array }
 
@@ -688,7 +693,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_important.output.items
+        value: $steps.filter_important.output.items
     outputs:
       items: { type: array }
 
@@ -713,7 +718,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.sort_by_score.output.items
+        value: $steps.sort_by_score.output.items
     outputs:
       items: { type: array }
 
@@ -724,10 +729,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#daily-briefing"
+        value: "#daily-briefing"
       blocks:
         type: array
-        source: $steps.format_briefing.output.items
+        value: $steps.format_briefing.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
@@ -757,15 +762,15 @@ inputs:
     type: string
   hours:
     type: int
-    default: 24
+    value: 24
 
 outputs:
   count:
     type: int
-    source: $steps.format_report.output.items.length
+    value: $steps.format_report.output.items.length
   deployments:
     type: array
-    source: $steps.format_report.output.items
+    value: $steps.format_report.output.items
 
 steps:
   - id: fetch_deploys
@@ -775,14 +780,14 @@ steps:
     inputs:
       repo:
         type: string
-        source: $inputs.repo
+        value: $inputs.repo
       since:
         type: string
-        default: "24h"
+        value: "24h"
     outputs:
       deployments:
         type: array
-        source: $output.deployments
+        value: $output.deployments
     retry:
       max: 3
       delay: "5s"
@@ -796,7 +801,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.fetch_deploys.output.deployments
+        value: $steps.fetch_deploys.output.deployments
     outputs:
       items: { type: array }
 
@@ -818,7 +823,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_production.output.items
+        value: $steps.filter_production.output.items
     outputs:
       items: { type: array }
 
@@ -835,7 +840,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.sort_recent.output.items
+        value: $steps.sort_recent.output.items
     outputs:
       items: { type: array }
 
@@ -846,10 +851,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#deployments"
+        value: "#deployments"
       blocks:
         type: array
-        source: $steps.format_report.output.items
+        value: $steps.format_report.output.items
     outputs:
       ok: { type: boolean }
 ```
@@ -870,13 +875,13 @@ inputs:
 outputs:
   evaluated:
     type: int
-    source: $steps.fetch_posts.output.posts.length
+    value: $steps.fetch_posts.output.posts.length
   auto_removed:
     type: int
-    source: $steps.filter_high_severity.output.items.length
+    value: $steps.filter_high_severity.output.items.length
   queued_for_review:
     type: int
-    source: $steps.filter_low_severity.output.items.length
+    value: $steps.filter_low_severity.output.items.length
 
 steps:
   - id: fetch_posts
@@ -886,10 +891,10 @@ steps:
     inputs:
       channel_id:
         type: string
-        source: $inputs.channel_id
+        value: $inputs.channel_id
       since:
         type: string
-        default: "1h"
+        value: "1h"
     outputs:
       posts: { type: array }
 
@@ -926,7 +931,7 @@ steps:
     inputs:
       post:
         type: object
-        source: $item
+        value: $item
     outputs:
       post_id: { type: string }
       severity: { type: string }
@@ -940,7 +945,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.evaluate_posts.output
+        value: $steps.evaluate_posts.output
     outputs:
       items: { type: array }
 
@@ -961,7 +966,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       items: { type: array }
 
@@ -972,7 +977,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       items: { type: array }
 
@@ -991,10 +996,10 @@ steps:
     inputs:
       post_id:
         type: string
-        source: $item.post_id
+        value: $item.post_id
       reason:
         type: string
-        source: $item.reason
+        value: $item.reason
     outputs:
       removed: { type: boolean }
 
@@ -1005,10 +1010,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#moderation-urgent"
+        value: "#moderation-urgent"
       blocks:
         type: array
-        source: $steps.filter_high_severity.output.items
+        value: $steps.filter_high_severity.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
@@ -1020,10 +1025,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#moderation-log"
+        value: "#moderation-log"
       blocks:
         type: array
-        source: $steps.filter_violations.output.items
+        value: $steps.filter_violations.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
@@ -1037,10 +1042,10 @@ steps:
     inputs:
       post_id:
         type: string
-        source: $item.post_id
+        value: $item.post_id
       reason:
         type: string
-        source: $item.reason
+        value: $item.reason
     outputs:
       queued: { type: boolean }
 ```

@@ -38,7 +38,7 @@ describe('types', () => {
       id: 'fetch',
       type: 'tool',
       tool: 'gmail_fetch',
-      inputs: { account: { type: 'string', source: '$inputs.account' } },
+      inputs: { account: { type: 'string', value: '$inputs.account' } },
       outputs: { messages: { type: 'array' } },
     };
 
@@ -46,7 +46,7 @@ describe('types', () => {
       id: 'score',
       type: 'llm',
       prompt: 'Score this: $steps.fetch.output.messages',
-      inputs: { messages: { type: 'array', source: '$steps.fetch.output.messages' } },
+      inputs: { messages: { type: 'array', value: '$steps.fetch.output.messages' } },
       outputs: { scored: { type: 'array' } },
     };
 
@@ -55,7 +55,7 @@ describe('types', () => {
       type: 'transform',
       operation: 'filter',
       where: '$item.score >= 7',
-      inputs: { items: { type: 'array', source: '$steps.score.output.scored' } },
+      inputs: { items: { type: 'array', value: '$steps.score.output.scored' } },
       outputs: { filtered: { type: 'array' } },
     };
 
@@ -64,7 +64,7 @@ describe('types', () => {
       type: 'transform',
       operation: 'map',
       expression: { summary: '$item.text' },
-      inputs: { items: { type: 'array', source: '$steps.filter_high.output.filtered' } },
+      inputs: { items: { type: 'array', value: '$steps.filter_high.output.filtered' } },
       outputs: { mapped: { type: 'array' } },
     };
 
@@ -74,7 +74,7 @@ describe('types', () => {
       operation: 'sort',
       field: 'score',
       direction: 'desc',
-      inputs: { items: { type: 'array', source: '$steps.reshape.output.mapped' } },
+      inputs: { items: { type: 'array', value: '$steps.reshape.output.mapped' } },
       outputs: { sorted: { type: 'array' } },
     };
 

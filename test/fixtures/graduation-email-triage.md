@@ -9,18 +9,18 @@ description: RFC Example 1 - Daily email triage with LLM scoring
 inputs:
   max_results:
     type: int
-    default: 20
+    value: 20
   min_score:
     type: int
-    default: 7
+    value: 7
 
 outputs:
   important_count:
     type: int
-    source: $steps.format_briefing.output.items.length
+    value: $steps.format_briefing.output.items.length
   emails:
     type: array
-    source: $steps.format_briefing.output.items
+    value: $steps.format_briefing.output.items
 
 steps:
   - id: fetch_emails
@@ -30,10 +30,10 @@ steps:
     inputs:
       query:
         type: string
-        default: "is:unread newer_than:1d"
+        value: "is:unread newer_than:1d"
       max_results:
         type: int
-        source: $inputs.max_results
+        value: $inputs.max_results
     outputs:
       messages:
         type: array
@@ -67,7 +67,7 @@ steps:
     inputs:
       email:
         type: object
-        source: $item
+        value: $item
     outputs:
       from: { type: string }
       subject: { type: string }
@@ -82,7 +82,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.score_emails.output
+        value: $steps.score_emails.output
     outputs:
       items: { type: array }
 
@@ -95,7 +95,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.filter_important.output.items
+        value: $steps.filter_important.output.items
     outputs:
       items: { type: array }
 
@@ -120,7 +120,7 @@ steps:
     inputs:
       items:
         type: array
-        source: $steps.sort_by_score.output.items
+        value: $steps.sort_by_score.output.items
     outputs:
       items: { type: array }
 
@@ -131,10 +131,10 @@ steps:
     inputs:
       channel:
         type: string
-        default: "#daily-briefing"
+        value: "#daily-briefing"
       blocks:
         type: array
-        source: $steps.format_briefing.output.items
+        value: $steps.format_briefing.output.items
     outputs:
       ok: { type: boolean }
     on_error: ignore
