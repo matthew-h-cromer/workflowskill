@@ -79,7 +79,7 @@ If the user's request is clear enough to proceed directly, skip to Phase 4.
 inputs:                           # object keyed by name — NOT an array
   <name>:
     type: string | int | float | boolean | array | object
-    value: <optional>             # default value for optional inputs
+    default: <optional>           # default value for optional inputs
 
 outputs:                          # object keyed by name — NOT an array
   <name>:
@@ -343,7 +343,7 @@ description: Fetches data and outputs a specific field
 inputs:
   id:
     type: string
-    value: "1"
+    default: "1"
 
 outputs:
   name:

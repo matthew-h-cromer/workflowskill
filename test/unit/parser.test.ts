@@ -250,7 +250,7 @@ steps:
     expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
   });
 
-  it('normalizes legacy default to value (backwards compat)', () => {
+  it('parses default on workflow inputs (canonical field)', () => {
     const yaml = `
 inputs:
   method:
@@ -265,8 +265,25 @@ steps:
     outputs: {}
 `;
     const result = parseWorkflowYaml(yaml);
-    expect(result.inputs.method).toEqual({ type: 'string', value: 'GET' });
+    expect(result.inputs.method).toEqual({ type: 'string', default: 'GET' });
     const step = result.steps[0]!;
     expect(step.inputs.method).toEqual({ type: 'string', value: 'POST' });
+  });
+
+  it('normalizes legacy value to default on workflow inputs (backwards compat)', () => {
+    const yaml = `
+inputs:
+  method:
+    type: string
+    value: "GET"
+steps:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs: {}
+    outputs: {}
+`;
+    const result = parseWorkflowYaml(yaml);
+    expect(result.inputs.method).toEqual({ type: 'string', default: 'GET' });
   });
 });

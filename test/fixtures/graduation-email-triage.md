@@ -9,10 +9,10 @@ description: Example 1 - Daily email triage with LLM scoring
 inputs:
   max_results:
     type: int
-    value: 20
+    default: 20
   min_score:
     type: int
-    value: 7
+    default: 7
 
 outputs:
   important_count:

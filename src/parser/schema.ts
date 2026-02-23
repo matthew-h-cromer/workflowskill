@@ -38,7 +38,19 @@ export const fieldSchema = z.object({
 
 // ─── Workflow inputs and outputs ──────────────────────────────────────────────
 
-export const workflowInputSchema = fieldSchema;
+// Workflow inputs use `default` as canonical field for fallback values.
+// Accepts legacy `value` and normalizes to `default` for backwards compat.
+export const workflowInputSchema = z.object({
+  type: schemaTypeEnum,
+  default: z.unknown().optional(),
+  value: z.unknown().optional(),  // backwards compat → normalize to default
+  items: nestedFieldSchema.optional(),
+  properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
+}).transform((obj) => {
+  const { value: legacy, ...rest } = obj;
+  if (rest.default === undefined && legacy !== undefined) rest.default = legacy;
+  return rest;
+});
 
 // Workflow outputs: accept legacy `source`, normalize to `value`
 const workflowOutputBaseSchema = z.object({

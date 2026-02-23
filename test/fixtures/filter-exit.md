@@ -9,7 +9,7 @@ description: Transform filter with conditional and early exit.
 inputs:
   threshold:
     type: int
-    value: 7
+    default: 7
 outputs:
   urgent:
     type: array

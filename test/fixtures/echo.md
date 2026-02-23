@@ -9,7 +9,7 @@ description: Simplest workflow - one transform step that passes input to output.
 inputs:
   message:
     type: string
-    value: "hello"
+    default: "hello"
 outputs:
   result:
     type: string

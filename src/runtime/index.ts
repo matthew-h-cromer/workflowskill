@@ -555,8 +555,8 @@ function applyDefaults(
 ): Record<string, unknown> {
   const result = { ...provided };
   for (const [key, def] of Object.entries(schema)) {
-    if (!(key in result) && def.value !== undefined) {
-      result[key] = def.value;
+    if (!(key in result) && def.default !== undefined) {
+      result[key] = def.default;
     }
   }
   return result;

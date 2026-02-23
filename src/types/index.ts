@@ -19,8 +19,16 @@ export interface FieldSchema {
 
 // ─── Workflow inputs and outputs ──────────────────────────────────────────────
 
-/** Workflow-level input parameter declaration. `value` provides default for optional inputs. */
-export type WorkflowInput = FieldSchema;
+/** Workflow-level input parameter declaration. `default` provides a fallback for optional inputs, overridable at runtime. */
+export interface WorkflowInput {
+  type: SchemaType;
+  /** Default value for optional inputs. Overridable at runtime. */
+  default?: unknown;
+  /** For array types: describes element shape. */
+  items?: FieldSchema;
+  /** For object types: describes property shapes. */
+  properties?: Record<string, SchemaType | FieldSchema>;
+}
 
 /** Workflow-level output declaration. `value` is an expression resolving to the output from final runtime context. */
 export type WorkflowOutput = FieldSchema;

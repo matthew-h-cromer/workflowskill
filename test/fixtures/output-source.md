@@ -9,7 +9,7 @@ description: Tests step output source mapping with $result and workflow output s
 inputs:
   url:
     type: string
-    value: "https://api.example.com/todos/1"
+    default: "https://api.example.com/todos/1"
 
 outputs:
   title:

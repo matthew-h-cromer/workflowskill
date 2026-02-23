@@ -11,7 +11,7 @@ inputs:
     type: string
   hours:
     type: int
-    value: 24
+    default: 24
 
 outputs:
   count:

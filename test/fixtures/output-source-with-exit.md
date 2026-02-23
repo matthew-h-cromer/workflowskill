@@ -9,7 +9,7 @@ description: Tests that exit output takes precedence over workflow output source
 inputs:
   should_exit:
     type: boolean
-    value: false
+    default: false
 
 outputs:
   message:
