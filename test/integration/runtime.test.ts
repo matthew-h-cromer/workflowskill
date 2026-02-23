@@ -6,6 +6,7 @@ import { runWorkflow } from '../../src/runtime/index.js';
 import { WorkflowExecutionError } from '../../src/runtime/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
+import type { RuntimeEvent } from '../../src/types/index.js';
 
 const FIXTURES = join(import.meta.dirname, '../fixtures');
 
@@ -764,5 +765,313 @@ describe('each-tool-dynamic-url workflow', () => {
         { title: 'Item 303', id: 303 },
       ],
     });
+  });
+});
+
+// ─── Runtime events ──────────────────────────────────────────────────────────
+
+describe('runtime events', () => {
+  it('emits workflow_start and workflow_complete for basic workflow', async () => {
+    const workflow = loadWorkflow('echo');
+    const tools = new MockToolAdapter();
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { message: 'hello' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'echo',
+      onEvent: (e) => events.push(e),
+    });
+
+    const start = events.find((e) => e.type === 'workflow_start');
+    expect(start).toBeDefined();
+    expect(start).toMatchObject({ type: 'workflow_start', workflow: 'echo', totalSteps: 1 });
+
+    const complete = events.find((e) => e.type === 'workflow_complete');
+    expect(complete).toBeDefined();
+    expect(complete).toMatchObject({ type: 'workflow_complete', status: 'success' });
+    if (complete?.type === 'workflow_complete') {
+      expect(typeof complete.duration_ms).toBe('number');
+      expect(complete.summary.steps_executed).toBe(1);
+      expect(complete.summary.steps_skipped).toBe(0);
+    }
+  });
+
+  it('emits step_start and step_complete for each executed step', async () => {
+    const workflow = loadWorkflow('two-step-pipe');
+    const tools = new MockToolAdapter();
+    tools.register('search', (args) => ({
+      output: { results: [{ title: `Result for ${args.query}`, url: 'https://example.com' }] },
+    }));
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { query: 'test' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'two-step-pipe',
+      onEvent: (e) => events.push(e),
+    });
+
+    const stepStarts = events.filter((e) => e.type === 'step_start');
+    const stepCompletes = events.filter((e) => e.type === 'step_complete');
+
+    expect(stepStarts).toHaveLength(2);
+    expect(stepCompletes).toHaveLength(2);
+
+    // fetch step: tool type with tool name
+    const fetchStart = stepStarts.find((e) => e.type === 'step_start' && e.stepId === 'fetch');
+    expect(fetchStart).toMatchObject({ type: 'step_start', stepId: 'fetch', stepType: 'tool', tool: 'search' });
+
+    // reshape step: transform type, no tool
+    const reshapeStart = stepStarts.find((e) => e.type === 'step_start' && e.stepId === 'reshape');
+    expect(reshapeStart).toMatchObject({ type: 'step_start', stepId: 'reshape', stepType: 'transform' });
+    if (reshapeStart?.type === 'step_start') expect(reshapeStart.tool).toBeUndefined();
+
+    // All completes have status 'success'
+    for (const e of stepCompletes) {
+      if (e.type === 'step_complete') {
+        expect(e.status).toBe('success');
+        expect(typeof e.duration_ms).toBe('number');
+      }
+    }
+  });
+
+  it('emits step_skip for guard false', async () => {
+    const workflow = loadWorkflow('branch');
+    const tools = new MockToolAdapter();
+    tools.register('validate', () => ({ output: { valid: true } }));
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { value: 42 },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'branch',
+      onEvent: (e) => events.push(e),
+    });
+
+    const skips = events.filter((e) => e.type === 'step_skip');
+    expect(skips.length).toBeGreaterThan(0);
+
+    // exit_failed should be skipped (branch not selected)
+    const exitFailedSkip = skips.find((e) => e.type === 'step_skip' && e.stepId === 'exit_failed');
+    expect(exitFailedSkip).toBeDefined();
+    if (exitFailedSkip?.type === 'step_skip') {
+      expect(exitFailedSkip.reason).toBe('Branch not selected');
+    }
+  });
+
+  it('emits step_retry on retry attempts', async () => {
+    const workflow = loadWorkflow('retry-backoff');
+    const tools = new MockToolAdapter();
+    let callCount = 0;
+    tools.register('flaky_api', () => {
+      callCount++;
+      if (callCount < 3) return { output: null, error: 'Temporary failure' };
+      return { output: { data: { success: true, attempt: callCount } } };
+    });
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'retry-backoff',
+      onEvent: (e) => events.push(e),
+    });
+
+    const retries = events.filter((e) => e.type === 'step_retry');
+    expect(retries).toHaveLength(2);
+    if (retries[0]?.type === 'step_retry') {
+      expect(retries[0].attempt).toBe(1);
+      expect(retries[0].error).toBe('Temporary failure');
+    }
+    if (retries[1]?.type === 'step_retry') {
+      expect(retries[1].attempt).toBe(2);
+    }
+  }, 10000);
+
+  it('emits step_error with on_error: fail', async () => {
+    const workflow = loadWorkflow('error-fail');
+    const tools = new MockToolAdapter();
+    tools.register('unreliable_api', () => ({ output: null, error: 'Connection refused' }));
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'error-fail',
+      onEvent: (e) => events.push(e),
+    });
+
+    const errorEvent = events.find((e) => e.type === 'step_error');
+    expect(errorEvent).toBeDefined();
+    if (errorEvent?.type === 'step_error') {
+      expect(errorEvent.stepId).toBe('failing_tool');
+      expect(errorEvent.onError).toBe('fail');
+      expect(errorEvent.error).toContain('Connection refused');
+    }
+
+    // step_complete with status 'failed' should follow step_error
+    const failComplete = events.find(
+      (e) => e.type === 'step_complete' && e.stepId === 'failing_tool',
+    );
+    expect(failComplete).toBeDefined();
+    if (failComplete?.type === 'step_complete') {
+      expect(failComplete.status).toBe('failed');
+    }
+  });
+
+  it('emits step_error with on_error: ignore', async () => {
+    const workflow = loadWorkflow('error-ignore');
+    const tools = new MockToolAdapter();
+    tools.register('unreliable_api', () => ({ output: null, error: 'Service unavailable' }));
+    const llm = new MockLLMAdapter();
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'error-ignore',
+      onEvent: (e) => events.push(e),
+    });
+
+    const errorEvent = events.find((e) => e.type === 'step_error');
+    expect(errorEvent).toBeDefined();
+    if (errorEvent?.type === 'step_error') {
+      expect(errorEvent.onError).toBe('ignore');
+    }
+
+    // workflow_complete should still be success (on_error: ignore)
+    const complete = events.find((e) => e.type === 'workflow_complete');
+    expect(complete).toMatchObject({ type: 'workflow_complete', status: 'success' });
+  });
+
+  it('emits each_progress during iteration', async () => {
+    const workflow = loadWorkflow('each-loop');
+    const tools = new MockToolAdapter();
+    tools.register('get_documents', () => ({
+      output: {
+        documents: [
+          { id: 1, content: 'First' },
+          { id: 2, content: 'Second' },
+          { id: 3, content: 'Third' },
+        ],
+      },
+    }));
+    const llm = new MockLLMAdapter((_model, prompt) => ({
+      text: `Summary of: ${prompt.slice(0, 20)}`,
+      tokens: { input: 10, output: 5 },
+    }));
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { items: ['doc1', 'doc2', 'doc3'] },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'each-loop',
+      onEvent: (e) => events.push(e),
+    });
+
+    const progressEvents = events.filter((e) => e.type === 'each_progress' && e.stepId === 'summarize');
+    expect(progressEvents).toHaveLength(3);
+    expect(progressEvents[0]).toMatchObject({ type: 'each_progress', current: 1, total: 3 });
+    expect(progressEvents[1]).toMatchObject({ type: 'each_progress', current: 2, total: 3 });
+    expect(progressEvents[2]).toMatchObject({ type: 'each_progress', current: 3, total: 3 });
+  });
+
+  it('does not crash when onEvent is not provided (backwards compat)', async () => {
+    const workflow = loadWorkflow('echo');
+    const tools = new MockToolAdapter();
+    const llm = new MockLLMAdapter();
+
+    // No onEvent — should run normally without throwing
+    const log = await runWorkflow({
+      workflow,
+      inputs: { message: 'hello' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'echo',
+    });
+
+    expect(log.status).toBe('success');
+  });
+
+  it('includes tokens in step_complete for LLM steps', async () => {
+    const workflow = loadWorkflow('llm-judgment');
+    const tools = new MockToolAdapter();
+    tools.register('gmail_fetch', () => ({
+      output: { messages: [{ from: 'alice@example.com', subject: 'Hi', body: 'Hello' }] },
+    }));
+    const llm = new MockLLMAdapter((_model, _prompt) => ({
+      text: JSON.stringify([{ score: 5, summary: 'Normal email' }]),
+      tokens: { input: 20, output: 10 },
+    }));
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { account: 'test@example.com' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'llm-judgment',
+      onEvent: (e) => events.push(e),
+    });
+
+    const llmComplete = events.find(
+      (e) => e.type === 'step_complete' && e.stepId === 'score',
+    );
+    expect(llmComplete).toBeDefined();
+    if (llmComplete?.type === 'step_complete') {
+      expect(llmComplete.tokens).toEqual({ input: 20, output: 10 });
+    }
+  });
+
+  it('includes iterations in step_complete for each steps', async () => {
+    const workflow = loadWorkflow('each-loop');
+    const tools = new MockToolAdapter();
+    tools.register('get_documents', () => ({
+      output: {
+        documents: [
+          { id: 1, content: 'First' },
+          { id: 2, content: 'Second' },
+        ],
+      },
+    }));
+    const llm = new MockLLMAdapter((_model, _prompt) => ({
+      text: 'summary',
+      tokens: { input: 5, output: 3 },
+    }));
+    const events: RuntimeEvent[] = [];
+
+    await runWorkflow({
+      workflow,
+      inputs: { items: ['doc1', 'doc2'] },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'each-loop',
+      onEvent: (e) => events.push(e),
+    });
+
+    const eachComplete = events.find(
+      (e) => e.type === 'step_complete' && e.stepId === 'summarize',
+    );
+    expect(eachComplete).toBeDefined();
+    if (eachComplete?.type === 'step_complete') {
+      expect(eachComplete.iterations).toBe(2);
+    }
   });
 });

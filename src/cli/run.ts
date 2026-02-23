@@ -10,6 +10,7 @@ import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
 import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
 import { MockToolAdapter } from '../adapters/mock-tool-adapter.js';
 import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
+import { renderRuntimeEvent } from './format.js';
 
 export async function runCommand(
   file: string,
@@ -104,6 +105,7 @@ export async function runCommand(
       toolAdapter,
       llmAdapter,
       workflowName,
+      onEvent: renderRuntimeEvent,
     });
 
     const json = JSON.stringify(log, null, 2);

@@ -76,11 +76,13 @@ test/integration/                # Integration tests (runtime, graduation)
 - **ExitStep.output** supports both `string` (expression) and `Record<string, unknown>` (object literal with resolvable values). The spec examples use both forms.
 - **Branch steps** (those referenced in conditional then/else) are collected upfront and skipped during sequential execution, only run when selected by a conditional.
 - **`each` iteration** is handled by the runtime, not the executor. The runtime calls the executor once per item with `$item`/`$index` in context.
+- **`+` operator** added to the expression language for string concatenation and numeric addition. Precedence: tighter than comparison, looser than unary `!`. Coercion: if either operand is a string, both coerce to string (`null`/`undefined` → `""`). Primary use case: constructing dynamic URLs in `each` + tool patterns (e.g., `$inputs.base_url + $item + ".json"`).
 - **Unified `value` field** on step inputs, step outputs, and workflow outputs. Strings starting with `$` are auto-detected as expressions; all others are literals. Escape literal `$` with `$$` (e.g., `value: "$$100"` → `"$100"`). Parser normalizes legacy `source`/`default` to `value` via Zod transforms for backwards compatibility. **Workflow inputs use `default`** instead of `value` — it's an overridable fallback, not a fixed value. Parser normalizes legacy `value` → `default` on workflow inputs for backwards compat.
 - **Step output `value`** uses `$result` to map from the raw executor result. Resolved immediately after dispatch, before storing in context. Per-element mapping in `each` loops.
 - **Workflow output `value`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
 - **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
 - **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy PR7/PR8 requirements for debugging artifacts.
+- **Runtime events** use the same `onEvent` callback pattern as `ConversationEvent` in the generator. `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
 
 ## Development Commands
 

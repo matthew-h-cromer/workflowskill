@@ -17,6 +17,7 @@ import type {
   TokenUsage,
   ExitStatus,
   ValidationError,
+  RuntimeEvent,
 } from '../types/index.js';
 import { resolveExpression } from '../expression/index.js';
 import { validateWorkflow } from '../validator/index.js';
@@ -39,6 +40,11 @@ function resolveValue(value: unknown, context: RuntimeContext): unknown {
   return value;
 }
 
+/** Emit a runtime event if a callback is registered. */
+function emit(onEvent: ((event: RuntimeEvent) => void) | undefined, event: RuntimeEvent): void {
+  onEvent?.(event);
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export class WorkflowExecutionError extends Error {
@@ -57,6 +63,8 @@ export interface RunOptions {
   toolAdapter: ToolAdapter;
   llmAdapter: LLMAdapter;
   workflowName?: string;
+  /** Optional callback for live progress events during execution. */
+  onEvent?: (event: RuntimeEvent) => void;
 }
 
 /**
@@ -65,6 +73,7 @@ export interface RunOptions {
  * Phase 2: Execute steps in declaration order following the 8-step lifecycle.
  */
 export async function runWorkflow(options: RunOptions): Promise<RunLog> {
+  const { onEvent } = options;
   const startedAt = new Date();
 
   // Phase 1: Validate
@@ -75,6 +84,13 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
       validation.errors,
     );
   }
+
+  const workflowName = options.workflowName ?? 'unnamed';
+  emit(onEvent, {
+    type: 'workflow_start',
+    workflow: workflowName,
+    totalSteps: options.workflow.steps.length,
+  });
 
   // Phase 2: Execute
   const inputs = applyDefaults(options.workflow.inputs, options.inputs ?? {});
@@ -104,6 +120,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
       branchStepIds,
       options.toolAdapter,
       options.llmAdapter,
+      onEvent,
     );
     stepRecords.push(...result.records);
 
@@ -124,11 +141,13 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   const recordedIds = new Set(stepRecords.map((r) => r.id));
   for (const step of options.workflow.steps) {
     if (!recordedIds.has(step.id)) {
+      const reason = branchStepIds.has(step.id) ? 'Branch not selected' : 'Workflow halted';
+      emit(onEvent, { type: 'step_skip', stepId: step.id, reason });
       stepRecords.push({
         id: step.id,
         executor: step.type,
         status: 'skipped',
-        reason: branchStepIds.has(step.id) ? 'Branch not selected' : 'Workflow halted',
+        reason,
         duration_ms: 0,
       });
     }
@@ -150,16 +169,25 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
     if (rec.tokens) totalTokens += rec.tokens.input + rec.tokens.output;
   }
 
+  const summary = {
+    steps_executed: stepsExecuted,
+    steps_skipped: stepsSkipped,
+    total_tokens: totalTokens,
+    total_duration_ms: durationMs,
+  };
+
+  emit(onEvent, {
+    type: 'workflow_complete',
+    status: workflowStatus,
+    duration_ms: durationMs,
+    summary,
+  });
+
   return {
     id: crypto.randomUUID(),
-    workflow: options.workflowName ?? 'unnamed',
+    workflow: workflowName,
     status: workflowStatus,
-    summary: {
-      steps_executed: stepsExecuted,
-      steps_skipped: stepsSkipped,
-      total_tokens: totalTokens,
-      total_duration_ms: durationMs,
-    },
+    summary,
     started_at: startedAt.toISOString(),
     completed_at: completedAt.toISOString(),
     duration_ms: durationMs,
@@ -189,6 +217,7 @@ async function executeStepLifecycle(
   branchStepIds: Set<string>,
   toolAdapter: ToolAdapter,
   llmAdapter: LLMAdapter,
+  onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
   const startTime = performance.now();
   const records: StepRecord[] = [];
@@ -198,6 +227,7 @@ async function executeStepLifecycle(
     const guardResult = resolveExpression(step.condition, context);
     if (!guardResult) {
       context.steps[step.id] = { output: null };
+      emit(onEvent, { type: 'step_skip', stepId: step.id, reason: 'Guard condition evaluated to false' });
       records.push({
         id: step.id,
         executor: step.type,
@@ -208,6 +238,14 @@ async function executeStepLifecycle(
       return { records };
     }
   }
+
+  // step_start: emitted after guard passes, before input resolution
+  emit(onEvent, {
+    type: 'step_start',
+    stepId: step.id,
+    stepType: step.type,
+    tool: step.type === 'tool' ? step.tool : undefined,
+  });
 
   // 2. Resolve inputs
   const resolvedInputs = resolveInputs(step.inputs, context, step.id);
@@ -222,6 +260,7 @@ async function executeStepLifecycle(
       toolAdapter,
       llmAdapter,
       startTime,
+      onEvent,
     );
   }
 
@@ -233,16 +272,19 @@ async function executeStepLifecycle(
       context,
       toolAdapter,
       llmAdapter,
+      onEvent,
     );
 
     // Handle dispatch result by kind
     if (result.kind === 'exit') {
       context.steps[step.id] = { output: result.output };
+      const durationMs = Math.round(performance.now() - startTime);
+      emit(onEvent, { type: 'step_complete', stepId: step.id, status: 'success', duration_ms: durationMs });
       records.push({
         id: step.id,
         executor: 'exit',
         status: 'success',
-        duration_ms: Math.round(performance.now() - startTime),
+        duration_ms: durationMs,
         inputs: resolvedInputs,
         output: result.output,
         retries,
@@ -259,6 +301,7 @@ async function executeStepLifecycle(
         branchStepIds,
         toolAdapter,
         llmAdapter,
+        onEvent,
       );
 
       // Conditional step output = last branch step output
@@ -269,11 +312,13 @@ async function executeStepLifecycle(
       context.steps[step.id] = { output: conditionalOutput };
 
       // Record the conditional step itself
+      const durationMs = Math.round(performance.now() - startTime);
+      emit(onEvent, { type: 'step_complete', stepId: step.id, status: 'success', duration_ms: durationMs });
       records.push({
         id: step.id,
         executor: 'conditional',
         status: 'success',
-        duration_ms: Math.round(performance.now() - startTime),
+        duration_ms: durationMs,
         inputs: resolvedInputs,
         output: conditionalOutput,
         retries,
@@ -291,11 +336,19 @@ async function executeStepLifecycle(
     // Normal output — apply step output source mapping
     const mappedOutput = applyStepOutputMapping(step.outputs, result.output, context);
     context.steps[step.id] = { output: mappedOutput };
+    const durationMs = Math.round(performance.now() - startTime);
+    emit(onEvent, {
+      type: 'step_complete',
+      stepId: step.id,
+      status: 'success',
+      duration_ms: durationMs,
+      tokens: result.tokens,
+    });
     records.push({
       id: step.id,
       executor: step.type,
       status: 'success',
-      duration_ms: Math.round(performance.now() - startTime),
+      duration_ms: durationMs,
       inputs: resolvedInputs,
       output: mappedOutput,
       tokens: result.tokens,
@@ -304,7 +357,7 @@ async function executeStepLifecycle(
     return { records };
   } catch (err) {
     // 6. Handle errors — apply on_error policy
-    return handleStepError(step, err, context, startTime, resolvedInputs);
+    return handleStepError(step, err, context, startTime, resolvedInputs, undefined, onEvent);
   }
 }
 
@@ -318,6 +371,7 @@ async function executeWithEach(
   toolAdapter: ToolAdapter,
   llmAdapter: LLMAdapter,
   startTime: number,
+  onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
   const records: StepRecord[] = [];
 
@@ -328,6 +382,9 @@ async function executeWithEach(
       new StepExecutionError(`each expression must resolve to an array, got ${typeof eachArray}`),
       context,
       startTime,
+      undefined,
+      undefined,
+      onEvent,
     );
   }
 
@@ -351,6 +408,7 @@ async function executeWithEach(
         itemContext,
         toolAdapter,
         llmAdapter,
+        onEvent,
       );
 
       if (retries) {
@@ -369,17 +427,28 @@ async function executeWithEach(
           totalTokens.output += result.tokens.output;
         }
       }
+
+      emit(onEvent, { type: 'each_progress', stepId: step.id, current: i + 1, total: eachArray.length });
     }
   } catch (err) {
-    return handleStepError(step, err, context, startTime, baseResolvedInputs, totalRetries);
+    return handleStepError(step, err, context, startTime, baseResolvedInputs, totalRetries, onEvent);
   }
 
   context.steps[step.id] = { output: results };
+  const durationMs = Math.round(performance.now() - startTime);
+  emit(onEvent, {
+    type: 'step_complete',
+    stepId: step.id,
+    status: 'success',
+    duration_ms: durationMs,
+    tokens: totalTokens,
+    iterations: eachArray.length,
+  });
   records.push({
     id: step.id,
     executor: step.type,
     status: 'success',
-    duration_ms: Math.round(performance.now() - startTime),
+    duration_ms: durationMs,
     inputs: baseResolvedInputs,
     iterations: eachArray.length,
     tokens: totalTokens,
@@ -399,6 +468,7 @@ async function executeBranch(
   branchStepIds: Set<string>,
   toolAdapter: ToolAdapter,
   llmAdapter: LLMAdapter,
+  onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
   const records: StepRecord[] = [];
 
@@ -413,6 +483,7 @@ async function executeBranch(
       branchStepIds,
       toolAdapter,
       llmAdapter,
+      onEvent,
     );
     records.push(...result.records);
 
@@ -441,6 +512,7 @@ async function dispatchWithRetry(
   context: RuntimeContext,
   toolAdapter: ToolAdapter,
   llmAdapter: LLMAdapter,
+  onEvent?: (event: RuntimeEvent) => void,
 ): Promise<RetryDispatchResult> {
   const retryPolicy = 'retry' in step ? step.retry : undefined;
   const maxRetries = retryPolicy?.max ?? 0;
@@ -466,8 +538,10 @@ async function dispatchWithRetry(
         throw err;
       }
 
-      retryErrors.push(err instanceof Error ? err.message : String(err));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      retryErrors.push(errorMessage);
       attempts++;
+      emit(onEvent, { type: 'step_retry', stepId: step.id, attempt: attempts, error: errorMessage });
       const delay = baseDelay * Math.pow(backoff, attempts - 1);
       await sleep(delay);
     }
@@ -488,6 +562,7 @@ function handleStepError(
   startTime: number,
   resolvedInputs?: Record<string, unknown>,
   retries?: RetryRecord,
+  onEvent?: (event: RuntimeEvent) => void,
 ): LifecycleResult {
   // Enrich error message with context (tool name, expression)
   let errorMessage = err instanceof Error ? err.message : String(err);
@@ -510,6 +585,9 @@ function handleStepError(
     error: errorMessage,
     retries: effectiveRetries,
   };
+
+  emit(onEvent, { type: 'step_error', stepId: step.id, error: errorMessage, onError });
+  emit(onEvent, { type: 'step_complete', stepId: step.id, status: 'failed', duration_ms: durationMs });
 
   if (onError === 'ignore') {
     // Log the error, set output to null, continue

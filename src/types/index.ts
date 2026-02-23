@@ -262,6 +262,19 @@ export interface RunLog {
   outputs: Record<string, unknown>;
 }
 
+// ─── Runtime events ───────────────────────────────────────────────────────────
+
+/** Discriminated union of events emitted by the runtime during workflow execution. */
+export type RuntimeEvent =
+  | { type: 'workflow_start'; workflow: string; totalSteps: number }
+  | { type: 'step_start'; stepId: string; stepType: StepType; tool?: string }
+  | { type: 'step_complete'; stepId: string; status: StepRunStatus; duration_ms: number; tokens?: TokenUsage; iterations?: number }
+  | { type: 'step_skip'; stepId: string; reason: string }
+  | { type: 'step_retry'; stepId: string; attempt: number; error: string }
+  | { type: 'step_error'; stepId: string; error: string; onError: OnError }
+  | { type: 'each_progress'; stepId: string; current: number; total: number }
+  | { type: 'workflow_complete'; status: RunStatus; duration_ms: number; summary: RunSummary };
+
 // ─── Adapter interfaces ───────────────────────────────────────────────────────
 
 /** Minimal JSON Schema type for tool parameter/output descriptions. */
