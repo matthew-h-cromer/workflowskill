@@ -24,7 +24,7 @@ export {
   StepExecutionError,
 } from './executor/index.js';
 export type { StepOutput, ConditionalOutput, ExitOutput, StepErrorContext, DispatchResult } from './executor/index.js';
-export { runWorkflow, WorkflowExecutionError } from './runtime/index.js';
+export { runWorkflow, WorkflowExecutionError, buildFailedRunLog } from './runtime/index.js';
 export type { RunOptions } from './runtime/index.js';
 export { generateWorkflow, generateWorkflowConversational } from './generator/index.js';
 export type { GenerateResult, GenerateOptions, ConversationalGenerateOptions } from './generator/index.js';

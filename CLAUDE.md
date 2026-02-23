@@ -83,6 +83,7 @@ test/integration/                # Integration tests (runtime, graduation)
 - **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
 - **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy PR7/PR8 requirements for debugging artifacts.
 - **Runtime events** use the same `onEvent` callback pattern as `ConversationEvent` in the generator. `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
+- **Every run attempt produces a run log** — parse failures, validation failures, and execution failures all produce a structured `RunLog` on stdout and disk. `runWorkflow()` returns a `RunLog` on validation failure (no longer throws `WorkflowExecutionError`). `buildFailedRunLog(name, error, startedAt?)` constructs the minimal log for pre-execution failures. `RunLogError` carries `phase: 'parse' | 'validate' | 'execute'`, `message`, and optional `details`. `WorkflowExecutionError` is kept exported for backwards compatibility but is no longer thrown by `runWorkflow()`.
 
 ## Development Commands
 

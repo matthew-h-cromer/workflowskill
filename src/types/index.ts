@@ -238,6 +238,16 @@ export interface RunSummary {
 /** Final status of a workflow run. */
 export type RunStatus = 'success' | 'failed';
 
+/** Structured error for pre-execution failures (parse or validate phases). */
+export interface RunLogError {
+  /** Which phase the failure occurred in. */
+  phase: 'parse' | 'validate' | 'execute';
+  /** Human-readable error message. */
+  message: string;
+  /** Detailed per-path errors (if available). */
+  details?: Array<{ path: string; message: string }>;
+}
+
 /** The complete run log produced by a workflow execution. */
 export interface RunLog {
   /** Unique run identifier. */
@@ -260,6 +270,8 @@ export interface RunLog {
   steps: StepRecord[];
   /** The workflow outputs that were produced. */
   outputs: Record<string, unknown>;
+  /** Structured error for pre-execution failures. Present only when status is 'failed' due to parse/validate/execute errors. */
+  error?: RunLogError;
 }
 
 // ─── Runtime events ───────────────────────────────────────────────────────────

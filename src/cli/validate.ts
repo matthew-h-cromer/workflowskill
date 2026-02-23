@@ -24,7 +24,7 @@ export function validateCommand(files: string[]): void {
       workflow = parseWorkflowFromMd(content);
     } catch (err) {
       if (err instanceof ParseError) {
-        console.error(`✗ ${file}: Parse errors`);
+        console.error(`✗ ${file}: ${err.message}`);
         for (const detail of err.details) {
           console.error(`    ${detail.path}: ${detail.message}`);
         }

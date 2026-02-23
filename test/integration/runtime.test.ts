@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseWorkflowFromMd } from '../../src/parser/index.js';
-import { runWorkflow } from '../../src/runtime/index.js';
-import { WorkflowExecutionError } from '../../src/runtime/index.js';
+import { runWorkflow, buildFailedRunLog } from '../../src/runtime/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 import type { RuntimeEvent } from '../../src/types/index.js';
@@ -520,7 +519,7 @@ describe('run log structure', () => {
     expect(typeof log.summary.total_duration_ms).toBe('number');
   });
 
-  it('rejects invalid workflow before execution', async () => {
+  it('returns a failed RunLog for invalid workflow (validation phase)', async () => {
     const workflow = {
       inputs: {},
       outputs: {},
@@ -537,13 +536,19 @@ describe('run log structure', () => {
     const tools = new MockToolAdapter(); // missing_tool not registered
     const llm = new MockLLMAdapter();
 
-    await expect(
-      runWorkflow({
-        workflow,
-        toolAdapter: tools,
-        llmAdapter: llm,
-      }),
-    ).rejects.toThrow(WorkflowExecutionError);
+    const log = await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'bad-workflow',
+    });
+
+    expect(log.status).toBe('failed');
+    expect(log.workflow).toBe('bad-workflow');
+    expect(log.steps).toHaveLength(0);
+    expect(log.error).toBeDefined();
+    expect(log.error!.phase).toBe('validate');
+    expect(log.error!.message).toContain('missing_tool');
   });
 });
 
@@ -765,6 +770,52 @@ describe('each-tool-dynamic-url workflow', () => {
         { title: 'Item 303', id: 303 },
       ],
     });
+  });
+});
+
+// ─── buildFailedRunLog ────────────────────────────────────────────────────────
+
+describe('buildFailedRunLog', () => {
+  it('produces a failed RunLog with correct structure for parse phase', () => {
+    const before = new Date();
+    const log = buildFailedRunLog('my-workflow', {
+      phase: 'parse',
+      message: 'YAML syntax error on line 3',
+    });
+
+    expect(log.status).toBe('failed');
+    expect(log.workflow).toBe('my-workflow');
+    expect(log.steps).toHaveLength(0);
+    expect(log.outputs).toEqual({});
+    expect(log.inputs).toEqual({});
+    expect(log.summary.steps_executed).toBe(0);
+    expect(log.summary.steps_skipped).toBe(0);
+    expect(log.summary.total_tokens).toBe(0);
+    expect(log.error).toBeDefined();
+    expect(log.error!.phase).toBe('parse');
+    expect(log.error!.message).toBe('YAML syntax error on line 3');
+    expect(log.error!.details).toBeUndefined();
+    expect(log.id).toBeTruthy();
+    expect(new Date(log.started_at).getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(new Date(log.completed_at).getTime()).toBeGreaterThanOrEqual(new Date(log.started_at).getTime());
+  });
+
+  it('includes details when provided', () => {
+    const log = buildFailedRunLog('my-workflow', {
+      phase: 'validate',
+      message: 'Workflow validation failed: missing tool',
+      details: [{ path: 'steps[0].tool', message: 'Tool "foo" is not registered' }],
+    });
+
+    expect(log.error!.phase).toBe('validate');
+    expect(log.error!.details).toHaveLength(1);
+    expect(log.error!.details![0]!.path).toBe('steps[0].tool');
+  });
+
+  it('uses provided startedAt timestamp', () => {
+    const startedAt = new Date('2024-01-01T00:00:00.000Z');
+    const log = buildFailedRunLog('wf', { phase: 'execute', message: 'crash' }, startedAt);
+    expect(log.started_at).toBe('2024-01-01T00:00:00.000Z');
   });
 });
 

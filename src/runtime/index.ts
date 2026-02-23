@@ -11,6 +11,7 @@ import type {
   ToolAdapter,
   LLMAdapter,
   RunLog,
+  RunLogError,
   RunStatus,
   StepRecord,
   RetryRecord,
@@ -57,6 +58,38 @@ export class WorkflowExecutionError extends Error {
   }
 }
 
+/**
+ * Build a minimal RunLog for a pre-execution failure (parse or validate phase).
+ * Every run attempt — even those that fail before execution begins — produces a structured artifact.
+ */
+export function buildFailedRunLog(
+  workflowName: string,
+  error: RunLogError,
+  startedAt?: Date,
+): RunLog {
+  const now = new Date();
+  const start = startedAt ?? now;
+  const durationMs = now.getTime() - start.getTime();
+  return {
+    id: crypto.randomUUID(),
+    workflow: workflowName,
+    status: 'failed',
+    summary: {
+      steps_executed: 0,
+      steps_skipped: 0,
+      total_tokens: 0,
+      total_duration_ms: durationMs,
+    },
+    started_at: start.toISOString(),
+    completed_at: now.toISOString(),
+    duration_ms: durationMs,
+    inputs: {},
+    steps: [],
+    outputs: {},
+    error,
+  };
+}
+
 export interface RunOptions {
   workflow: WorkflowDefinition;
   inputs?: Record<string, unknown>;
@@ -79,9 +112,15 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   // Phase 1: Validate
   const validation = validateWorkflow(options.workflow, options.toolAdapter);
   if (!validation.valid) {
-    throw new WorkflowExecutionError(
-      `Workflow validation failed: ${validation.errors.map((e) => e.message).join('; ')}`,
-      validation.errors,
+    const message = `Workflow validation failed: ${validation.errors.map((e) => e.message).join('; ')}`;
+    return buildFailedRunLog(
+      options.workflowName ?? 'unnamed',
+      {
+        phase: 'validate',
+        message,
+        details: validation.errors,
+      },
+      startedAt,
     );
   }
 
