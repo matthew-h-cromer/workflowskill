@@ -55,7 +55,7 @@ src/
 │       ├── html-select.ts       # html.select (cheerio)
 │       ├── gmail.ts             # gmail.search, gmail.read, gmail.send
 │       └── sheets.ts            # sheets.read, sheets.write, sheets.append
-├── generator/      # Generate-validate-fix loop for LLM-authored workflows
+├── generator/      # LLM-powered workflow generation (single-shot and conversational)
 │   ├── workflow-author.md  # Skill prompt that teaches LLMs to author workflows
 │   ├── skill-prompt.ts     # Auto-generated TS export of workflow-author.md
 │   └── conversation.ts     # Multi-turn conversational generation loop
@@ -99,7 +99,7 @@ npx tsx src/cli/index.ts generate "<prompt>"
 
 ## Test Suite
 
-**277 tests** across 17 test files:
+**280 tests** across 17 test files:
 
 | File                                      | Tests                                                                                                       | What It Covers |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------- |
@@ -108,11 +108,11 @@ npx tsx src/cli/index.ts generate "<prompt>"
 | `test/unit/expression.test.ts`            | Lexer, parser, evaluator, prompt interpolation, $output reference                                           |
 | `test/unit/validator.test.ts`             | DAG cycles, type mismatches, missing tools, structural correctness, workflow output source refs             |
 | `test/unit/executor.test.ts`              | All 5 executor types: transform, conditional, exit, tool, llm                                               |
-| `test/unit/generator.test.ts`             | Generate-validate-fix loop, retry on failure, raw YAML wrapping, toolDescriptors, conversational generation |
-| `test/unit/conversation.test.ts`          | Conversation loop: direct generation, multi-turn, tool use, validation retries, abort, max turns            |
+| `test/unit/generator.test.ts`             | Single-shot generation, validation failure reporting, toolDescriptors, conversational generation (no local tools) |
+| `test/unit/conversation.test.ts`          | Conversation loop: direct generation, multi-turn, pause_turn, server_tool passthrough, invalid workflow confirmation, user iteration, abort, max turns |
 | `test/unit/adapters.test.ts`              | MockToolAdapter: register, list, has, invoke. MockLLMAdapter: converse delegation, conversation handler     |
 | `test/unit/config.test.ts`                | loadConfig: env vars, .env fallback, precedence, quote stripping                                            |
-| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, response mapping, responseFormat                                      |
+| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, response mapping, responseFormat, server-side tools, pause_turn       |
 | `test/unit/http-request.test.ts`          | http.request tool: GET/POST, headers, errors, timeout                                                       |
 | `test/unit/html-select.test.ts`           | html.select tool: CSS selectors, attributes, limit                                                          |
 | `test/unit/gmail.test.ts`                 | Gmail tools: search, read (body decoding), send, error handling                                             |
@@ -136,13 +136,13 @@ malformed-bad-schema, malformed-bad-yaml, malformed-no-block, malformed-no-front
 
 All public types and functions are re-exported from the package entry point:
 
-- **Types:** All interfaces from `src/types/` (WorkflowDefinition, Step variants, RunLog, JsonSchema, ToolDescriptor, etc.)
+- **Types:** All interfaces from `src/types/` (WorkflowDefinition, Step variants, RunLog, JsonSchema, ToolDescriptor, ServerToolContent, etc.)
 - **Parser:** `parseSkillMd`, `parseWorkflowYaml`, `parseWorkflowFromMd`, `ParseError`
 - **Expression:** `resolveExpression`, `interpolatePrompt`, `LexError`, `ParseExprError`, `EvalError`
 - **Validator:** `validateWorkflow`
 - **Executors:** `dispatch`, `executeTransform`, `executeConditional`, `executeExit`, `executeTool`, `executeLLM`, `StepExecutionError`
 - **Runtime:** `runWorkflow`, `WorkflowExecutionError`
-- **Generator:** `generateWorkflow` (single-shot), `generateWorkflowConversational` (multi-turn), `conversationalGenerate` (low-level loop)
+- **Generator:** `generateWorkflow` (single-shot generate + validate), `generateWorkflowConversational` (multi-turn), `conversationalGenerate` (low-level loop)
 - **Adapters:** `MockToolAdapter`, `MockLLMAdapter`, `AnthropicLLMAdapter`, `BuiltinToolAdapter`
 - **Config:** `loadConfig` (env vars + `.env` fallback)
 
@@ -178,7 +178,8 @@ The RFC at `rfc-workflowskill.md` defines every type, field, constraint, and run
 - Error messages include context: which step failed, what expression was invalid, expected vs. actual type
 - The `ToolAdapter` interface is the integration boundary: `invoke(toolName, args) → Promise<unknown>`, `has(name) → boolean`, optional `list() → ToolDescriptor[]`
 - The `LLMAdapter` interface: `call(model, prompt) → Promise<{ text, tokens }>`
-- The `ConversationalLLMAdapter` extends `LLMAdapter` with `converse(model, system, messages, tools?) → Promise<ConversationResult>`
+- The `ConversationalLLMAdapter` extends `LLMAdapter` with `converse(model, system, messages) → Promise<ConversationResult>`
+- **Server-side tools** (web_search, web_fetch) are configured in the `AnthropicLLMAdapter` — the generator conversation does NOT pass local tools to the API. Server-side tool response blocks are passed through as opaque `ServerToolContent` in conversation history.
 
 ## Credential Configuration
 
