@@ -3,11 +3,8 @@ import { conversationalGenerate } from '../../src/generator/conversation.js';
 import type { ConversationEvent } from '../../src/generator/conversation.js';
 import type {
   ConversationalLLMAdapter,
-  ConversationMessage,
   ConversationResult,
-  ConversationContent,
 } from '../../src/types/index.js';
-import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
 
 // Valid workflow SKILL.md content for testing
 const VALID_WORKFLOW = `---
@@ -58,14 +55,6 @@ function textResult(text: string): ConversationResult {
   };
 }
 
-function toolUseResult(id: string, name: string, input: Record<string, unknown>): ConversationResult {
-  return {
-    content: [{ type: 'tool_use', id, name, input }],
-    stopReason: 'tool_use',
-    tokens: { input: 10, output: 10 },
-  };
-}
-
 describe('conversationalGenerate', () => {
   it('generates workflow directly when LLM responds with frontmatter', async () => {
     const adapter = makeAdapter([textResult(VALID_WORKFLOW)]);
@@ -75,7 +64,7 @@ describe('conversationalGenerate', () => {
       initialPrompt: 'make a workflow',
       systemPrompt: 'You are a workflow author.',
       llmAdapter: adapter,
-      getUserInput: async () => null,
+      getUserInput: async () => '',  // Accept at confirmation
       onEvent: (e) => events.push(e),
       validateGenerated: () => ({ valid: true, errors: [] }),
     });
@@ -83,6 +72,7 @@ describe('conversationalGenerate', () => {
     expect(result.valid).toBe(true);
     expect(result.content).toContain('test-workflow');
     expect(events.some((e) => e.type === 'generating')).toBe(true);
+    expect(events.some((e) => e.type === 'workflow_generated')).toBe(true);
   });
 
   it('asks user and continues conversation before generating', async () => {
@@ -91,7 +81,7 @@ describe('conversationalGenerate', () => {
       textResult(VALID_WORKFLOW),
     ]);
     const events: ConversationEvent[] = [];
-    const userInputs = ['weather data'];
+    const userInputs = ['weather data', ''];  // Answer question, then accept
     let inputIndex = 0;
 
     const result = await conversationalGenerate({
@@ -109,37 +99,117 @@ describe('conversationalGenerate', () => {
     expect(adapter.converse).toHaveBeenCalledTimes(2);
   });
 
-  it('handles tool use during conversation', async () => {
+  it('handles pause_turn by continuing the loop without user input', async () => {
+    // First response: pause_turn (server-side tool still running)
+    // Second response: the actual result
+    const pauseResponse: ConversationResult = {
+      content: [
+        { type: 'server_tool', raw: { type: 'server_tool_use', name: 'web_search', input: { query: 'test' } } },
+      ],
+      stopReason: 'pause_turn',
+      tokens: { input: 10, output: 10 },
+    };
+
     const adapter = makeAdapter([
-      toolUseResult('call_1', 'http.request', { url: 'https://example.com' }),
+      pauseResponse,
       textResult(VALID_WORKFLOW),
     ]);
     const events: ConversationEvent[] = [];
-
-    const toolAdapter = new MockToolAdapter();
-    toolAdapter.register('http.request', () => ({
-      output: { status: 200, body: 'ok' },
-    }));
+    const getUserInput = vi.fn(async () => '');  // Accept at confirmation
 
     const result = await conversationalGenerate({
-      initialPrompt: 'fetch from an API',
+      initialPrompt: 'make a workflow',
       systemPrompt: 'You are a workflow author.',
       llmAdapter: adapter,
-      toolAdapter,
-      getUserInput: async () => null,
+      getUserInput,
       onEvent: (e) => events.push(e),
       validateGenerated: () => ({ valid: true, errors: [] }),
     });
 
     expect(result.valid).toBe(true);
-    expect(events.some((e) => e.type === 'tool_call')).toBe(true);
-    expect(events.some((e) => e.type === 'tool_result')).toBe(true);
+    // getUserInput should be called once — only for confirmation (not during pause_turn)
+    expect(getUserInput).toHaveBeenCalledTimes(1);
+    // Adapter should be called twice (pause + final)
+    expect(adapter.converse).toHaveBeenCalledTimes(2);
   });
 
-  it('reports error for unavailable tools', async () => {
+  it('passes server_tool content through in conversation history', async () => {
+    const serverToolBlock = {
+      type: 'server_tool' as const,
+      raw: { type: 'server_tool_use', name: 'web_search', id: 'srvtoolu_123', input: { query: 'api docs' } },
+    };
+    const searchResultBlock = {
+      type: 'server_tool' as const,
+      raw: { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_123', content: [{ title: 'result', url: 'https://example.com' }] },
+    };
+
     const adapter = makeAdapter([
-      toolUseResult('call_1', 'missing.tool', {}),
+      // First turn: LLM uses server-side tool, then produces text
+      {
+        content: [
+          serverToolBlock,
+          searchResultBlock,
+          { type: 'text', text: 'I found some info. What format do you want?' },
+        ],
+        stopReason: 'end_turn',
+        tokens: { input: 20, output: 20 },
+      },
       textResult(VALID_WORKFLOW),
+    ]);
+
+    const userInputs = ['JSON format', ''];  // Answer question, then accept
+    let inputIndex = 0;
+
+    const result = await conversationalGenerate({
+      initialPrompt: 'research an API',
+      systemPrompt: 'test',
+      llmAdapter: adapter,
+      getUserInput: async () => userInputs[inputIndex++] ?? null,
+      onEvent: () => {},
+      validateGenerated: () => ({ valid: true, errors: [] }),
+    });
+
+    expect(result.valid).toBe(true);
+    // Verify the second call includes the server_tool blocks in history
+    const secondCallMessages = (adapter.converse as ReturnType<typeof vi.fn>).mock.calls[1]![2] as Array<{ role: string; content: unknown }>;
+    const assistantMsg = secondCallMessages.find((m) => m.role === 'assistant');
+    expect(assistantMsg).toBeDefined();
+    // The assistant message should contain server_tool blocks
+    const contentBlocks = assistantMsg!.content as Array<{ type: string }>;
+    const serverBlocks = contentBlocks.filter((b) => b.type === 'server_tool');
+    expect(serverBlocks).toHaveLength(2);
+  });
+
+  it('emits tool events for server-side tool blocks', async () => {
+    const adapter = makeAdapter([
+      {
+        content: [
+          { type: 'server_tool', raw: { type: 'server_tool_use', name: 'web_search', input: { query: 'test' } } },
+          { type: 'server_tool', raw: { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [] } },
+          { type: 'text', text: VALID_WORKFLOW },
+        ],
+        stopReason: 'end_turn',
+        tokens: { input: 10, output: 10 },
+      },
+    ]);
+    const events: ConversationEvent[] = [];
+
+    await conversationalGenerate({
+      initialPrompt: 'test',
+      systemPrompt: 'test',
+      llmAdapter: adapter,
+      getUserInput: async () => '',  // Accept at confirmation
+      onEvent: (e) => events.push(e),
+      validateGenerated: () => ({ valid: true, errors: [] }),
+    });
+
+    expect(events.some((e) => e.type === 'tool_call' && e.name === 'web_search')).toBe(true);
+    expect(events.some((e) => e.type === 'tool_result' && e.name === 'web_search')).toBe(true);
+  });
+
+  it('emits workflow_generated with errors when validation fails', async () => {
+    const adapter = makeAdapter([
+      textResult('---\nbad\n---\n```workflow\n```'),
     ]);
     const events: ConversationEvent[] = [];
 
@@ -147,66 +217,53 @@ describe('conversationalGenerate', () => {
       initialPrompt: 'test',
       systemPrompt: 'test',
       llmAdapter: adapter,
-      getUserInput: async () => null,
+      getUserInput: async () => '',  // Accept at confirmation
       onEvent: (e) => events.push(e),
-      validateGenerated: () => ({ valid: true, errors: [] }),
+      validateGenerated: () => ({ valid: false, errors: ['missing steps'] }),
     });
 
-    expect(result.valid).toBe(true);
-    const toolResultEvent = events.find(
-      (e) => e.type === 'tool_result' && e.isError,
-    );
-    expect(toolResultEvent).toBeDefined();
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('missing steps');
+    expect(result.attempts).toBe(1);
+    // workflow_generated event should carry the errors
+    const wfEvent = events.find((e) => e.type === 'workflow_generated');
+    expect(wfEvent).toBeDefined();
+    expect(wfEvent!.type === 'workflow_generated' && wfEvent!.valid).toBe(false);
+    expect(wfEvent!.type === 'workflow_generated' && wfEvent!.errors).toContain('missing steps');
   });
 
-  it('retries on validation failure up to maxFixAttempts', async () => {
+  it('iterates on invalid workflow when user provides feedback', async () => {
     const adapter = makeAdapter([
-      textResult('---\ninvalid workflow'),
-      textResult('---\nstill invalid'),
+      textResult('---\nbad\n---\n```workflow\n```'),
       textResult(VALID_WORKFLOW),
     ]);
+    const events: ConversationEvent[] = [];
     let validateCount = 0;
+    const userInputs = ['Please fix the errors', ''];  // Feedback, then accept
+    let inputIndex = 0;
 
     const result = await conversationalGenerate({
       initialPrompt: 'test',
       systemPrompt: 'test',
       llmAdapter: adapter,
-      getUserInput: async () => null,
-      onEvent: () => {},
-      maxFixAttempts: 3,
+      getUserInput: async () => userInputs[inputIndex++] ?? null,
+      onEvent: (e) => events.push(e),
       validateGenerated: () => {
         validateCount++;
-        if (validateCount <= 2) {
-          return { valid: false, errors: ['some error'] };
+        if (validateCount <= 1) {
+          return { valid: false, errors: ['missing steps'] };
         }
         return { valid: true, errors: [] };
       },
     });
 
     expect(result.valid).toBe(true);
-    expect(result.attempts).toBe(3);
-  });
-
-  it('returns errors when max fix attempts exhausted', async () => {
-    const adapter = makeAdapter([
-      textResult('---\nbad'),
-      textResult('---\nstill bad'),
-      textResult('---\nstill bad'),
-    ]);
-
-    const result = await conversationalGenerate({
-      initialPrompt: 'test',
-      systemPrompt: 'test',
-      llmAdapter: adapter,
-      getUserInput: async () => null,
-      onEvent: () => {},
-      maxFixAttempts: 2,
-      validateGenerated: () => ({ valid: false, errors: ['parse error'] }),
-    });
-
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('parse error');
     expect(result.attempts).toBe(2);
+    // Two workflow_generated events: first invalid, second valid
+    const wfEvents = events.filter((e) => e.type === 'workflow_generated');
+    expect(wfEvents).toHaveLength(2);
+    expect(wfEvents[0]!.type === 'workflow_generated' && wfEvents[0]!.valid).toBe(false);
+    expect(wfEvents[1]!.type === 'workflow_generated' && wfEvents[1]!.valid).toBe(true);
   });
 
   it('aborts when user returns null', async () => {
@@ -249,92 +306,73 @@ describe('conversationalGenerate', () => {
     expect(result.errors).toContain('Maximum conversation turns exceeded');
   });
 
-  it('passes conversation tools to converse()', async () => {
+  it('does not pass tools argument to converse()', async () => {
     const adapter = makeAdapter([textResult(VALID_WORKFLOW)]);
-    const tools = [
-      { name: 'http.request', description: 'Make HTTP requests', inputSchema: { type: 'object' } },
-    ];
 
     await conversationalGenerate({
       initialPrompt: 'test',
       systemPrompt: 'test',
       llmAdapter: adapter,
-      conversationTools: tools,
-      getUserInput: async () => null,
+      getUserInput: async () => '',  // Accept at confirmation
       onEvent: () => {},
       validateGenerated: () => ({ valid: true, errors: [] }),
     });
 
+    // converse() should be called with exactly 3 args (model, system, messages)
     expect(adapter.converse).toHaveBeenCalledWith(
       undefined,
       'test',
       expect.any(Array),
-      tools,
     );
   });
 
-  it('appends tool results to conversation history', async () => {
+  it('iterates when user provides feedback after valid generation', async () => {
+    const REVISED_WORKFLOW = VALID_WORKFLOW.replace('test-workflow', 'revised-workflow');
     const adapter = makeAdapter([
-      toolUseResult('call_1', 'http.request', { url: 'https://example.com' }),
       textResult(VALID_WORKFLOW),
-    ]);
-
-    const toolAdapter = new MockToolAdapter();
-    toolAdapter.register('http.request', () => ({
-      output: { status: 200 },
-    }));
-
-    await conversationalGenerate({
-      initialPrompt: 'test',
-      systemPrompt: 'test',
-      llmAdapter: adapter,
-      toolAdapter,
-      getUserInput: async () => null,
-      onEvent: () => {},
-      validateGenerated: () => ({ valid: true, errors: [] }),
-    });
-
-    // Second call should include tool result in messages
-    const secondCallMessages = (adapter.converse as ReturnType<typeof vi.fn>).mock.calls[1]![2] as ConversationMessage[];
-    const toolResultMsg = secondCallMessages.find(
-      (m) => m.role === 'user' && Array.isArray(m.content),
-    );
-    expect(toolResultMsg).toBeDefined();
-    const toolResultBlock = (toolResultMsg!.content as ConversationContent[]).find(
-      (b) => b.type === 'tool_result',
-    );
-    expect(toolResultBlock).toBeDefined();
-  });
-
-  it('handles tool adapter errors gracefully', async () => {
-    const adapter = makeAdapter([
-      toolUseResult('call_1', 'http.request', { url: 'https://example.com' }),
-      textResult(VALID_WORKFLOW),
+      textResult(REVISED_WORKFLOW),
     ]);
     const events: ConversationEvent[] = [];
-
-    const toolAdapter = new MockToolAdapter();
-    toolAdapter.register('http.request', () => {
-      throw new Error('Network timeout');
-    });
+    const userInputs = ['Add error handling', ''];  // Feedback, then accept
+    let inputIndex = 0;
 
     const result = await conversationalGenerate({
-      initialPrompt: 'test',
+      initialPrompt: 'make a workflow',
       systemPrompt: 'test',
       llmAdapter: adapter,
-      toolAdapter,
-      getUserInput: async () => null,
+      getUserInput: async () => userInputs[inputIndex++] ?? null,
       onEvent: (e) => events.push(e),
       validateGenerated: () => ({ valid: true, errors: [] }),
     });
 
     expect(result.valid).toBe(true);
-    const errorEvent = events.find(
-      (e) => e.type === 'tool_result' && e.isError,
-    );
-    expect(errorEvent).toBeDefined();
-    if (errorEvent?.type === 'tool_result') {
-      expect(errorEvent.output).toContain('Network timeout');
-    }
+    expect(result.content).toContain('revised-workflow');
+    // Adapter called twice: initial generation + iteration
+    expect(adapter.converse).toHaveBeenCalledTimes(2);
+    // Two workflow_generated events emitted
+    const wfEvents = events.filter((e) => e.type === 'workflow_generated');
+    expect(wfEvents).toHaveLength(2);
+  });
+
+  it('extracts workflow preceded by commentary text', async () => {
+    const textWithCommentary = `Here's the workflow I created for you:\n\n${VALID_WORKFLOW}`;
+    const adapter = makeAdapter([textResult(textWithCommentary)]);
+    const events: ConversationEvent[] = [];
+
+    const result = await conversationalGenerate({
+      initialPrompt: 'make a workflow',
+      systemPrompt: 'test',
+      llmAdapter: adapter,
+      getUserInput: async () => '',  // Accept at confirmation
+      onEvent: (e) => events.push(e),
+      validateGenerated: () => ({ valid: true, errors: [] }),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.content).toContain('test-workflow');
+    // Commentary should be emitted as assistant_message
+    const msgEvents = events.filter((e) => e.type === 'assistant_message');
+    expect(msgEvents).toHaveLength(1);
+    expect(msgEvents[0]!.type === 'assistant_message' && msgEvents[0]!.text).toContain("Here's the workflow");
   });
 });

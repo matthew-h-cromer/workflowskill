@@ -1,14 +1,11 @@
 // Workflow generator — generates WorkflowSkill YAML from natural language descriptions.
 // Uses an LLM adapter with the authoring skill prompt to produce valid YAML,
-// then validates with a parse-validate-fix loop.
+// then validates the result.
 
 import type {
   LLMAdapter,
-  ToolAdapter,
   ToolDescriptor,
   ConversationalLLMAdapter,
-  ConversationTool,
-  JsonSchema,
 } from '../types/index.js';
 import { parseWorkflowFromMd, ParseError } from '../parser/index.js';
 import { validateWorkflow } from '../validator/index.js';
@@ -33,8 +30,6 @@ export interface GenerateOptions {
   prompt: string;
   /** LLM adapter for generation. */
   llmAdapter: LLMAdapter;
-  /** Maximum generation + fix attempts. */
-  maxAttempts?: number;
   /** @deprecated Use `toolDescriptors` for rich tool metadata. */
   availableTools?: string[];
   /** Tool descriptors with name, description, and parameter schemas. */
@@ -47,9 +42,7 @@ export interface ConversationalGenerateOptions {
   prompt: string;
   /** LLM adapter with converse() support. */
   llmAdapter: ConversationalLLMAdapter;
-  /** Tool adapter for executing tool calls during conversation (read-only tools only). */
-  toolAdapter?: ToolAdapter;
-  /** Tool descriptors for the system prompt. */
+  /** Tool descriptors for the system prompt (so LLM knows what workflow tools are available). */
   toolDescriptors?: ToolDescriptor[];
   /** Callback to get user input. Return null to abort. */
   getUserInput: () => Promise<string | null>;
@@ -59,60 +52,24 @@ export interface ConversationalGenerateOptions {
   model?: string;
   /** Maximum conversation turns (default: 20). */
   maxTurns?: number;
-  /** Maximum fix attempts on validation failure (default: 3). */
-  maxFixAttempts?: number;
 }
-
-// Read-only tools that are safe to use during conversation research
-const READ_ONLY_TOOLS = new Set([
-  'http.request',
-  'html.select',
-  'gmail.search',
-  'gmail.read',
-  'sheets.read',
-]);
 
 /**
  * Generate a WorkflowSkill YAML from a natural language prompt.
- * Uses a generate-validate-fix loop: if the first attempt has validation errors,
- * the LLM is asked to fix them (up to maxAttempts times).
+ * Generates once, validates, and returns the result.
  */
 export async function generateWorkflow(options: GenerateOptions): Promise<GenerateResult> {
-  const maxAttempts = options.maxAttempts ?? 3;
   const systemPrompt = buildSystemPrompt(options.availableTools, options.toolDescriptors);
 
-  let lastContent = '';
-  let lastErrors: string[] = [];
+  const result = await options.llmAdapter.call(undefined, `${systemPrompt}\n\nUser request: ${options.prompt}`);
+  const content = extractWorkflowContent(result.text);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const userPrompt = attempt === 1
-      ? options.prompt
-      : buildFixPrompt(lastContent, lastErrors, options.prompt);
-
-    const result = await options.llmAdapter.call(undefined, `${systemPrompt}\n\nUser request: ${userPrompt}`);
-    const content = extractWorkflowContent(result.text);
-    lastContent = content;
-
-    // Validate
-    const validation = validateGenerated(content);
-    if (validation.valid) {
-      return {
-        content,
-        valid: true,
-        errors: [],
-        attempts: attempt,
-      };
-    }
-
-    lastErrors = validation.errors;
-  }
-
-  // Return last attempt with errors
+  const validation = validateGenerated(content);
   return {
-    content: lastContent,
-    valid: false,
-    errors: lastErrors,
-    attempts: maxAttempts,
+    content,
+    valid: validation.valid,
+    errors: validation.errors,
+    attempts: 1,
   };
 }
 
@@ -126,20 +83,14 @@ export async function generateWorkflowConversational(
 ): Promise<GenerateResult> {
   const systemPrompt = buildSystemPrompt(undefined, options.toolDescriptors);
 
-  // Build conversation tools from tool descriptors (read-only only)
-  const conversationTools = buildConversationTools(options.toolDescriptors);
-
   return conversationalGenerate({
     initialPrompt: options.prompt,
     systemPrompt,
     llmAdapter: options.llmAdapter,
-    toolAdapter: options.toolAdapter,
-    conversationTools,
     getUserInput: options.getUserInput,
     onEvent: options.onEvent,
     model: options.model,
     maxTurns: options.maxTurns,
-    maxFixAttempts: options.maxFixAttempts,
     validateGenerated,
   });
 }
@@ -226,43 +177,6 @@ export function validateGenerated(content: string): { valid: boolean; errors: st
   }
 
   return { valid: errors.length === 0, errors };
-}
-
-/**
- * Build conversation tools from tool descriptors, filtered to read-only tools only.
- */
-function buildConversationTools(toolDescriptors?: ToolDescriptor[]): ConversationTool[] | undefined {
-  if (!toolDescriptors || toolDescriptors.length === 0) return undefined;
-
-  const tools: ConversationTool[] = [];
-  for (const desc of toolDescriptors) {
-    if (!READ_ONLY_TOOLS.has(desc.name)) continue;
-    tools.push({
-      name: desc.name,
-      description: desc.description,
-      inputSchema: desc.inputSchema ?? ({ type: 'object' } as JsonSchema),
-    });
-  }
-
-  return tools.length > 0 ? tools : undefined;
-}
-
-/**
- * Build a fix prompt when validation fails.
- */
-function buildFixPrompt(
-  previousContent: string,
-  errors: string[],
-  originalPrompt: string,
-): string {
-  return `The previous attempt to generate a workflow for "${originalPrompt}" had validation errors:
-
-${errors.map((e) => `- ${e}`).join('\n')}
-
-Previous output:
-${previousContent}
-
-Please fix the errors and regenerate a valid WorkflowSkill YAML.`;
 }
 
 /**

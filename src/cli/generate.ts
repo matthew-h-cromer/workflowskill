@@ -33,6 +33,7 @@ async function generateCommandInteractive(
 ): Promise<void> {
   const config = loadConfig();
   const llmAdapter = new AnthropicLLMAdapter(apiKey);
+  // Create tool adapter only for descriptors (so LLM knows what workflow tools exist)
   const toolAdapter = await BuiltinToolAdapter.create(config);
   const toolDescriptors = toolAdapter.list();
 
@@ -52,6 +53,8 @@ async function generateCommandInteractive(
       });
     });
   };
+
+  let fileWritten = false;
 
   const onEvent = (event: ConversationEvent): void => {
     switch (event.type) {
@@ -75,6 +78,24 @@ async function generateCommandInteractive(
       case 'generating':
         console.error('[generating workflow...]');
         break;
+      case 'workflow_generated':
+        if (options.output) {
+          try {
+            writeFileSync(options.output, event.content, 'utf-8');
+            fileWritten = true;
+            console.error(`Workflow written to ${options.output}`);
+            if (!event.valid) {
+              console.error('Warning: Generated workflow has validation errors:');
+              for (const err of event.errors) {
+                console.error(`  ${err}`);
+              }
+            }
+            console.error('Press Enter to accept, or type feedback to iterate:');
+          } catch {
+            console.error(`Error: Cannot write to "${options.output}"`);
+          }
+        }
+        break;
     }
   };
 
@@ -82,14 +103,18 @@ async function generateCommandInteractive(
     const result = await generateWorkflowConversational({
       prompt,
       llmAdapter,
-      toolAdapter,
       toolDescriptors,
       getUserInput,
       onEvent,
     });
 
     rl.close();
-    outputResult(result.content, result.valid, result.errors, options);
+    // Skip file write if workflow_generated event already wrote the file
+    if (fileWritten && result.valid) {
+      console.log(`Workflow accepted: ${options.output}`);
+    } else {
+      outputResult(result.content, result.valid, result.errors, options);
+    }
   } catch (err) {
     rl.close();
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -123,7 +148,6 @@ async function generateCommandSingleShot(
     prompt,
     llmAdapter,
     toolDescriptors,
-    maxAttempts: config.anthropicApiKey ? 3 : 1,
   });
 
   outputResult(result.content, result.valid, result.errors, options);

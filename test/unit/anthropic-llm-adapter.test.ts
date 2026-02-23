@@ -125,7 +125,7 @@ describe('AnthropicLLMAdapter', () => {
   });
 
   describe('converse()', () => {
-    it('sends system prompt and messages', async () => {
+    it('sends system prompt and messages with server-side tools', async () => {
       createMock.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'Hello!' }],
         stop_reason: 'end_turn',
@@ -144,6 +144,10 @@ describe('AnthropicLLMAdapter', () => {
         max_tokens: 4096,
         system: 'You are helpful.',
         messages: [{ role: 'user', content: 'Hi' }],
+        tools: [
+          { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+          { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 5 },
+        ],
       });
       expect(result.content).toEqual([{ type: 'text', text: 'Hello!' }]);
       expect(result.stopReason).toBe('end_turn');
@@ -164,7 +168,7 @@ describe('AnthropicLLMAdapter', () => {
       expect(call.model).toBe('claude-sonnet-4-6');
     });
 
-    it('maps tools to Anthropic SDK format', async () => {
+    it('includes server-side tools in every request', async () => {
       createMock.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'ok' }],
         stop_reason: 'end_turn',
@@ -176,34 +180,83 @@ describe('AnthropicLLMAdapter', () => {
         'sonnet',
         'system',
         [{ role: 'user', content: 'test' }],
-        [{
-          name: 'http.request',
-          description: 'Make HTTP requests',
-          inputSchema: {
-            type: 'object',
-            properties: { url: { type: 'string' } },
-            required: ['url'],
-          },
-        }],
       );
 
-      const call = createMock.mock.calls[0]![0] as { tools: Array<{ name: string; input_schema: unknown }> };
-      expect(call.tools).toHaveLength(1);
-      expect(call.tools[0]!.name).toBe('http.request');
-      expect(call.tools[0]!.input_schema).toEqual({
-        type: 'object',
-        properties: { url: { type: 'string' } },
-        required: ['url'],
-      });
+      const call = createMock.mock.calls[0]![0] as { tools: Array<{ type: string; name: string }> };
+      expect(call.tools).toHaveLength(2);
+      expect(call.tools[0]!.type).toBe('web_search_20250305');
+      expect(call.tools[0]!.name).toBe('web_search');
+      expect(call.tools[1]!.type).toBe('web_fetch_20250910');
+      expect(call.tools[1]!.name).toBe('web_fetch');
     });
 
-    it('maps tool_use response blocks', async () => {
+    it('maps server_tool_use response blocks as server_tool content', async () => {
       createMock.mockResolvedValueOnce({
         content: [
-          { type: 'tool_use', id: 'call_123', name: 'http.request', input: { url: 'https://example.com' } },
+          {
+            type: 'server_tool_use',
+            id: 'srvtoolu_123',
+            name: 'web_search',
+            input: { query: 'test' },
+          },
         ],
-        stop_reason: 'tool_use',
+        stop_reason: 'end_turn',
         usage: { input_tokens: 15, output_tokens: 20 },
+      });
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const result = await adapter.converse(
+        undefined,
+        'system',
+        [{ role: 'user', content: 'search for test' }],
+      );
+
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0]!.type).toBe('server_tool');
+      if (result.content[0]!.type === 'server_tool') {
+        const raw = result.content[0]!.raw as { type: string; name: string };
+        expect(raw.type).toBe('server_tool_use');
+        expect(raw.name).toBe('web_search');
+      }
+    });
+
+    it('maps web_search_tool_result blocks as server_tool content', async () => {
+      createMock.mockResolvedValueOnce({
+        content: [
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtoolu_123',
+            content: [{ type: 'web_search_result', title: 'Test', url: 'https://example.com' }],
+          },
+          { type: 'text', text: 'I found some results' },
+        ],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 20, output_tokens: 30 },
+      });
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const result = await adapter.converse(
+        undefined,
+        'system',
+        [{ role: 'user', content: 'test' }],
+      );
+
+      expect(result.content).toHaveLength(2);
+      expect(result.content[0]!.type).toBe('server_tool');
+      expect(result.content[1]!.type).toBe('text');
+    });
+
+    it('maps web_fetch_tool_result blocks as server_tool content', async () => {
+      createMock.mockResolvedValueOnce({
+        content: [
+          {
+            type: 'web_fetch_tool_result',
+            tool_use_id: 'srvtoolu_456',
+            content: { type: 'web_fetch_result', url: 'https://example.com', content: '<html>test</html>' },
+          },
+        ],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 10 },
       });
 
       const adapter = new AnthropicLLMAdapter('sk-test');
@@ -213,41 +266,44 @@ describe('AnthropicLLMAdapter', () => {
         [{ role: 'user', content: 'fetch example.com' }],
       );
 
-      expect(result.stopReason).toBe('tool_use');
-      expect(result.content).toEqual([
-        { type: 'tool_use', id: 'call_123', name: 'http.request', input: { url: 'https://example.com' } },
-      ]);
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0]!.type).toBe('server_tool');
     });
 
-    it('maps tool_result content blocks in messages', async () => {
+    it('passes server_tool blocks through in message history', async () => {
       createMock.mockResolvedValueOnce({
         content: [{ type: 'text', text: 'Got it!' }],
         stop_reason: 'end_turn',
         usage: { input_tokens: 30, output_tokens: 5 },
       });
 
+      const serverToolRaw = {
+        type: 'server_tool_use',
+        id: 'srvtoolu_789',
+        name: 'web_search',
+        input: { query: 'test' },
+      };
+
       const adapter = new AnthropicLLMAdapter('sk-test');
       await adapter.converse(
         undefined,
         'system',
         [
-          { role: 'user', content: 'fetch data' },
+          { role: 'user', content: 'search something' },
           {
             role: 'assistant',
-            content: [{ type: 'tool_use', id: 'call_1', name: 'http.request', input: {} }],
-          },
-          {
-            role: 'user',
-            content: [{ type: 'tool_result', tool_use_id: 'call_1', content: '{"status":200}' }],
+            content: [{ type: 'server_tool', raw: serverToolRaw }],
           },
         ],
       );
 
       const call = createMock.mock.calls[0]![0] as { messages: Array<{ role: string; content: unknown }> };
-      expect(call.messages).toHaveLength(3);
-      const toolResultMsg = call.messages[2]!;
-      expect(toolResultMsg.role).toBe('user');
-      expect(Array.isArray(toolResultMsg.content)).toBe(true);
+      expect(call.messages).toHaveLength(2);
+      // Server tool block should be passed through as-is (the raw value)
+      const assistantMsg = call.messages[1]!;
+      expect(assistantMsg.role).toBe('assistant');
+      const blocks = assistantMsg.content as Array<{ type: string }>;
+      expect(blocks[0]!.type).toBe('server_tool_use');
     });
 
     it('skips thinking blocks in response', async () => {
@@ -268,6 +324,30 @@ describe('AnthropicLLMAdapter', () => {
       );
 
       expect(result.content).toEqual([{ type: 'text', text: 'visible response' }]);
+    });
+
+    it('maps pause_turn stop reason', async () => {
+      createMock.mockResolvedValueOnce({
+        content: [
+          {
+            type: 'server_tool_use',
+            id: 'srvtoolu_001',
+            name: 'web_search',
+            input: { query: 'long running search' },
+          },
+        ],
+        stop_reason: 'pause_turn',
+        usage: { input_tokens: 10, output_tokens: 10 },
+      });
+
+      const adapter = new AnthropicLLMAdapter('sk-test');
+      const result = await adapter.converse(
+        undefined,
+        'system',
+        [{ role: 'user', content: 'search something' }],
+      );
+
+      expect(result.stopReason).toBe('pause_turn');
     });
   });
 });

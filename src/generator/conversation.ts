@@ -1,12 +1,11 @@
-// Conversational workflow generation — multi-turn loop with tool use.
-// The LLM can ask questions, research APIs, and propose before generating.
+// Conversational workflow generation — multi-turn loop with server-side tools.
+// The LLM can ask questions, use web_search/web_fetch for research, and propose before generating.
+// Server-side tools are handled entirely by Anthropic's servers — no local execution needed.
 
 import type {
   ConversationalLLMAdapter,
   ConversationMessage,
-  ConversationTool,
   ConversationContent,
-  ToolAdapter,
 } from '../types/index.js';
 import type { GenerateResult } from './index.js';
 
@@ -16,7 +15,8 @@ export type ConversationEvent =
   | { type: 'assistant_message'; text: string }
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; name: string; output: string; isError: boolean }
-  | { type: 'generating' };
+  | { type: 'generating' }
+  | { type: 'workflow_generated'; content: string; valid: boolean; errors: string[] };
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -27,10 +27,6 @@ export interface ConversationLoopOptions {
   systemPrompt: string;
   /** LLM adapter with converse() support. */
   llmAdapter: ConversationalLLMAdapter;
-  /** Tool adapter for executing tool calls during conversation. */
-  toolAdapter?: ToolAdapter;
-  /** Tool definitions to pass to the LLM API. */
-  conversationTools?: ConversationTool[];
   /** Callback to get user input during conversation. Return null to abort. */
   getUserInput: () => Promise<string | null>;
   /** Callback for UI events. */
@@ -39,8 +35,6 @@ export interface ConversationLoopOptions {
   model?: string;
   /** Maximum conversation turns before giving up. */
   maxTurns?: number;
-  /** Maximum fix attempts when generated YAML fails validation. */
-  maxFixAttempts?: number;
   /** Validation function for generated content. */
   validateGenerated: (content: string) => { valid: boolean; errors: string[] };
 }
@@ -48,8 +42,10 @@ export interface ConversationLoopOptions {
 /**
  * Run a conversational generation loop.
  *
- * The LLM converses with the user (asking questions, calling tools) until it's
- * ready to generate, signaled by starting its response with `---` (frontmatter).
+ * The LLM converses with the user (asking questions, using server-side tools for research)
+ * until it's ready to generate, signaled by starting its response with `---` (frontmatter).
+ * Server-side tools (web_search, web_fetch) are handled by Anthropic's servers — the adapter
+ * returns their results as opaque blocks that are passed through in conversation history.
  */
 export async function conversationalGenerate(
   options: ConversationLoopOptions,
@@ -58,13 +54,10 @@ export async function conversationalGenerate(
     initialPrompt,
     systemPrompt,
     llmAdapter,
-    toolAdapter,
-    conversationTools,
     getUserInput,
     onEvent,
     model,
     maxTurns = 20,
-    maxFixAttempts = 3,
     validateGenerated,
   } = options;
 
@@ -72,104 +65,81 @@ export async function conversationalGenerate(
     { role: 'user', content: initialPrompt },
   ];
 
-  let fixAttempts = 0;
+  let attempts = 0;
   let lastContent = '';
-  let lastErrors: string[] = [];
 
   for (let turn = 0; turn < maxTurns; turn++) {
     const response = await llmAdapter.converse(
       model,
       systemPrompt,
       messages,
-      conversationTools,
     );
 
     // Append assistant response to conversation history
     messages.push({ role: 'assistant', content: response.content });
 
-    // Handle tool use — execute tools and continue
-    if (response.stopReason === 'tool_use') {
-      const toolResults: ConversationContent[] = [];
-
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-
-        onEvent({ type: 'tool_call', name: block.name, args: block.input });
-
-        let resultContent: string;
-        let isError = false;
-
-        if (toolAdapter && toolAdapter.has(block.name)) {
-          try {
-            const result = await toolAdapter.invoke(block.name, block.input);
-            if (result.error) {
-              resultContent = `Error: ${result.error}`;
-              isError = true;
-            } else {
-              resultContent = typeof result.output === 'string'
-                ? result.output
-                : JSON.stringify(result.output);
-            }
-          } catch (err) {
-            resultContent = `Error: ${err instanceof Error ? err.message : String(err)}`;
-            isError = true;
-          }
-        } else {
-          resultContent = `Error: Tool "${block.name}" is not available`;
-          isError = true;
+    // Emit events for server-side tool blocks (for UI visibility)
+    for (const block of response.content) {
+      if (block.type === 'server_tool') {
+        const raw = block.raw as { type?: string; name?: string; input?: unknown };
+        if (raw.type === 'server_tool_use' && raw.name) {
+          onEvent({ type: 'tool_call', name: raw.name, args: (raw.input ?? {}) as Record<string, unknown> });
         }
-
-        onEvent({ type: 'tool_result', name: block.name, output: resultContent, isError });
-
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: resultContent,
-          is_error: isError,
-        });
+        if (raw.type === 'web_search_tool_result' || raw.type === 'web_fetch_tool_result') {
+          const toolName = raw.type === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
+          onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+        }
       }
+    }
 
-      // Append tool results as a user message and continue
-      messages.push({ role: 'user', content: toolResults });
+    // Handle pause_turn — server-side tool is still running, continue the loop
+    if (response.stopReason === 'pause_turn') {
+      // Pass assistant response back as-is and continue (no user input needed)
       continue;
     }
 
     // Handle end_turn — check for workflow or conversation
     const text = extractText(response.content);
+    const extracted = extractWorkflowText(text);
 
-    if (isWorkflowAttempt(text)) {
+    if (extracted) {
       // Workflow generation attempt
       onEvent({ type: 'generating' });
 
-      const content = text.trim();
+      const content = extracted.workflow;
       lastContent = content;
+      attempts++;
 
       const validation = validateGenerated(content);
-      if (validation.valid) {
+
+      // Emit commentary before the workflow if present
+      if (extracted.commentary) {
+        onEvent({ type: 'assistant_message', text: extracted.commentary });
+      }
+
+      // Emit workflow_generated so CLI can write file immediately
+      onEvent({
+        type: 'workflow_generated',
+        content,
+        valid: validation.valid,
+        errors: validation.errors,
+      });
+
+      // Ask user for confirmation — empty/null accepts, non-empty iterates
+      const confirmInput = await getUserInput();
+      if (confirmInput === null || confirmInput.trim() === '') {
         return {
           content,
-          valid: true,
-          errors: [],
-          attempts: fixAttempts + 1,
+          valid: validation.valid,
+          errors: validation.errors,
+          attempts,
         };
       }
 
-      // Validation failed — ask LLM to fix
-      fixAttempts++;
-      lastErrors = validation.errors;
-
-      if (fixAttempts >= maxFixAttempts) {
-        return {
-          content: lastContent,
-          valid: false,
-          errors: lastErrors,
-          attempts: fixAttempts,
-        };
-      }
-
+      // User wants iteration — push feedback and continue loop
       messages.push({
         role: 'user',
-        content: `The generated workflow has validation errors:\n\n${lastErrors.map((e) => `- ${e}`).join('\n')}\n\nPlease fix the errors and regenerate. Start your response with \`---\` (frontmatter).`,
+        content: confirmInput,
       });
       continue;
     }
@@ -186,7 +156,7 @@ export async function conversationalGenerate(
         content: lastContent || '',
         valid: false,
         errors: ['Generation aborted by user'],
-        attempts: fixAttempts,
+        attempts,
       };
     }
 
@@ -197,10 +167,8 @@ export async function conversationalGenerate(
   return {
     content: lastContent || '',
     valid: false,
-    errors: lastErrors.length > 0
-      ? lastErrors
-      : ['Maximum conversation turns exceeded'],
-    attempts: fixAttempts,
+    errors: ['Maximum conversation turns exceeded'],
+    attempts,
   };
 }
 
@@ -212,7 +180,14 @@ function extractText(content: ConversationContent[]): string {
     .join('');
 }
 
-/** Check if text starts with `---` indicating a workflow generation attempt. */
-function isWorkflowAttempt(text: string): boolean {
-  return text.trimStart().startsWith('---');
+/** Find a SKILL.md document (frontmatter + workflow block) anywhere in the response text. */
+function extractWorkflowText(text: string): { workflow: string; commentary: string } | null {
+  const fmMatch = text.match(/(^|\n)(---\n)/);
+  if (!fmMatch) return null;
+  const fmIndex = fmMatch.index! + fmMatch[1]!.length;
+  const candidate = text.slice(fmIndex);
+  if (/^---\n[\s\S]*?\n---/.test(candidate) && /```workflow\s*\n/.test(candidate)) {
+    return { workflow: candidate.trim(), commentary: text.slice(0, fmIndex).trim() };
+  }
+  return null;
 }

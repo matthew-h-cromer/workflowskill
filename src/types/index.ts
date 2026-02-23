@@ -312,19 +312,19 @@ export interface ToolUseContent { type: 'tool_use'; id: string; name: string; in
 /** Tool result content block — the result of a tool invocation. */
 export interface ToolResultContent { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
 
+/** Opaque passthrough for server-side tool blocks (web_search, web_fetch results etc.). */
+export interface ServerToolContent { type: 'server_tool'; raw: unknown }
+
 /** Union of all content block types in a conversation message. */
-export type ConversationContent = TextContent | ToolUseContent | ToolResultContent
+export type ConversationContent = TextContent | ToolUseContent | ToolResultContent | ServerToolContent
 
 /** A single message in a multi-turn conversation. */
 export interface ConversationMessage { role: 'user' | 'assistant'; content: string | ConversationContent[] }
 
-/** Tool definition passed to the LLM for tool use. */
-export interface ConversationTool { name: string; description: string; inputSchema: JsonSchema }
-
 /** Result from a converse() call. */
 export interface ConversationResult {
   content: ConversationContent[]
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens'
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'pause_turn'
   tokens: TokenUsage
 }
 
@@ -334,7 +334,6 @@ export interface ConversationalLLMAdapter extends LLMAdapter {
     model: string | undefined,
     system: string,
     messages: ConversationMessage[],
-    tools?: ConversationTool[],
   ): Promise<ConversationResult>
 }
 

@@ -5,7 +5,6 @@ import type {
   LLMResult,
   ConversationalLLMAdapter,
   ConversationMessage,
-  ConversationTool,
   ConversationResult,
 } from '../types/index.js';
 
@@ -19,7 +18,6 @@ export type ConversationHandler = (
   model: string | undefined,
   system: string,
   messages: ConversationMessage[],
-  tools?: ConversationTool[],
 ) => ConversationResult | Promise<ConversationResult>;
 
 export class MockLLMAdapter implements ConversationalLLMAdapter {
@@ -46,10 +44,9 @@ export class MockLLMAdapter implements ConversationalLLMAdapter {
     model: string | undefined,
     system: string,
     messages: ConversationMessage[],
-    tools?: ConversationTool[],
   ): Promise<ConversationResult> {
     if (this.conversationHandler) {
-      return this.conversationHandler(model, system, messages, tools);
+      return this.conversationHandler(model, system, messages);
     }
     // Default: delegate to call() and wrap as ConversationResult
     const lastMessage = messages[messages.length - 1];

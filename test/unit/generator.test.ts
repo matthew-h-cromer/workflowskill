@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { generateWorkflow, generateWorkflowConversational } from '../../src/generator/index.js';
 import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 import type { ToolDescriptor } from '../../src/types/index.js';
@@ -65,53 +65,7 @@ steps:
     expect(result.content).toContain('```workflow');
   });
 
-  it('retries on validation failure', async () => {
-    let callCount = 0;
-    const llm = new MockLLMAdapter(() => {
-      callCount++;
-      if (callCount === 1) {
-        // First attempt: invalid YAML (no steps)
-        return {
-          text: '```workflow\ninputs: {}\noutputs: {}\nsteps: []\n```',
-          tokens: { input: 50, output: 50 },
-        };
-      }
-      // Second attempt: valid
-      return {
-        text: `---
-name: fixed
-description: Fixed workflow
----
-
-# Fixed
-
-\`\`\`workflow
-inputs: {}
-outputs: {}
-steps:
-  - id: do_thing
-    type: tool
-    tool: my_tool
-    inputs: {}
-    outputs: {}
-\`\`\`
-`,
-        tokens: { input: 100, output: 150 },
-      };
-    });
-
-    const result = await generateWorkflow({
-      prompt: 'do something',
-      llmAdapter: llm,
-      maxAttempts: 3,
-    });
-
-    expect(result.valid).toBe(true);
-    expect(result.attempts).toBe(2);
-    expect(callCount).toBe(2);
-  });
-
-  it('returns errors after exhausting attempts', async () => {
+  it('returns errors when validation fails', async () => {
     const llm = new MockLLMAdapter(() => ({
       text: 'not valid yaml at all',
       tokens: { input: 50, output: 50 },
@@ -120,12 +74,11 @@ steps:
     const result = await generateWorkflow({
       prompt: 'impossible task',
       llmAdapter: llm,
-      maxAttempts: 2,
     });
 
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.attempts).toBe(2);
+    expect(result.attempts).toBe(1);
   });
 
   it('toolDescriptors provides rich context to LLM prompt', async () => {
@@ -248,43 +201,12 @@ describe('generateWorkflowConversational', () => {
     const result = await generateWorkflowConversational({
       prompt: 'make a workflow',
       llmAdapter: llm,
-      getUserInput: async () => null,
+      getUserInput: async () => '',  // Accept at confirmation
       onEvent: (e) => events.push(e),
     });
 
     expect(result.valid).toBe(true);
     expect(result.content).toContain('test-wf');
-  });
-
-  it('filters conversation tools to read-only only', async () => {
-    let capturedTools: unknown;
-    const llm = new MockLLMAdapter(undefined, (_model, _system, _messages, tools) => {
-      capturedTools = tools;
-      return {
-        content: [{ type: 'text', text: VALID_WORKFLOW }],
-        stopReason: 'end_turn',
-        tokens: { input: 50, output: 50 },
-      };
-    });
-
-    const descriptors: ToolDescriptor[] = [
-      { name: 'http.request', description: 'HTTP requests' },
-      { name: 'html.select', description: 'CSS selectors' },
-      { name: 'gmail.send', description: 'Send email' },  // write tool — should be excluded
-      { name: 'sheets.write', description: 'Write to sheet' },  // write tool — should be excluded
-    ];
-
-    await generateWorkflowConversational({
-      prompt: 'test',
-      llmAdapter: llm,
-      toolDescriptors: descriptors,
-      getUserInput: async () => null,
-      onEvent: () => {},
-    });
-
-    const tools = capturedTools as Array<{ name: string }>;
-    expect(tools).toHaveLength(2);
-    expect(tools.map((t) => t.name)).toEqual(['http.request', 'html.select']);
   });
 
   it('passes toolDescriptors to system prompt', async () => {
@@ -302,11 +224,38 @@ describe('generateWorkflowConversational', () => {
       prompt: 'test',
       llmAdapter: llm,
       toolDescriptors: [{ name: 'http.request', description: 'Make HTTP requests' }],
-      getUserInput: async () => null,
+      getUserInput: async () => '',  // Accept at confirmation
       onEvent: () => {},
     });
 
     expect(capturedSystem).toContain('### http.request');
     expect(capturedSystem).toContain('Make HTTP requests');
+  });
+
+  it('does not pass tools to converse() (server-side tools handled by adapter)', async () => {
+    const converseSpy = vi.fn(async () => ({
+      content: [{ type: 'text' as const, text: VALID_WORKFLOW }],
+      stopReason: 'end_turn' as const,
+      tokens: { input: 50, output: 50 },
+    }));
+    const llm = new MockLLMAdapter(undefined, converseSpy);
+
+    await generateWorkflowConversational({
+      prompt: 'test',
+      llmAdapter: llm,
+      toolDescriptors: [
+        { name: 'http.request', description: 'HTTP requests' },
+        { name: 'gmail.send', description: 'Send email' },
+      ],
+      getUserInput: async () => '',  // Accept at confirmation
+      onEvent: () => {},
+    });
+
+    // converse() should be called with exactly 3 args (no tools)
+    expect(converseSpy).toHaveBeenCalledWith(
+      undefined,
+      expect.any(String),
+      expect.any(Array),
+    );
   });
 });

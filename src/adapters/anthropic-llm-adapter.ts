@@ -1,11 +1,11 @@
 // Anthropic LLM adapter — implements ConversationalLLMAdapter using the Anthropic SDK.
+// Uses server-side tools (web_search, web_fetch) for research during generation conversations.
 
 import Anthropic from '@anthropic-ai/sdk';
 import type {
   LLMResult,
   ConversationalLLMAdapter,
   ConversationMessage,
-  ConversationTool,
   ConversationResult,
   ConversationContent,
 } from '../types/index.js';
@@ -23,6 +23,71 @@ const DEFAULT_CONVERSE_MODEL = 'claude-sonnet-4-6';
 function resolveModel(model: string | undefined, fallback: string = DEFAULT_MODEL): string {
   if (!model) return fallback;
   return MODEL_ALIASES[model] ?? model;
+}
+
+/** Server-side tools included in every converse() call. */
+const SERVER_TOOLS: Anthropic.Messages.ToolUnion[] = [
+  { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+  { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 5 },
+];
+
+/**
+ * Map a raw Anthropic SDK content block to our ConversationContent type.
+ * Recognized block types (text, tool_use) map to their typed variants.
+ * Server-side blocks (server_tool_use, web_search_tool_result, web_fetch_tool_result)
+ * are passed through as opaque ServerToolContent.
+ * Unrecognized blocks (thinking, redacted_thinking, etc.) are skipped.
+ */
+function mapContentBlock(block: Anthropic.Messages.ContentBlock): ConversationContent | null {
+  if (block.type === 'text') {
+    return { type: 'text', text: block.text };
+  }
+  if (block.type === 'tool_use') {
+    return {
+      type: 'tool_use',
+      id: block.id,
+      name: block.name,
+      input: block.input as Record<string, unknown>,
+    };
+  }
+  // Server-side tool blocks — pass through as opaque
+  if (
+    block.type === 'server_tool_use' ||
+    block.type === 'web_search_tool_result' ||
+    block.type === 'web_fetch_tool_result'
+  ) {
+    return { type: 'server_tool', raw: block };
+  }
+  // Skip thinking/redacted_thinking/other blocks
+  return null;
+}
+
+/**
+ * Map a ConversationContent block back to an Anthropic SDK ContentBlockParam
+ * for sending in multi-turn message history.
+ */
+function mapContentToParam(block: ConversationContent): Anthropic.Messages.ContentBlockParam {
+  if (block.type === 'text') {
+    return { type: 'text' as const, text: block.text };
+  }
+  if (block.type === 'tool_use') {
+    return {
+      type: 'tool_use' as const,
+      id: block.id,
+      name: block.name,
+      input: block.input,
+    };
+  }
+  if (block.type === 'tool_result') {
+    return {
+      type: 'tool_result' as const,
+      tool_use_id: block.tool_use_id,
+      content: block.content,
+      is_error: block.is_error,
+    };
+  }
+  // server_tool — pass the raw block back as-is
+  return block.raw as Anthropic.Messages.ContentBlockParam;
 }
 
 export class AnthropicLLMAdapter implements ConversationalLLMAdapter {
@@ -67,7 +132,6 @@ export class AnthropicLLMAdapter implements ConversationalLLMAdapter {
     model: string | undefined,
     system: string,
     messages: ConversationMessage[],
-    tools?: ConversationTool[],
   ): Promise<ConversationResult> {
     // Map our message types to Anthropic SDK types
     const sdkMessages: Anthropic.MessageParam[] = messages.map((msg) => {
@@ -75,62 +139,23 @@ export class AnthropicLLMAdapter implements ConversationalLLMAdapter {
         return { role: msg.role, content: msg.content };
       }
       // Map content blocks
-      const blocks: Anthropic.ContentBlockParam[] = msg.content.map((block) => {
-        if (block.type === 'text') {
-          return { type: 'text' as const, text: block.text };
-        }
-        if (block.type === 'tool_use') {
-          return {
-            type: 'tool_use' as const,
-            id: block.id,
-            name: block.name,
-            input: block.input,
-          };
-        }
-        // tool_result
-        return {
-          type: 'tool_result' as const,
-          tool_use_id: block.tool_use_id,
-          content: block.content,
-          is_error: block.is_error,
-        };
-      });
+      const blocks: Anthropic.Messages.ContentBlockParam[] = msg.content.map(mapContentToParam);
       return { role: msg.role, content: blocks };
     });
 
-    // Map our tool types to Anthropic SDK types
-    const sdkTools: Anthropic.Tool[] | undefined = tools?.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
-    }));
-
-    const params: Anthropic.MessageCreateParams = {
+    const response = await this.client.messages.create({
       model: resolveModel(model, DEFAULT_CONVERSE_MODEL),
       max_tokens: 4096,
       system,
       messages: sdkMessages,
-    };
-    if (sdkTools && sdkTools.length > 0) {
-      params.tools = sdkTools;
-    }
+      tools: SERVER_TOOLS,
+    });
 
-    const response = await this.client.messages.create(params);
-
-    // Map response content blocks back to our types (skip thinking blocks)
+    // Map response content blocks back to our types
     const content: ConversationContent[] = [];
     for (const block of response.content) {
-      if (block.type === 'text') {
-        content.push({ type: 'text', text: block.text });
-      } else if (block.type === 'tool_use') {
-        content.push({
-          type: 'tool_use',
-          id: block.id,
-          name: block.name,
-          input: block.input as Record<string, unknown>,
-        });
-      }
-      // Skip thinking/redacted_thinking blocks
+      const mapped = mapContentBlock(block);
+      if (mapped) content.push(mapped);
     }
 
     return {
