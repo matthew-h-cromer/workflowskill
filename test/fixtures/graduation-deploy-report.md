@@ -1,6 +1,6 @@
 ---
 name: deploy-report
-description: RFC Example 2 - Deployment report with zero LLM tokens
+description: Example 2 - Deployment report with zero LLM tokens
 ---
 
 # Deployment Report

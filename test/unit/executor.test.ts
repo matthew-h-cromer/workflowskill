@@ -422,7 +422,7 @@ describe('LLM executor', () => {
     const ctx = baseContext({ inputs: { text: 'Hello world' } });
     const result = await executeLLM(step, { text: 'Hello world' }, ctx, adapter);
     expect(result.tokens).toEqual({ input: 20, output: 15 });
-    // Output is the parsed JSON directly (not wrapped — per RFC)
+    // Output is the parsed JSON directly (not wrapped — per spec)
     const output = result.output as Record<string, unknown>;
     expect(output.score).toBe(8);
   });

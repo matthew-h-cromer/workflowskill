@@ -25,7 +25,7 @@ paths:
 | `test/unit/sheets.test.ts` | Sheets tools |
 | `test/unit/builtin-tool-adapter.test.ts` | BuiltinToolAdapter registration and invocation |
 | `test/integration/runtime.test.ts` | All 12 targeted workflows end-to-end with mock adapters |
-| `test/integration/graduation.test.ts` | 3 RFC examples: email-triage, deploy-report, content-moderation |
+| `test/integration/graduation.test.ts` | 3 spec examples: email-triage, deploy-report, content-moderation |
 
 ## Test File Naming
 

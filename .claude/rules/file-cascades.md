@@ -22,6 +22,6 @@ Implementation file → `src/index.ts` (re-export) → tests → CLAUDE.md (if s
 
 `src/adapters/tools/<name>.ts` → `src/adapters/builtin-tool-adapter.ts` (register) → tests → CLAUDE.md (Built-in Tools)
 
-## RFC-level changes
+## Spec-level changes
 
 `src/types/` → `src/parser/schema.ts` → `src/validator/` → `src/executor/` → `src/runtime/` → tests → CLAUDE.md

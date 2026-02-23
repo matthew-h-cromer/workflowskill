@@ -9,7 +9,7 @@ import { interpolatePrompt } from '../expression/index.js';
 /**
  * Execute an LLM step.
  * Interpolates $-references in the prompt, calls the model, and returns the response.
- * The response_format field is passed as a hint but not enforced (per RFC).
+ * The response_format field is passed as a hint but not enforced (per spec).
  * If the response is valid JSON, it's parsed; otherwise returned as text.
  */
 export async function executeLLM(
@@ -32,7 +32,7 @@ export async function executeLLM(
   }
 
   // Try to parse JSON response for structured output.
-  // The model's response becomes the step's output directly (RFC: "Returns the model's response").
+  // The model's response becomes the step's output directly (spec: "Returns the model's response").
   // No wrapping — declared outputs are for schema validation, not for naming the output.
   let output: unknown = result.text;
   try {

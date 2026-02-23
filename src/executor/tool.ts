@@ -8,7 +8,7 @@ import { StepExecutionError } from './types.js';
 /**
  * Execute a tool step.
  * Passes resolved inputs as the tool's arguments. Returns the tool's response.
- * The runtime does not interpret the response (per RFC).
+ * The runtime does not interpret the response (per spec).
  */
 export async function executeTool(
   step: ToolStep,

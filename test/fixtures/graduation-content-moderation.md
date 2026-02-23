@@ -1,6 +1,6 @@
 ---
 name: content-moderation
-description: RFC Example 3 - Content moderation with conditional branching
+description: Example 3 - Content moderation with conditional branching
 ---
 
 # Content Moderation

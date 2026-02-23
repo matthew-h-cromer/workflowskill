@@ -490,7 +490,7 @@ describe('sort-pipeline workflow', () => {
 // ─── Run log structure ──────────────────────────────────────────────────────
 
 describe('run log structure', () => {
-  it('has all required fields per RFC', async () => {
+  it('has all required fields per spec', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
     const llm = new MockLLMAdapter();

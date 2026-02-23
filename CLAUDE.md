@@ -2,16 +2,16 @@
 
 ## Project Overview
 
-A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `rfc-workflowskill.md` is the specification (source of truth for all behavior).
+A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `SPEC.md` is the specification (source of truth for all behavior). See also `PROPOSAL.md` (justification and alternatives) and `EXAMPLES.md` (complete workflow examples).
 
 ## Verify Every Change
 
 **Run after every change:** `npm run typecheck && npm run test && npm run lint`
 
-- **The RFC is the spec.** Read `rfc-workflowskill.md` before modifying any module. If the RFC and the implementation disagree, the RFC wins.
+- **The spec is the source of truth.** Read `SPEC.md` before modifying any module. If the spec and the implementation disagree, the spec wins.
 - **Mock external dependencies.** No API calls in unit or integration tests. Use the adapter interfaces.
 - **Keep CLAUDE.md current.** After completing any iteration, update this file to reflect what changed.
-- **If the RFC is ambiguous, make a reasonable choice and document it in a code comment.**
+- **If the spec is ambiguous, make a reasonable choice and document it in a code comment.**
 
 ## Do Not Edit
 
@@ -27,7 +27,7 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 
 ````
 src/
-├── types/          # TypeScript interfaces mirroring every RFC field and constraint
+├── types/          # TypeScript interfaces mirroring every spec field and constraint
 ├── parser/         # SKILL.md → typed WorkflowDefinition (extract markdown → parse YAML → Zod validate)
 │   ├── extract.ts  # Fenced ```workflow block extraction from markdown
 │   └── schema.ts   # Zod schemas (runtime validation layer)
@@ -73,14 +73,14 @@ test/integration/                # Integration tests (runtime, graduation)
 
 - **LLM executor does NOT wrap output** in the first output key. Output is stored directly (like tool steps). This ensures `$steps.<id>.output.field` works consistently across step types.
 - **Transform executor DOES wrap output** in the first declared output key (e.g., `{ filtered: [...] }`), since transforms produce arrays that need naming.
-- **ExitStep.output** supports both `string` (expression) and `Record<string, unknown>` (object literal with resolvable values). The RFC examples use both forms.
+- **ExitStep.output** supports both `string` (expression) and `Record<string, unknown>` (object literal with resolvable values). The spec examples use both forms.
 - **Branch steps** (those referenced in conditional then/else) are collected upfront and skipped during sequential execution, only run when selected by a conditional.
 - **`each` iteration** is handled by the runtime, not the executor. The runtime calls the executor once per item with `$item`/`$index` in context.
 - **Unified `value` field** replaces legacy `source` and `default` on step/workflow inputs and outputs. Strings starting with `$` are auto-detected as expressions; all others are literals. Escape literal `$` with `$$` (e.g., `value: "$$100"` → `"$100"`). Parser normalizes legacy `source`/`default` to `value` via Zod transforms for backwards compatibility.
 - **Step output `value`** uses `$result` to map from the raw executor result. Resolved immediately after dispatch, before storing in context. Per-element mapping in `each` loops.
 - **Workflow output `value`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
 - **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
-- **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy RFC PR7/PR8 requirements for debugging artifacts.
+- **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy PR7/PR8 requirements for debugging artifacts.
 
 ## Development Commands
 

@@ -120,7 +120,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
     }
   }
 
-  // Account for unrecorded steps (RFC: "Every step is accounted for, including skipped ones.")
+  // Account for unrecorded steps (spec: "Every step is accounted for, including skipped ones.")
   const recordedIds = new Set(stepRecords.map((r) => r.id));
   for (const step of options.workflow.steps) {
     if (!recordedIds.has(step.id)) {

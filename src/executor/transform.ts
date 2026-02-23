@@ -82,7 +82,7 @@ function executeMap(
 /**
  * Resolve a map expression value.
  * $-prefixed strings are resolved as expressions. Otherwise treated as literals.
- * RFC note: the spec also allows nested objects and non-string literals in map expressions,
+ * Spec note: the spec also allows nested objects and non-string literals in map expressions,
  * but the current Zod schema constrains values to Record<string, string>.
  */
 function resolveMapValue(value: string, context: RuntimeContext): unknown {

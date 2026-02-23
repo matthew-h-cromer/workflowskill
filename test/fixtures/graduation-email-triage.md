@@ -1,6 +1,6 @@
 ---
 name: email-triage
-description: RFC Example 1 - Daily email triage with LLM scoring
+description: Example 1 - Daily email triage with LLM scoring
 ---
 
 # Email Triage

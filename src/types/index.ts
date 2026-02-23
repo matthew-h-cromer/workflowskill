@@ -1,5 +1,5 @@
 // WorkflowSkill type definitions
-// Mirror of every field and constraint in the RFC spec.
+// Mirror of every field and constraint in the spec.
 
 // ─── Primitive schema types ───────────────────────────────────────────────────
 

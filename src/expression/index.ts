@@ -47,7 +47,7 @@ export function interpolatePrompt(template: string, context: RuntimeContext): st
 
 /**
  * Coerce a value to its string representation for prompt interpolation.
- * Per the RFC: objects/arrays → JSON, null → empty string.
+ * Per the spec: objects/arrays → JSON, null → empty string.
  */
 function stringify(value: unknown): string {
   if (value === null || value === undefined) return '';
