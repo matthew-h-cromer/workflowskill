@@ -40,4 +40,5 @@ steps:
     outputs:
       scored:
         type: array
+        value: $result
 ```

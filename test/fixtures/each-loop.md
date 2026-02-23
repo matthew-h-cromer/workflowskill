@@ -40,4 +40,5 @@ steps:
     outputs:
       summary:
         type: string
+        value: $result
 ```

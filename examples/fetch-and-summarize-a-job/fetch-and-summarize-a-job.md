@@ -114,4 +114,5 @@ steps:
     outputs:
       description:
         type: string
+        value: $result
 ```

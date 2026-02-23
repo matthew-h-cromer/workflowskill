@@ -154,6 +154,7 @@ steps:
   outputs:
     analysis:
       type: object
+      value: $result
 ```
 
 ### Transform Step
@@ -286,6 +287,20 @@ outputs:
 
 This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `value` pass through from the raw result by key name.
 
+**LLM step outputs require `value`.** LLM steps return the model's raw text (parsed as JSON when valid). Without `value`, downstream `$steps.<id>.output.<key>` references fail for plain text responses. Always use `value: $result` or `value: $result.field`:
+
+```yaml
+- id: score
+  type: llm
+  outputs:
+    result_array:       # maps the whole parsed response
+      type: array
+      value: $result
+    summary:            # extracts a single field
+      type: string
+      value: $result.summary
+```
+
 ## Expression Language
 
 Use `$`-prefixed references to wire data between steps:
@@ -301,9 +316,126 @@ Use `$`-prefixed references to wire data between steps:
 | `$steps.<id>.output.field[0]` | First element of an array field |
 | `$items[$index]` | Element at computed index |
 
-Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
+Operators: `+`, `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
 
 Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array element access.
+
+**Expression language limitations:** There is no string interpolation in literal `value` fields (only in LLM `prompt` fields), no function calls, no ternary expressions, and no regex. The only way to build a computed string is with `+` concatenation.
+
+### String Concatenation and Dynamic URLs
+
+The `+` operator concatenates strings or adds numbers:
+
+- `string + anything` → coerce both to string, concatenate
+- `number + number` → arithmetic addition
+- `null` / `undefined` coerce to `""`
+- Numbers and booleans coerce via `String()`
+
+Primary use case: constructing per-iteration URLs in `each` + tool patterns.
+
+```yaml
+# Dynamic URL: $inputs.base_url + $item + ".json"
+# If base_url = "https://api.example.com/item/" and item = 101:
+# → "https://api.example.com/item/101.json"
+inputs:
+  url:
+    type: string
+    value: $inputs.base_url + $item + ".json"
+```
+
+### Iterating with `each` on Tool Steps
+
+When you need to call an API once per item in a list, use `each` on a tool step. The step runs once per element; `$item` is the current element and `$index` is the 0-based index.
+
+**Output collection:** Each iteration's output is collected into an array. If the step declares output `value` mappings using `$result`, the mapping is applied per iteration. The step record's `output` is the array of per-iteration mapped results.
+
+```yaml
+steps:
+  - id: get_ids
+    type: tool
+    tool: api.list_items
+    outputs:
+      ids:
+        type: array
+
+  - id: fetch_details
+    type: tool
+    tool: http.request
+    each: $steps.get_ids.output.ids    # iterate over ids array
+    on_error: ignore                    # skip failed fetches, continue
+    inputs:
+      url:
+        type: string
+        value: $inputs.base_url + $item + ".json"
+    outputs:
+      title:
+        type: string
+        value: $result.body.title      # mapped per iteration via $result
+      id:
+        type: int
+        value: $result.body.id
+```
+
+After this step, `$steps.fetch_details.output` is an array of `{ title, id }` objects — one per iteration. Use `$steps.fetch_details.output` (the whole array) in downstream steps or workflow outputs.
+
+**Workflow output for each+tool:**
+```yaml
+outputs:
+  details:
+    type: array
+    value: $steps.fetch_details.output   # the collected array of per-iteration results
+```
+
+**Pattern: List → Fetch Details → Filter → Summarize**
+
+Full example for "fetch Hacker News top stories":
+
+```yaml
+inputs:
+  count:
+    type: int
+    default: 10
+  base_url:
+    type: string
+    default: "https://hacker-news.firebaseio.com/v0/item/"
+
+outputs:
+  stories:
+    type: array
+    value: $steps.fetch_stories.output
+
+steps:
+  - id: get_top_ids
+    type: tool
+    tool: http.request
+    inputs:
+      url: { type: string, value: "https://hacker-news.firebaseio.com/v0/topstories.json" }
+    outputs:
+      ids: { type: array, value: $result.body }
+
+  - id: slice_ids
+    type: transform
+    operation: filter
+    where: $index < $inputs.count
+    inputs:
+      items: { type: array, value: $steps.get_top_ids.output.ids }
+    outputs:
+      ids: { type: array }
+
+  - id: fetch_stories
+    type: tool
+    tool: http.request
+    each: $steps.slice_ids.output.ids
+    on_error: ignore
+    inputs:
+      url:
+        type: string
+        value: $inputs.base_url + $item + ".json"
+    outputs:
+      title: { type: string, value: $result.body.title }
+      score: { type: int, value: $result.body.score }
+      url: { type: string, value: $result.body.url }
+```
 
 ## Web Scraping Pattern
 
@@ -378,8 +510,8 @@ If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML
 2. **Use the cheapest model.** `haiku` for classification/scoring, `sonnet` for complex reasoning.
 3. **Always declare inputs and outputs.** They enable validation and composability.
 4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
-5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. This is useful when the tool returns a nested or differently-shaped object.
-6. **Use `each` for per-item processing.** Don't ask the LLM to process arrays — iterate.
+5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. Required for LLM steps (which return raw text/JSON). Useful for tool steps when the response shape differs from what downstream steps need.
+6. **Use `each` for per-item processing.** Don't ask the LLM to process arrays — iterate. For `each` + tool steps, use `+` to build dynamic URLs per iteration. The step's collected output (array of per-iteration results) is referenced as `$steps.<id>.output`.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
 9. **Use `condition` guards for early exits** rather than letting empty data flow through.
@@ -447,5 +579,6 @@ After generating, verify:
 - [ ] `each` not used on exit or conditional steps
 - [ ] Workflow outputs have `value` mapping to `$steps` references
 - [ ] Step output `value` uses `$result` (not `$steps`)
+- [ ] LLM step outputs have `value` using `$result`
 
 If validation fails, fix the errors and regenerate.

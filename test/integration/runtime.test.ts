@@ -118,7 +118,7 @@ describe('llm-judgment workflow', () => {
     const llm = new MockLLMAdapter((_model, prompt) => {
       capturedPrompt = prompt;
       return {
-        text: JSON.stringify({ scored: [{ score: 8, summary: 'Urgent email' }] }),
+        text: JSON.stringify([{ score: 8, summary: 'Urgent email' }]),
         tokens: { input: 25, output: 15 },
       };
     });
@@ -699,5 +699,70 @@ describe('step record inputs', () => {
     for (const rec of skippedRecords) {
       expect(rec.inputs).toBeUndefined();
     }
+  });
+});
+
+// ─── 13. each-tool-dynamic-url ───────────────────────────────────────────────
+
+describe('each-tool-dynamic-url workflow', () => {
+  it('constructs dynamic URLs per-iteration using + operator and maps $result output', async () => {
+    const workflow = loadWorkflow('each-tool-dynamic-url');
+
+    const capturedUrls: string[] = [];
+    const tools = new MockToolAdapter();
+    tools.register('get_ids', () => ({
+      output: { ids: [101, 202, 303] },
+    }));
+    tools.register('http.request', (args) => {
+      capturedUrls.push(args.url as string);
+      const id = args.url as string;
+      const itemId = parseInt((id as string).replace(/.*\/(\d+)\.json$/, '$1'), 10);
+      return {
+        output: {
+          status: 200,
+          body: { id: itemId, title: `Item ${itemId}` },
+        },
+      };
+    });
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { base_url: 'https://api.example.com/item/' },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'each-tool-dynamic-url',
+    });
+
+    expect(log.status).toBe('success');
+    expect(log.steps).toHaveLength(2);
+
+    // Verify dynamic URLs were constructed correctly per iteration
+    expect(capturedUrls).toEqual([
+      'https://api.example.com/item/101.json',
+      'https://api.example.com/item/202.json',
+      'https://api.example.com/item/303.json',
+    ]);
+
+    // Verify per-iteration output mapping via $result
+    const fetchRecord = log.steps.find((s) => s.id === 'fetch_details')!;
+    expect(fetchRecord.status).toBe('success');
+    expect(fetchRecord.iterations).toBe(3);
+    expect(Array.isArray(fetchRecord.output)).toBe(true);
+    const outputArr = fetchRecord.output as Array<Record<string, unknown>>;
+    expect(outputArr).toEqual([
+      { title: 'Item 101', id: 101 },
+      { title: 'Item 202', id: 202 },
+      { title: 'Item 303', id: 303 },
+    ]);
+
+    // Workflow output maps the array via $steps reference
+    expect(log.outputs).toEqual({
+      details: [
+        { title: 'Item 101', id: 101 },
+        { title: 'Item 202', id: 202 },
+        { title: 'Item 303', id: 303 },
+      ],
+    });
   });
 });
