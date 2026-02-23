@@ -238,6 +238,8 @@ export interface RunLog {
   workflow: string;
   /** Final status. */
   status: RunStatus;
+  /** Aggregate counts. */
+  summary: RunSummary;
   /** ISO 8601 start timestamp. */
   started_at: string;
   /** ISO 8601 completion timestamp. */
@@ -246,12 +248,10 @@ export interface RunLog {
   duration_ms: number;
   /** The workflow inputs that were provided. */
   inputs: Record<string, unknown>;
-  /** The workflow outputs that were produced. */
-  outputs: Record<string, unknown>;
   /** Ordered array of step records. */
   steps: StepRecord[];
-  /** Aggregate counts. */
-  summary: RunSummary;
+  /** The workflow outputs that were produced. */
+  outputs: Record<string, unknown>;
 }
 
 // ─── Adapter interfaces ───────────────────────────────────────────────────────

@@ -154,18 +154,18 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
     id: crypto.randomUUID(),
     workflow: options.workflowName ?? 'unnamed',
     status: workflowStatus,
-    started_at: startedAt.toISOString(),
-    completed_at: completedAt.toISOString(),
-    duration_ms: durationMs,
-    inputs,
-    outputs,
-    steps: stepRecords,
     summary: {
       steps_executed: stepsExecuted,
       steps_skipped: stepsSkipped,
       total_tokens: totalTokens,
       total_duration_ms: durationMs,
     },
+    started_at: startedAt.toISOString(),
+    completed_at: completedAt.toISOString(),
+    duration_ms: durationMs,
+    inputs,
+    steps: stepRecords,
+    outputs,
   };
 }
 
