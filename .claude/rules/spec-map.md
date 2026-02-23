@@ -1,6 +1,6 @@
 # Spec Section Map
 
-Read the relevant section in `SPEC.md` (or `EXAMPLES.md` for workflow examples) before modifying the corresponding module.
+Read the relevant section in `SPEC.md` (or `examples/` for workflow examples) before modifying the corresponding module.
 
 | Spec Section | Relevant Module |
 | --- | --- |
@@ -17,6 +17,6 @@ Read the relevant section in `SPEC.md` (or `EXAMPLES.md` for workflow examples) 
 | Runtime > Run Log | runtime |
 | Runtime > Runtime Boundaries | runtime, adapters |
 | Runtime > Conformance | validator, runtime |
-| Example 1: Daily Email Triage (`EXAMPLES.md`) | test/integration/graduation |
-| Example 2: Deployment Report (`EXAMPLES.md`) | test/integration/graduation |
-| Example 3: Content Moderation (`EXAMPLES.md`) | test/integration/graduation |
+| Example 1: Daily Email Triage | test/integration/graduation |
+| Example 2: Deployment Report | test/integration/graduation |
+| Example 3: Content Moderation | test/integration/graduation |

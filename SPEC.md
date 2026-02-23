@@ -1,6 +1,6 @@
 # WorkflowSkill Specification
 
-> **Related documents:** [Proposal](PROPOSAL.md) | [Examples](EXAMPLES.md)
+> **Related documents:** [Proposal](PROPOSAL.md) | [Examples](examples/)
 
 ## Contents
 

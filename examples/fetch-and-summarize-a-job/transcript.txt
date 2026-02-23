@@ -1,0 +1,400 @@
+% workflowskill generate "I want to fetch https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search, extract all data from html, and output each job posting in an array" -o generated/fetch-job-postings.md
+
+Let me probe the LinkedIn endpoint first to see what it returns.
+
+  ⚡ web_fetch
+  ✓ [server-side result]
+
+Let me try via http.request simulation to understand the known response shape of this LinkedIn guest jobs API.
+
+  ⚡ web_search
+  ✓ [server-side result]
+
+I have everything I need. Here's what I found from researching the API:
+
+- The endpoint accepts query parameters like `keywords`, `location`, `start` (for pagination), and returns **raw HTML** — not JSON. The response consists of `<li>` elements containing job postings.
+- The key CSS selectors are: job title via `h3.base-search-card__title`, company via `h4.base-search-card__subtitle`, and location via `span.job-search-card__location`.
+- Additional fields include the job URL via `.base-card__full-link` (href), posted date via `time`, company link via `h4 a` (href).
+
+Here is the complete SKILL.md:
+
+---
+name: linkedin-job-search
+description: Fetches job postings from the LinkedIn guest jobs API and returns them as a structured array
+version: 0.1.0
+tags:
+  - linkedin
+  - jobs
+  - scraping
+---
+
+# LinkedIn Job Search
+
+```workflow
+inputs:
+  keywords:
+    type: string
+    default: "software engineer"
+  location:
+    type: string
+    default: "United States"
+  start:
+    type: int
+    default: 0
+
+outputs:
+  jobs:
+    type: array
+    value: $steps.extract_jobs.output.items
+
+steps:
+  - id: fetch_html
+    type: tool
+    tool: http.request
+    description: Fetch raw HTML job listings from LinkedIn guest jobs API
+    retry:
+      max: 3
+      delay: "2s"
+      backoff: 2.0
+    inputs:
+      url:
+        type: string
+        value: "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+      method:
+        type: string
+        value: "GET"
+      headers:
+        type: object
+        value:
+          User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          Accept-Language: "en-US,en;q=0.5"
+    outputs:
+      body:
+        type: string
+        value: $result.body
+
+  - id: guard_empty
+    type: exit
+    description: Exit early if the request returned nothing
+    condition: $steps.fetch_html.output.body == ""
+    status: success
+    output:
+      jobs: []
+
+  - id: extract_jobs
+    type: tool
+    tool: html.select
+    description: Extract structured job posting fields from each <li> card
+    inputs:
+      html:
+        type: string
+        value: $steps.fetch_html.output.body
+      selector:
+        type: string
+        value: "li"
+      fields:
+        type: object
+        value:
+          title: "h3.base-search-card__title"
+          company: "h4.base-search-card__subtitle"
+          location: "span.job-search-card__location"
+          posted_at: "time"
+          url: "a.base-card__full-link @href"
+          company_url: "h4 a @href"
+    outputs:
+      items:
+        type: array
+        value: $result.results
+
+  - id: guard_no_jobs
+    type: exit
+    description: Exit early if no job cards were found in the HTML
+    condition: $steps.extract_jobs.output.items.length == 0
+    status: success
+    output:
+      jobs: []
+```
+
+---
+
+**A few things to be aware of:**
+
+1. **Query parameters** — The workflow hits the base URL as-is. The `keywords`, `location`, and `start` inputs are declared but you'll need your runtime to support appending them as query params to the URL (e.g. `?keywords=...&location=...&start=...`), or you can concatenate them directly into the `url` value string if your expression language supports string interpolation.
+
+2. **Bot blocking** — LinkedIn aggressively blocks scrapers. The `User-Agent` header helps, but at scale you'll likely need a rotating proxy service. The `retry` policy (3 attempts, exponential backoff) provides some resilience against transient blocks.
+
+3. **Pagination** — Use the `start` input to paginate (e.g. `0`, `25`, `50`, …). Each page returns up to 25 job listings.
+
+Generating workflow...
+
+Let me probe the LinkedIn endpoint first to see what it returns.Let me try via http.request simulation to understand the known response shape of this LinkedIn guest jobs API.I have everything I need. Here's what I found from researching the API:
+
+- The endpoint accepts query parameters like `keywords`, `location`, `start` (for pagination), and returns **raw HTML** — not JSON. The response consists of `<li>` elements containing job postings.
+- The key CSS selectors are: job title via `h3.base-search-card__title`, company via `h4.base-search-card__subtitle`, and location via `span.job-search-card__location`.
+- Additional fields include the job URL via `.base-card__full-link` (href), posted date via `time`, company link via `h4 a` (href).
+
+Here is the complete SKILL.md:
+
+  ✓ Workflow written to generated/fetch-job-postings.md
+
+  Press Enter to accept, or type feedback to iterate.
+
+
+❯ I actually just want this to return a single job listing. The very first one.
+
+---
+name: linkedin-first-job
+description: Fetches the first job posting from the LinkedIn guest jobs API and returns it as a single structured object
+version: 0.1.0
+tags:
+  - linkedin
+  - jobs
+  - scraping
+---
+
+# LinkedIn First Job
+
+```workflow
+inputs:
+  keywords:
+    type: string
+    default: "software engineer"
+  location:
+    type: string
+    default: "United States"
+
+outputs:
+  title:
+    type: string
+    value: $steps.extract_jobs.output.items[0].title
+  company:
+    type: string
+    value: $steps.extract_jobs.output.items[0].company
+  location:
+    type: string
+    value: $steps.extract_jobs.output.items[0].location
+  posted_at:
+    type: string
+    value: $steps.extract_jobs.output.items[0].posted_at
+  url:
+    type: string
+    value: $steps.extract_jobs.output.items[0].url
+  company_url:
+    type: string
+    value: $steps.extract_jobs.output.items[0].company_url
+
+steps:
+  - id: fetch_html
+    type: tool
+    tool: http.request
+    description: Fetch raw HTML job listings from LinkedIn guest jobs API
+    retry:
+      max: 3
+      delay: "2s"
+      backoff: 2.0
+    inputs:
+      url:
+        type: string
+        value: "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+      method:
+        type: string
+        value: "GET"
+      headers:
+        type: object
+        value:
+          User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          Accept-Language: "en-US,en;q=0.5"
+    outputs:
+      body:
+        type: string
+        value: $result.body
+
+  - id: guard_empty
+    type: exit
+    description: Exit early if the request returned nothing
+    condition: $steps.fetch_html.output.body == ""
+    status: success
+    output:
+      title: ""
+      company: ""
+      location: ""
+      posted_at: ""
+      url: ""
+      company_url: ""
+
+  - id: extract_jobs
+    type: tool
+    tool: html.select
+    description: Extract structured job posting fields from each <li> card, limited to 1
+    inputs:
+      html:
+        type: string
+        value: $steps.fetch_html.output.body
+      selector:
+        type: string
+        value: "li"
+      limit:
+        type: int
+        value: 1
+      fields:
+        type: object
+        value:
+          title: "h3.base-search-card__title"
+          company: "h4.base-search-card__subtitle"
+          location: "span.job-search-card__location"
+          posted_at: "time"
+          url: "a.base-card__full-link @href"
+          company_url: "h4 a @href"
+    outputs:
+      items:
+        type: array
+        value: $result.results
+
+  - id: guard_no_jobs
+    type: exit
+    description: Exit early if no job cards were found in the HTML
+    condition: $steps.extract_jobs.output.items.length == 0
+    status: success
+    output:
+      title: ""
+      company: ""
+      location: ""
+      posted_at: ""
+      url: ""
+      company_url: ""
+```
+
+Generating workflow...
+
+  ✓ Workflow written to generated/fetch-job-postings.md
+
+  Press Enter to accept, or type feedback to iterate.
+
+
+❯ Great, now let's add a step. I want an LLM to generate a short (1-3 sentence) description of the job. I want that to be the only output.
+
+---
+name: linkedin-first-job-with-description
+description: Fetches the first LinkedIn job posting and uses an LLM to generate a short description of the role
+version: 0.1.0
+tags:
+  - linkedin
+  - jobs
+  - scraping
+---
+
+# LinkedIn First Job With Description
+
+```workflow
+inputs:
+  keywords:
+    type: string
+    default: "software engineer"
+  location:
+    type: string
+    default: "United States"
+
+outputs:
+  description:
+    type: string
+    value: $steps.describe_job.output.description
+
+steps:
+  - id: fetch_html
+    type: tool
+    tool: http.request
+    description: Fetch raw HTML job listings from LinkedIn guest jobs API
+    retry:
+      max: 3
+      delay: "2s"
+      backoff: 2.0
+    inputs:
+      url:
+        type: string
+        value: "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+      method:
+        type: string
+        value: "GET"
+      headers:
+        type: object
+        value:
+          User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          Accept-Language: "en-US,en;q=0.5"
+    outputs:
+      body:
+        type: string
+        value: $result.body
+
+  - id: guard_empty
+    type: exit
+    description: Exit early if the request returned nothing
+    condition: $steps.fetch_html.output.body == ""
+    status: success
+    output:
+      description: ""
+
+  - id: extract_jobs
+    type: tool
+    tool: html.select
+    description: Extract structured job posting fields from the first <li> card
+    inputs:
+      html:
+        type: string
+        value: $steps.fetch_html.output.body
+      selector:
+        type: string
+        value: "li"
+      limit:
+        type: int
+        value: 1
+      fields:
+        type: object
+        value:
+          title: "h3.base-search-card__title"
+          company: "h4.base-search-card__subtitle"
+          location: "span.job-search-card__location"
+          posted_at: "time"
+          url: "a.base-card__full-link @href"
+          company_url: "h4 a @href"
+    outputs:
+      items:
+        type: array
+        value: $result.results
+
+  - id: guard_no_jobs
+    type: exit
+    description: Exit early if no job cards were found in the HTML
+    condition: $steps.extract_jobs.output.items.length == 0
+    status: success
+    output:
+      description: ""
+
+  - id: describe_job
+    type: llm
+    model: haiku
+    description: Generate a short 1-3 sentence description of the job posting
+    prompt: |
+      You are given a job posting. Write a short, natural-language description of the role in 1-3 sentences.
+      Only output the description — no labels, no JSON, no preamble.
+
+      Job Title: $steps.extract_jobs.output.items[0].title
+      Company: $steps.extract_jobs.output.items[0].company
+      Location: $steps.extract_jobs.output.items[0].location
+      Posted: $steps.extract_jobs.output.items[0].posted_at
+    inputs:
+      job:
+        type: object
+        value: $steps.extract_jobs.output.items[0]
+    outputs:
+      description:
+        type: string
+```
+
+Generating workflow...
+
+  ✓ Workflow written to generated/fetch-job-postings.md
+
+  Press Enter to accept, or type feedback to iterate.

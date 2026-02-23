@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `SPEC.md` is the specification (source of truth for all behavior). See also `PROPOSAL.md` (justification and alternatives) and `EXAMPLES.md` (complete workflow examples).
+A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `SPEC.md` is the specification (source of truth for all behavior). See also `PROPOSAL.md` (justification and alternatives) and `examples/` (real-world workflow examples).
 
 ## Verify Every Change
 

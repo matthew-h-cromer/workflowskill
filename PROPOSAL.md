@@ -1,6 +1,6 @@
 # Proposal: WorkflowSkill — Deterministic Agent Skill Workflows
 
-> **Related documents:** [Specification](SPEC.md) | [Examples](EXAMPLES.md)
+> **Related documents:** [Specification](SPEC.md) | [Examples](examples/)
 
 ## Contents
 
