@@ -47,13 +47,47 @@ async function generateCommandInteractive(
   const promptStr = '\n' + pc.bold(pc.blue('❯ '));
   const getUserInput = (): Promise<string | null> => {
     return new Promise((resolve) => {
-      rl.question(promptStr, (answer) => {
-        if (answer.trim().toLowerCase() === '/quit') {
+      const lines: string[] = [];
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let pasteDetected = false;
+
+      const submit = (): void => {
+        rl.removeListener('line', onLine);
+        const input = lines.join('\n');
+        if (input.trim().toLowerCase() === '/quit') {
           resolve(null);
         } else {
-          resolve(answer);
+          resolve(input);
         }
-      });
+      };
+
+      const onLine = (line: string): void => {
+        if (pasteDetected) {
+          // After paste, empty Enter submits; non-empty appends more
+          if (line === '') {
+            submit();
+          } else {
+            lines.push(line);
+          }
+          return;
+        }
+
+        lines.push(line);
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (lines.length === 1) {
+            // Single line typed normally — submit immediately
+            submit();
+          } else {
+            // Multi-line paste detected — wait for Enter to submit
+            pasteDetected = true;
+            process.stderr.write(pc.dim('  (multiline paste detected — press Enter to send)\n'));
+          }
+        }, 50); // 50ms debounce distinguishes paste from typing
+      };
+
+      process.stderr.write(promptStr);
+      rl.on('line', onLine);
     });
   };
 
