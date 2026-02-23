@@ -127,6 +127,11 @@ function evaluateBinary(
       return isTruthy(lval) && isTruthy(rval);
     case '||':
       return isTruthy(lval) || isTruthy(rval);
+    case '+':
+      if (typeof lval === 'string' || typeof rval === 'string') {
+        return toString(lval) + toString(rval);
+      }
+      return toNumber(lval) + toNumber(rval);
     default:
       throw new EvalError(`Unknown operator: ${op}`);
   }
@@ -140,6 +145,13 @@ function evaluateUnary(op: string, operand: ASTNode, context: RuntimeContext): u
     default:
       throw new EvalError(`Unknown unary operator: ${op}`);
   }
+}
+
+function toString(val: unknown): string {
+  if (typeof val === 'string') return val;
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  return JSON.stringify(val);
 }
 
 function toNumber(val: unknown): number {

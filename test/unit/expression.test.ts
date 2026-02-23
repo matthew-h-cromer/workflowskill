@@ -68,6 +68,14 @@ describe('lexer', () => {
     expect(tokens.map(t => t.type)).toEqual(['BOOLEAN', 'BOOLEAN', 'NULL', 'EOF']);
   });
 
+  it('tokenizes + as PLUS', () => {
+    const tokens = lex('$inputs.base + ".json"');
+    expect(tokens.map(t => t.type)).toEqual([
+      'DOLLAR_REF', 'DOT', 'IDENTIFIER', 'PLUS', 'STRING', 'EOF',
+    ]);
+    expect(tokens[3]!.value).toBe('+');
+  });
+
   it('throws on unexpected character', () => {
     expect(() => lex('$item @ 5')).toThrow(LexError);
   });
@@ -170,6 +178,42 @@ describe('parser', () => {
       expect(ast.property).toBe('title');
       // Its object should be index_access([0])
       expect(ast.object.kind).toBe('index_access');
+    }
+  });
+
+  it('parses additive expression', () => {
+    const ast = parseExpression(lex('"https://api.example.com/item/" + $item + ".json"'));
+    expect(ast.kind).toBe('binary');
+    if (ast.kind === 'binary') {
+      expect(ast.operator).toBe('+');
+      // Left side is another + binary (left-associative)
+      expect(ast.left.kind).toBe('binary');
+      if (ast.left.kind === 'binary') {
+        expect(ast.left.operator).toBe('+');
+      }
+    }
+  });
+
+  it('parses additive left-associative chaining', () => {
+    // a + b + c → (a + b) + c
+    const ast = parseExpression(lex('"a" + "b" + "c"'));
+    expect(ast.kind).toBe('binary');
+    if (ast.kind === 'binary') {
+      expect(ast.operator).toBe('+');
+      expect(ast.left.kind).toBe('binary');
+    }
+  });
+
+  it('+ has higher precedence than comparison', () => {
+    // $item + 1 == 5  →  ($item + 1) == 5, not $item + (1 == 5)
+    const ast = parseExpression(lex('$item + 1 == 5'));
+    expect(ast.kind).toBe('binary');
+    if (ast.kind === 'binary') {
+      expect(ast.operator).toBe('==');
+      expect(ast.left.kind).toBe('binary');
+      if (ast.left.kind === 'binary') {
+        expect(ast.left.operator).toBe('+');
+      }
     }
   });
 
@@ -347,6 +391,34 @@ describe('resolveExpression', () => {
 
   it('resolves bracket on null to undefined', () => {
     expect(resolveExpression('$steps.empty_step.output[0]', ctx)).toBeUndefined();
+  });
+
+  // + operator
+  it('concatenates two strings', () => {
+    expect(resolveExpression('"hello" + " " + "world"', ctx)).toBe('hello world');
+  });
+
+  it('coerces number to string when one side is string', () => {
+    expect(resolveExpression('"item/" + $inputs.threshold', ctx)).toBe('item/7');
+  });
+
+  it('adds two numbers', () => {
+    expect(resolveExpression('$inputs.threshold + 3', ctx)).toBe(10);
+  });
+
+  it('builds a dynamic URL via concatenation', () => {
+    const urlCtx: RuntimeContext = {
+      inputs: { base: 'https://api.example.com/item/' },
+      steps: {},
+      item: 101,
+    };
+    expect(resolveExpression('$inputs.base + $item + ".json"', urlCtx)).toBe(
+      'https://api.example.com/item/101.json',
+    );
+  });
+
+  it('coerces null to empty string in concatenation', () => {
+    expect(resolveExpression('"prefix-" + $steps.empty_step.output', ctx)).toBe('prefix-');
   });
 
   // Error cases

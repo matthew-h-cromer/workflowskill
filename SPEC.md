@@ -228,10 +228,13 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 
 | Category | Operators |
 |----------|-----------|
+| Concatenation / Addition | `+` |
 | Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
 | Logical | `&&`, `\|\|`, `!` |
 
-**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), and comparisons.
+**Concatenation / Addition (`+`).** When either operand is a string, both are coerced to strings and the results are concatenated. `null` and `undefined` coerce to `""`. Numbers and booleans coerce via `String()`. Objects and arrays coerce via `JSON.stringify()`. When both operands are numbers, the result is numeric addition. Precedence: tighter than comparison, looser than unary `!`. Primary use case: constructing dynamic URLs in `each` loops (e.g., `$inputs.base_url + $item + ".json"`).
+
+**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), concatenation/addition, and comparisons.
 
 **Prompt interpolation.** Expressions in `prompt` fields (on LLM steps) follow the same reference resolution rules: `$inputs`, `$steps`, `$item`, and `$index` are resolved and property access works. Comparison and logical operators are not supported in prompt interpolation. The resolved value is coerced to its string representation and inserted at the reference position. Objects and arrays are serialized as JSON. Null values are inserted as the empty string.
 

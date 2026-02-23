@@ -18,6 +18,7 @@ export type TokenType =
   | 'AND'          // &&
   | 'OR'           // ||
   | 'NOT'          // !
+  | 'PLUS'         // +
   | 'LPAREN'       // (
   | 'RPAREN'       // )
   | 'LBRACKET'     // [
@@ -145,6 +146,11 @@ export function lex(input: string): Token[] {
     }
     if (ch === '!') {
       tokens.push({ type: 'NOT', value: '!', position: pos });
+      pos++;
+      continue;
+    }
+    if (ch === '+') {
+      tokens.push({ type: 'PLUS', value: '+', position: pos });
       pos++;
       continue;
     }
