@@ -38,35 +38,35 @@ import {
   generateWorkflow,
   MockToolAdapter,
   MockLLMAdapter,
-} from 'workflowskill';
+} from "workflowskill";
 
 const workflow = parseWorkflowFromMd(markdownContent);
 const validation = validateWorkflow(workflow, toolAdapter);
 
 const runLog = await runWorkflow({
   workflow,
-  inputs: { message: 'hello' },
-  toolAdapter,  // implements ToolAdapter
-  llmAdapter,   // implements LLMAdapter
+  inputs: { message: "hello" },
+  toolAdapter, // implements ToolAdapter
+  llmAdapter, // implements LLMAdapter
 });
 
 const generated = await generateWorkflow({
-  prompt: 'Triage my daily emails',
+  prompt: "Triage my daily emails",
   llmAdapter,
   toolDescriptors: [
     {
-      name: 'gmail.search',
-      description: 'Search Gmail messages by query.',
+      name: "gmail.search",
+      description: "Search Gmail messages by query.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          query: { type: 'string', description: 'The search query' },
-          max_results: { type: 'integer', description: 'Maximum results' },
+          query: { type: "string", description: "The search query" },
+          max_results: { type: "integer", description: "Maximum results" },
         },
-        required: ['query'],
+        required: ["query"],
       },
     },
-    { name: 'slack.post_message', description: 'Post a message to Slack.' },
+    { name: "slack.post_message", description: "Post a message to Slack." },
   ],
 });
 ```
@@ -79,11 +79,15 @@ const generated = await generateWorkflow({
 interface ToolAdapter {
   invoke(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
   has(toolName: string): boolean;
-  list?(): ToolDescriptor[];  // optional — for tool discovery
+  list?(): ToolDescriptor[]; // optional — for tool discovery
 }
 
 interface LLMAdapter {
-  call(model: string | undefined, prompt: string, responseFormat?: Record<string, unknown>): Promise<LLMResult>;
+  call(
+    model: string | undefined,
+    prompt: string,
+    responseFormat?: Record<string, unknown>,
+  ): Promise<LLMResult>;
 }
 ```
 
@@ -100,16 +104,16 @@ npm run validate:examples  # Validate all 13 fixtures
 
 ## Built-in Tools
 
-| Tool | Description | Requires config |
-| --- | --- | --- |
-| `http.request` | Make an HTTP request and return the response status, headers, and body. | No |
-| `html.select` | Extract data from HTML using CSS selectors. Returns text content, attribute values, or structured objects. | No |
-| `gmail.search` | Search Gmail messages matching a query. | Google OAuth2 |
-| `gmail.read` | Read a full Gmail message by ID. | Google OAuth2 |
-| `gmail.send` | Send an email via Gmail. | Google OAuth2 |
-| `sheets.read` | Read values from a Google Sheets range. | Google OAuth2 |
-| `sheets.write` | Write values to a Google Sheets range (overwrites existing data). | Google OAuth2 |
-| `sheets.append` | Append rows to a Google Sheets range. | Google OAuth2 |
+| Tool            | Description                                                                                                | Requires config |
+| --------------- | ---------------------------------------------------------------------------------------------------------- | --------------- |
+| `http.request`  | Make an HTTP request and return the response status, headers, and body.                                    | No              |
+| `html.select`   | Extract data from HTML using CSS selectors. Returns text content, attribute values, or structured objects. | No              |
+| `gmail.search`  | Search Gmail messages matching a query.                                                                    | Google OAuth2   |
+| `gmail.read`    | Read a full Gmail message by ID.                                                                           | Google OAuth2   |
+| `gmail.send`    | Send an email via Gmail.                                                                                   | Google OAuth2   |
+| `sheets.read`   | Read values from a Google Sheets range.                                                                    | Google OAuth2   |
+| `sheets.write`  | Write values to a Google Sheets range (overwrites existing data).                                          | Google OAuth2   |
+| `sheets.append` | Append rows to a Google Sheets range.                                                                      | Google OAuth2   |
 
 `http.request` and `html.select` work out of the box with no configuration.
 
@@ -130,15 +134,17 @@ The runtime gracefully degrades: missing `ANTHROPIC_API_KEY` → mock LLM adapte
 
 1. **Create a Google Cloud project** at [console.cloud.google.com](https://console.cloud.google.com).
 2. **Enable APIs**: in the API Library, enable **Gmail API** and **Google Sheets API**.
-3. **Create OAuth2 credentials**: go to APIs & Services → Credentials → Create Credentials → OAuth client ID. Choose **Desktop app**. Download the JSON and note the `client_id` and `client_secret`.
-4. **Get a refresh token** using the [OAuth2 Playground](https://developers.google.com/oauthplayground):
+3. **Create OAuth2 credentials**: go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**. Choose **Web application**. Under **Authorized redirect URIs**, click **Add URI** and paste `https://developers.google.com/oauthplayground`. Click **Create**. Note the `client_id` and `client_secret`.
+4. **Add yourself as a test user**: go to **APIs & Services → OAuth consent screen → Test users → Add users**, enter your Google account email, and click **Save**.
+5. **Get a refresh token** using the [OAuth2 Playground](https://developers.google.com/oauthplayground):
+   - Ensure you have completed steps 1–4 first — the APIs from step 2 must be enabled or the scope authorization will fail.
    - Click the gear icon → check "Use your own OAuth credentials" → enter your `client_id` and `client_secret`.
    - In Step 1, add these scopes:
      - `https://www.googleapis.com/auth/gmail.modify`
      - `https://www.googleapis.com/auth/spreadsheets`
    - Click **Authorize APIs**, complete the consent flow, then click **Exchange authorization code for tokens**.
    - Copy the **Refresh token** value.
-5. **Add to `.env`**:
+6. **Add to `.env`**:
    ```
    GOOGLE_CLIENT_ID=<your client_id>
    GOOGLE_CLIENT_SECRET=<your client_secret>

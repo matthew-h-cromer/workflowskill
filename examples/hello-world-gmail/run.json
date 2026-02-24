@@ -1,0 +1,36 @@
+{
+  "id": "2a19732a-000d-45dd-8eb9-2cd545b31076",
+  "workflow": "hello-world-email",
+  "status": "success",
+  "summary": {
+    "steps_executed": 1,
+    "steps_skipped": 0,
+    "total_tokens": 0,
+    "total_duration_ms": 573
+  },
+  "started_at": "2026-02-23T23:57:21.777Z",
+  "completed_at": "2026-02-23T23:57:22.350Z",
+  "duration_ms": 573,
+  "inputs": {
+    "to": "(redacted)"
+  },
+  "steps": [
+    {
+      "id": "send_email",
+      "executor": "tool",
+      "status": "success",
+      "duration_ms": 572,
+      "inputs": {
+        "to": "(redacted)",
+        "subject": "Hello World",
+        "body": "Hello, World!"
+      },
+      "output": {
+        "message_id": "19c8cefa7e0802d8"
+      }
+    }
+  ],
+  "outputs": {
+    "message_id": "19c8cefa7e0802d8"
+  }
+}
