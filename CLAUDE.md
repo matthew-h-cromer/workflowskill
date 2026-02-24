@@ -22,6 +22,7 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 
 - **No silent fallbacks.** Throw clear errors. Never silently degrade.
 - **Fix root causes, not symptoms.** Fix the prompt, not the extraction logic.
+- **Improve the skill, not the parser.** When LLM output causes runtime failures, fix the workflow-author skill to generate better prompts — don't add parsing heuristics to the executor. Other spec implementations won't share custom parsing logic.
 
 ## Architecture
 

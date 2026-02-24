@@ -146,8 +146,10 @@ steps:
   type: llm
   model: haiku          # optional: haiku, sonnet, opus
   prompt: |
-    Analyze this data and respond as JSON.
+    Analyze this data.
     Data: $steps.fetch_data.output.result
+
+    Respond with raw JSON only — no markdown fences, no commentary.
   inputs:
     data:
       type: object
@@ -522,6 +524,7 @@ If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML
 13. **Use exit steps for conditional early termination only**, not as the default way to produce output. Exit output keys must match the declared workflow output keys.
 14. **Transform steps are for arrays only.** Never use a transform to extract fields from a single object.
 15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
+16. **LLM prompts requesting JSON must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON.
 
 ## Output Format
 
@@ -582,5 +585,6 @@ After generating, verify:
 - [ ] Step output `value` uses `$result` (not `$steps`)
 - [ ] LLM step outputs have `value` using `$result`
 - [ ] All `${}` template references resolve to declared inputs/steps
+- [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
 
 If validation fails, fix the errors and regenerate.
