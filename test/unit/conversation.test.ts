@@ -379,6 +379,81 @@ describe('conversationalGenerate', () => {
     expect(msgEvents[0]!.type === 'assistant_message' && msgEvents[0]!.text).toContain("Here's the workflow");
   });
 
+  describe('transient API error handling', () => {
+    function makeErrorThenSuccessAdapter(errorStatus: number, successResponse: ConversationResult): ConversationalLLMAdapter {
+      let callCount = 0;
+      const err = Object.assign(new Error(`API error ${errorStatus}`), { status: errorStatus });
+      return {
+        call: vi.fn(async () => ({ text: '', tokens: { input: 0, output: 0 } })),
+        converse: vi.fn(async () => {
+          if (callCount++ === 0) throw err;
+          return successResponse;
+        }),
+      };
+    }
+
+    it('retries on transient error (status 529) when user presses Enter', async () => {
+      const adapter = makeErrorThenSuccessAdapter(529, textResult(VALID_WORKFLOW));
+      const events: ConversationEvent[] = [];
+      // First getUserInput: retry (empty string); second: accept generated workflow
+      const userInputs = ['', ''];
+      let inputIndex = 0;
+
+      const result = await conversationalGenerate({
+        initialPrompt: 'make a workflow',
+        systemPrompt: 'test',
+        llmAdapter: adapter,
+        getUserInput: async () => userInputs[inputIndex++] ?? null,
+        onEvent: (e) => events.push(e),
+        validateGenerated: () => ({ valid: true, errors: [] }),
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.content).toContain('test-workflow');
+      // api_error event emitted
+      expect(events.some((e) => e.type === 'api_error' && e.retriable)).toBe(true);
+      // converse called twice: first throws, second succeeds
+      expect(adapter.converse).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts on transient error when user returns null', async () => {
+      const adapter = makeErrorThenSuccessAdapter(529, textResult(VALID_WORKFLOW));
+      const events: ConversationEvent[] = [];
+
+      const result = await conversationalGenerate({
+        initialPrompt: 'make a workflow',
+        systemPrompt: 'test',
+        llmAdapter: adapter,
+        getUserInput: async () => null,
+        onEvent: (e) => events.push(e),
+        validateGenerated: () => ({ valid: true, errors: [] }),
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Generation aborted by user');
+      expect(events.some((e) => e.type === 'api_error')).toBe(true);
+    });
+
+    it('rethrows non-transient errors (status 401)', async () => {
+      const err = Object.assign(new Error('Unauthorized'), { status: 401 });
+      const adapter: ConversationalLLMAdapter = {
+        call: vi.fn(async () => ({ text: '', tokens: { input: 0, output: 0 } })),
+        converse: vi.fn(async () => { throw err; }),
+      };
+
+      await expect(
+        conversationalGenerate({
+          initialPrompt: 'make a workflow',
+          systemPrompt: 'test',
+          llmAdapter: adapter,
+          getUserInput: async () => '',
+          onEvent: () => {},
+          validateGenerated: () => ({ valid: true, errors: [] }),
+        }),
+      ).rejects.toThrow('Unauthorized');
+    });
+  });
+
   describe('streaming mode', () => {
     function makeStreamingAdapter(
       streamResponses: Array<{ events: StreamEvent[]; result: ConversationResult }>,

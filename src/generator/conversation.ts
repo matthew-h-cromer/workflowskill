@@ -23,7 +23,9 @@ export type ConversationEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
   | { type: 'stream_start' }
-  | { type: 'stream_end' };
+  | { type: 'stream_end' }
+  // Error events
+  | { type: 'api_error'; message: string; retriable: boolean };
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -82,30 +84,54 @@ export async function conversationalGenerate(
   for (let turn = 0; turn < maxTurns; turn++) {
     let response;
 
-    if (streaming) {
-      const stream = llmAdapter.converseStream(model, systemPrompt, messages);
-      onEvent({ type: 'stream_start' });
+    try {
+      if (streaming) {
+        const stream = llmAdapter.converseStream(model, systemPrompt, messages);
+        onEvent({ type: 'stream_start' });
 
-      for await (const event of stream.events) {
-        if (event.type === 'text_delta') {
-          onEvent({ type: 'text_delta', delta: event.delta });
-        } else if (event.type === 'thinking_delta') {
-          onEvent({ type: 'thinking_delta', delta: event.delta });
-        } else if (event.type === 'block_start' && event.blockType === 'server_tool_use' && event.name) {
-          onEvent({ type: 'tool_call', name: event.name, args: event.input ?? {} });
-        } else if (event.type === 'block_start') {
-          // Result blocks from server-side tools (web_search_tool_result, web_fetch_tool_result)
-          if (event.blockType === 'web_search_tool_result' || event.blockType === 'web_fetch_tool_result') {
-            const toolName = event.blockType === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
-            onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+        for await (const event of stream.events) {
+          if (event.type === 'text_delta') {
+            onEvent({ type: 'text_delta', delta: event.delta });
+          } else if (event.type === 'thinking_delta') {
+            onEvent({ type: 'thinking_delta', delta: event.delta });
+          } else if (event.type === 'block_start' && event.blockType === 'server_tool_use' && event.name) {
+            onEvent({ type: 'tool_call', name: event.name, args: event.input ?? {} });
+          } else if (event.type === 'block_start') {
+            // Result blocks from server-side tools (web_search_tool_result, web_fetch_tool_result)
+            if (event.blockType === 'web_search_tool_result' || event.blockType === 'web_fetch_tool_result') {
+              const toolName = event.blockType === 'web_search_tool_result' ? 'web_search' : 'web_fetch';
+              onEvent({ type: 'tool_result', name: toolName, output: '[server-side result]', isError: false });
+            }
           }
         }
-      }
 
-      onEvent({ type: 'stream_end' });
-      response = await stream.result;
-    } else {
-      response = await llmAdapter.converse(model, systemPrompt, messages);
+        onEvent({ type: 'stream_end' });
+        response = await stream.result;
+      } else {
+        response = await llmAdapter.converse(model, systemPrompt, messages);
+      }
+    } catch (err) {
+      if (isTransientError(err)) {
+        // If streaming was in progress, reset UI state
+        if (streaming) {
+          onEvent({ type: 'stream_end' });
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        onEvent({ type: 'api_error', message, retriable: true });
+        const retryInput = await getUserInput();
+        if (retryInput === null) {
+          return {
+            content: lastContent || '',
+            valid: false,
+            errors: ['Generation aborted by user'],
+            attempts,
+          };
+        }
+        // Retry the same turn — don't push any message
+        turn--;
+        continue;
+      }
+      throw err;
     }
 
     // Append assistant response to conversation history
@@ -213,6 +239,23 @@ function extractText(content: ConversationContent[]): string {
     .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
     .map((b) => b.text)
     .join('');
+}
+
+/**
+ * Returns true for transient API errors that are safe to retry:
+ * - 429 (rate limit) and 5xx (server errors including 529 overloaded)
+ * - Network-level connection errors (no HTTP status code)
+ */
+function isTransientError(err: unknown): boolean {
+  if (err instanceof Error && 'status' in err) {
+    const status = (err as { status: number }).status;
+    return status === 429 || status >= 500;
+  }
+  // Network errors (no status code) are also transient
+  if (err instanceof Error && err.name === 'APIConnectionError') {
+    return true;
+  }
+  return false;
 }
 
 /** Find a SKILL.md document (frontmatter + workflow block) anywhere in the response text. */

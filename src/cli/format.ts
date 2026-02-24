@@ -116,6 +116,20 @@ export function renderEvent(event: ConversationEvent): void {
     case 'workflow_generated':
       // Handled externally in generate.ts (file write logic)
       break;
+
+    case 'api_error':
+      if (midStream) {
+        process.stderr.write('\n');
+        midStream = false;
+      }
+      if (!trailingBlank) {
+        process.stderr.write('\n');
+      }
+      process.stderr.write(`${pc.yellow('⚠')} ${pc.yellow(event.message)}\n`);
+      process.stderr.write(`${pc.dim('Press Enter to retry, or /quit to abort.')}\n`);
+      trailingBlank = false;
+      afterToolBlock = false;
+      break;
   }
 }
 
