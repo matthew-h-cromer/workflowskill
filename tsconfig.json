@@ -21,6 +21,6 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "openclaw/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
