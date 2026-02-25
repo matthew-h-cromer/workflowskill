@@ -2,11 +2,16 @@
 
 ## Project Overview
 
-A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it. `SPEC.md` is the specification (source of truth for all behavior). See also `PROPOSAL.md` (justification and alternatives) and `examples/` (real-world workflow examples).
+A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it.
+
+**Repo layout:**
+- `SPEC.md` — language specification (source of truth for all behavior)
+- `PROPOSAL.md` — justification and alternatives
+- `runtime/` — reference TypeScript implementation (all source, tests, and tooling live here)
 
 ## Verify Every Change
 
-**Run after every change:** `npm run typecheck && npm run test && npm run lint`
+**Run from `runtime/` after every change:** `npm run typecheck && npm run test && npm run lint`
 
 - **The spec is the source of truth.** Read `SPEC.md` before modifying any module. If the spec and the implementation disagree, the spec wins.
 - **Mock external dependencies.** No API calls in unit or integration tests. Use the adapter interfaces.
@@ -15,8 +20,8 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 
 ## Do Not Edit
 
-- **`src/generator/skill-prompt.ts`** — auto-generated from `src/generator/workflow-author.md`. Edit the `.md`, then run `npx tsx scripts/generate-skill-prompt.ts`.
-- **`package-lock.json`** — managed by npm.
+- **`runtime/src/generator/skill-prompt.ts`** — auto-generated from `runtime/src/generator/workflow-author.md`. Edit the `.md`, then run `npx tsx scripts/generate-skill-prompt.ts` from `runtime/`.
+- **`runtime/package-lock.json`** — managed by npm.
 
 ## Engineering Principles
 
@@ -27,7 +32,7 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 ## Architecture
 
 ````
-src/
+runtime/src/
 ├── types/          # TypeScript interfaces mirroring every spec field and constraint
 ├── parser/         # SKILL.md → typed WorkflowDefinition (extract markdown → parse YAML → Zod validate)
 │   ├── extract.ts  # Fenced ```workflow block extraction from markdown
@@ -63,9 +68,10 @@ src/
 ├── cli/            # Three commands: validate, run, generate
 └── index.ts        # Single entry point re-exporting all public APIs
 
-test/fixtures/                   # 12 targeted + 3 graduation + 4 malformed workflow fixtures
-test/unit/                       # Unit tests (parser, expression, types, validator, executor, generator)
-test/integration/                # Integration tests (runtime, graduation)
+runtime/test/fixtures/           # 12 targeted + 3 graduation + 4 malformed workflow fixtures
+runtime/test/unit/               # Unit tests (parser, expression, types, validator, executor, generator)
+runtime/test/integration/        # Integration tests (runtime, graduation)
+runtime/examples/                # Real-world workflow examples
 ````
 
 **Dependency flow:** types → parser + expression → validator + executor → runtime → cli + generator
@@ -83,12 +89,16 @@ test/integration/                # Integration tests (runtime, graduation)
 - **Workflow output `value`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
 - **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
 - **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy PR7/PR8 requirements for debugging artifacts.
-- **Runtime events** use the same `onEvent` callback pattern as `ConversationEvent` in the generator. `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
+- **Runtime events** use the same `onEvent` callback pattern as `ConversationEvent` in the generator. `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `runtime/src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
 - **Every run attempt produces a run log** — parse failures, validation failures, and execution failures all produce a structured `RunLog` on stdout and disk. `runWorkflow()` returns a `RunLog` on validation failure (no longer throws `WorkflowExecutionError`). `buildFailedRunLog(name, error, startedAt?)` constructs the minimal log for pre-execution failures. `RunLogError` carries `phase: 'parse' | 'validate' | 'execute'`, `message`, and optional `details`. `WorkflowExecutionError` is kept exported for backwards compatibility but is no longer thrown by `runWorkflow()`.
 
 ## Development Commands
 
+All commands run from `runtime/`:
+
 ```
+cd runtime
+
 npm run typecheck          # tsc --noEmit (strict)
 npm run test               # Run all tests (vitest)
 npm run test:watch         # Watch mode
@@ -105,7 +115,7 @@ npx tsx src/cli/index.ts generate "<prompt>"
 
 ## Credential Configuration
 
-Set env vars or create a `.env` file in the project root:
+Set env vars or create a `.env` file in `runtime/`:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...       # Required for real LLM calls

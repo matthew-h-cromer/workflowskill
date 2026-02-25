@@ -4,24 +4,24 @@ When changing one file, these related files likely need updates too.
 
 ## Adding/changing a public type
 
-`src/types/index.ts` → `src/parser/schema.ts` (Zod schema) → `src/index.ts` (re-export) → tests
+`runtime/src/types/index.ts` → `runtime/src/parser/schema.ts` (Zod schema) → `runtime/src/index.ts` (re-export) → tests
 
 ## Adding/changing a public function
 
-Implementation file → `src/index.ts` (re-export) → tests → CLAUDE.md (if significant)
+Implementation file → `runtime/src/index.ts` (re-export) → tests → CLAUDE.md (if significant)
 
 ## Generator changes
 
-`src/generator/*.ts` + `src/types/index.ts` + `src/cli/generate.ts` + `src/index.ts` + tests
+`runtime/src/generator/*.ts` + `runtime/src/types/index.ts` + `runtime/src/cli/generate.ts` + `runtime/src/index.ts` + tests
 
 ## Workflow-author skill
 
-`src/generator/workflow-author.md` → run `npx tsx scripts/generate-skill-prompt.ts` → verify `src/generator/skill-prompt.ts` updated
+`runtime/src/generator/workflow-author.md` → run `npx tsx scripts/generate-skill-prompt.ts` (from `runtime/`) → verify `runtime/src/generator/skill-prompt.ts` updated
 
 ## New built-in tool
 
-`src/adapters/tools/<name>.ts` → `src/adapters/builtin-tool-adapter.ts` (register) → tests → CLAUDE.md (Built-in Tools)
+`runtime/src/adapters/tools/<name>.ts` → `runtime/src/adapters/builtin-tool-adapter.ts` (register) → tests → CLAUDE.md (Built-in Tools)
 
 ## Spec-level changes
 
-`src/types/` → `src/parser/schema.ts` → `src/validator/` → `src/executor/` → `src/runtime/` → tests → CLAUDE.md
+`runtime/src/types/` → `runtime/src/parser/schema.ts` → `runtime/src/validator/` → `runtime/src/executor/` → `runtime/src/runtime/` → tests → CLAUDE.md
