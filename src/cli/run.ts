@@ -9,7 +9,6 @@ import type { RunLog } from '../types/index.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
 import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
-import { MockToolAdapter } from '../adapters/mock-tool-adapter.js';
 import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 import { renderRuntimeEvent } from './format.js';
 
@@ -87,41 +86,30 @@ export async function runCommand(
 
   // Load config and create adapters
   const config = loadConfig();
-  let toolAdapter;
+
+  // Tool adapter: always real — http.request/html.select have no API key dependency
+  const toolAdapter = await BuiltinToolAdapter.create(config);
+
+  // Warn if workflow uses Google tools but no creds
+  if (!config.googleCredentials) {
+    const googleTools = workflow.steps
+      .filter((s) => s.type === 'tool' && (s.tool.startsWith('gmail.') || s.tool.startsWith('sheets.')))
+      .map((s) => (s as { tool: string }).tool);
+    if (googleTools.length > 0) {
+      console.warn(`Warning: Workflow uses ${googleTools.join(', ')} but no Google credentials configured`);
+    }
+  }
+
+  // LLM adapter: only real when a key is available
+  const hasLlmSteps = workflow.steps.some((s) => s.type === 'llm');
   let llmAdapter;
-
-  if (config.anthropicApiKey) {
+  if (hasLlmSteps && config.anthropicApiKey) {
     llmAdapter = new AnthropicLLMAdapter(config.anthropicApiKey);
-    toolAdapter = await BuiltinToolAdapter.create(config);
-
-    // Warn if workflow uses Google tools but no creds
-    if (!config.googleCredentials) {
-      const googleTools = workflow.steps
-        .filter((s) => s.type === 'tool' && (s.tool.startsWith('gmail.') || s.tool.startsWith('sheets.')))
-        .map((s) => (s as { tool: string }).tool);
-      if (googleTools.length > 0) {
-        console.warn(`Warning: Workflow uses ${googleTools.join(', ')} but no Google credentials configured`);
-      }
-    }
-
-    // Register stub handlers for any tools not covered by built-in adapter
-    // (so unknown tools echo their inputs instead of failing)
   } else {
-    // Fallback to mock adapters when no API key is set
-    const mockTool = new MockToolAdapter();
-    const mockLlm = new MockLLMAdapter();
-
-    for (const step of workflow.steps) {
-      if (step.type === 'tool' && !mockTool.has(step.tool)) {
-        mockTool.register(step.tool, (args) => ({
-          output: args,
-        }));
-      }
+    llmAdapter = new MockLLMAdapter();
+    if (hasLlmSteps) {
+      console.warn('Warning: No ANTHROPIC_API_KEY set — LLM steps will use mock adapter');
     }
-
-    toolAdapter = mockTool;
-    llmAdapter = mockLlm;
-    console.warn('Warning: No ANTHROPIC_API_KEY set — running with mock adapters');
   }
 
   try {
