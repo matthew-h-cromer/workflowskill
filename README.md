@@ -61,11 +61,24 @@ cd runtime
 npm install
 ```
 
-**Validate and run a workflow (no API key needed):**
+**hello-world** — no API keys needed:
 
 ```bash
-workflowskill validate ../examples/hello-world/hello-world.md
 workflowskill run ../examples/hello-world/hello-world.md
+```
+
+**fetch-job-postings** — scrapes LinkedIn job listings, no API keys needed:
+
+```bash
+workflowskill run ../examples/fetch-job-postings/fetch-job-postings.md \
+  --input '{"keywords": "software engineer", "location": "United States"}'
+```
+
+**hello-world-gmail** — sends an email via Gmail (requires Google credentials in `runtime/.env`, see [Getting Google OAuth2 credentials](#getting-google-oauth2-credentials)):
+
+```bash
+workflowskill run ../examples/hello-world-gmail/hello-world-gmail.md \
+  --input '{"to": "you@example.com"}'
 ```
 
 **Generate a workflow with Claude Code:**
@@ -78,7 +91,7 @@ Use the workflow-author skill:
 /workflow-author fetch the top 10 Hacker News stories and return their titles, scores, and URLs
 ```
 
-Claude will research the task, propose a design, write the SKILL.md, and validate it with the CLI. The built-in tools available to generated workflows are:
+Claude will research the task, propose a design, write the SKILL.md, and validate it with the CLI. The dev tools available to generated workflows are:
 
 | Tool | What it does | Needs credentials |
 |------|--------------|-------------------|
@@ -99,7 +112,7 @@ WorkflowSkill workflows are YAML documents with five step types:
 
 | Step type | Description |
 |-----------|-------------|
-| `tool` | Invoke an MCP server endpoint, built-in tool (HTTP, Gmail, Sheets), or any registered function |
+| `tool` | Invoke an MCP server endpoint, dev tool (HTTP, Gmail, Sheets), or any registered function |
 | `llm` | Call a language model with a templated prompt |
 | `transform` | Filter, map, or sort data without side effects |
 | `conditional` | Branch execution based on an expression |
@@ -117,7 +130,7 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 - **Expression engine** — `$`-reference language with `${...}` template interpolation
 - **Validator** — pre-execution DAG and type checking
 - **Executor** — five step type executors
-- **Built-in tools** — `http.request`, `html.select`, Gmail, Google Sheets (MCP server endpoints and custom functions also supported)
+- **Dev tools** — `http.request`, `html.select`, Gmail, Google Sheets (for local workflow authoring; in production, wire your own `ToolAdapter`)
 - **CLI** — `validate` and `run` commands
 - **Run log** — structured observability output for every run
 
@@ -188,6 +201,17 @@ GOOGLE_REFRESH_TOKEN=...
 ```
 
 The runtime degrades gracefully: missing `ANTHROPIC_API_KEY` → mock LLM adapter with a warning. Missing Google credentials → Google tools not registered (warning if a workflow references them).
+
+### Getting Google OAuth2 credentials
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
+2. Enable the APIs you need: **Gmail API** and/or **Google Sheets API** under *APIs & Services > Library*.
+3. Go to *APIs & Services > OAuth consent screen*. Choose **External** and fill in the app name and your email.
+4. Go to *APIs & Services > Credentials > Create Credentials > OAuth client ID*. Choose **Desktop app**. Copy the **Client ID** and **Client Secret** into your `.env`.
+5. Get a refresh token. The easiest way is [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground/):
+   - Click the gear icon, check **Use your own OAuth credentials**, and enter your Client ID and Client Secret.
+   - In the left panel, select the scopes you need: `https://www.googleapis.com/auth/gmail.modify` (under **Gmail API v1**) and/or `https://www.googleapis.com/auth/spreadsheets` (under **Sheets API v4**). Click **Authorize APIs** and sign in.
+   - Click **Exchange authorization code for tokens**. Copy the **Refresh token** into your `.env`.
 
 ## License
 
