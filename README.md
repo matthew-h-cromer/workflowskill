@@ -61,18 +61,37 @@ cd runtime
 npm install
 ```
 
-**Zero-config (no API key needed):**
+**Validate and run a workflow (no API key needed):**
 
 ```bash
-workflowskill run examples/hello-world/hello-world.md
+workflowskill validate ../examples/hello-world/hello-world.md
+workflowskill run ../examples/hello-world/hello-world.md
 ```
 
-**Requires `ANTHROPIC_API_KEY`:**
+**Generate a workflow with Claude Code:**
 
-```bash
-# Generate a workflow from natural language
-npx tsx src/cli/index.ts generate "Triage my Gmail inbox and summarize unread messages"
+The intended way to test the runtime is to generate workflows with Claude Code and run them. Open this repo in Claude Code — it has web access, file I/O, and can invoke the CLI, so it can take a task description all the way from research to a validated, runnable workflow.
+
+Use the workflow-author skill:
+
 ```
+/workflow-author fetch the top 10 Hacker News stories and return their titles, scores, and URLs
+```
+
+Claude will research the task, propose a design, write the SKILL.md, and validate it with the CLI. The built-in tools available to generated workflows are:
+
+| Tool | What it does | Needs credentials |
+|------|--------------|-------------------|
+| `http.request` | HTTP GET/POST/PUT/PATCH/DELETE | No |
+| `html.select` | CSS selector extraction from HTML | No |
+| `gmail.search` | Search Gmail by query | Google OAuth2 |
+| `gmail.read` | Read a Gmail message by ID | Google OAuth2 |
+| `gmail.send` | Send email via Gmail | Google OAuth2 |
+| `sheets.read` | Read a Google Sheets range | Google OAuth2 |
+| `sheets.write` | Write to a Google Sheets range | Google OAuth2 |
+| `sheets.append` | Append rows to a Google Sheets range | Google OAuth2 |
+
+`http.request` and `html.select` work with no setup. For Google tools, add credentials to `runtime/.env` (see `runtime/.env.example`).
 
 ## Language overview
 
@@ -99,8 +118,7 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 - **Validator** — pre-execution DAG and type checking
 - **Executor** — five step type executors
 - **Built-in tools** — `http.request`, `html.select`, Gmail, Google Sheets (MCP server endpoints and custom functions also supported)
-- **Generator** — LLM-powered workflow generation from natural language
-- **CLI** — `validate`, `run`, and `generate` commands
+- **CLI** — `validate` and `run` commands
 - **Run log** — structured observability output for every run
 
 See [`runtime/`](runtime/) for setup, API docs, and development instructions.

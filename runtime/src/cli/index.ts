@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-// WorkflowSkill CLI — validate, run, and generate workflows.
+// WorkflowSkill CLI — validate and run workflows.
 
 import { Command } from 'commander';
 import { validateCommand } from './validate.js';
 import { runCommand } from './run.js';
-import { generateCommand } from './generate.js';
 
 const program = new Command();
 
@@ -25,11 +24,5 @@ program
   .option('-i, --input <json>', 'Workflow inputs as JSON string', '{}')
   .option('-l, --log-dir <dir>', 'Directory to write run logs', 'runs')
   .action(runCommand);
-
-program
-  .command('generate <prompt>')
-  .description('Generate a WorkflowSkill YAML from a natural language prompt')
-  .option('-o, --output <file>', 'Write output to file instead of stdout')
-  .action(generateCommand);
 
 program.parse();

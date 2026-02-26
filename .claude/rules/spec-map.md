@@ -1,15 +1,15 @@
 # Spec Section Map
 
-Read the relevant section in `SPEC.md` (or `runtime/examples/` for workflow examples) before modifying the corresponding module.
+Read the relevant section in `SPEC.md` (or `examples/` for workflow examples) before modifying the corresponding module.
 
 | Spec Section | Relevant Module |
 | --- | --- |
 | Context (definitions) | types |
-| Proposal Requirements, Authoring Model | generator |
+| Proposal Requirements, Authoring Model | `.claude/skills/workflow-author/` |
 | WorkflowSkill (YAML structure, step fields) | types, parser |
 | Backwards Compatibility | parser |
 | Workflow Inputs and Outputs, Step Inputs and Outputs | types, parser, runtime |
-| Expression Language (incl. `$output` reference) | expression |
+| Expression Language (incl. `$result` reference) | expression |
 | Step Types (tool, llm, transform, conditional, exit) | types, executor |
 | Runtime > Execution Model (two phases, 8-step lifecycle) | runtime |
 | Runtime > Step Executors | executor |

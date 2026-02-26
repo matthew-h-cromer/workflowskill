@@ -65,8 +65,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `validator` | Pre-execution validation |
 | `executor` | Step executors (tool, llm, transform, conditional, exit) |
 | `runtime` | Orchestrator, lifecycle, run log |
-| `cli` | CLI commands (validate, run, generate) |
-| `generator` | Workflow authoring skill, generation loop |
+| `cli` | CLI commands (validate, run) |
 | `adapters` | Tool/LLM adapters, built-in tools |
 | `types` | TypeScript interfaces |
 | `rfc` | RFC specification document |

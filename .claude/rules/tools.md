@@ -34,10 +34,6 @@ interface ToolAdapter {
 interface LLMAdapter {
   call(model: string | undefined, prompt: string, responseFormat?: Record<string, unknown>): Promise<LLMResult>;
 }
-
-interface ConversationalLLMAdapter extends LLMAdapter {
-  converse(model: string | undefined, system: string, messages: ConversationMessage[]): Promise<ConversationResult>;
-}
 ```
 
 ## Adding a New Built-in Tool
@@ -45,4 +41,4 @@ interface ConversationalLLMAdapter extends LLMAdapter {
 1. Create `src/adapters/tools/<name>.ts` implementing the tool function
 2. Register in `src/adapters/builtin-tool-adapter.ts`
 3. Add unit tests in `test/unit/<name>.test.ts`
-4. Update CLAUDE.md Built-in Tools section (if it exists) and this file
+4. Update this file

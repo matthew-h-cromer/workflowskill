@@ -10,13 +10,9 @@ When changing one file, these related files likely need updates too.
 
 Implementation file → `runtime/src/index.ts` (re-export) → tests → CLAUDE.md (if significant)
 
-## Generator changes
-
-`runtime/src/generator/*.ts` + `runtime/src/types/index.ts` + `runtime/src/cli/generate.ts` + `runtime/src/index.ts` + tests
-
 ## Workflow-author skill
 
-`runtime/src/generator/workflow-author.md` → run `npx tsx scripts/generate-skill-prompt.ts` (from `runtime/`) → verify `runtime/src/generator/skill-prompt.ts` updated
+`.claude/skills/workflow-author/SKILL.md` — edit directly, no build step needed.
 
 ## New built-in tool
 

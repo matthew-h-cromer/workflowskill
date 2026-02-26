@@ -2,13 +2,14 @@
 
 ## Project Overview
 
-A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, an LLM generates WorkflowSkill YAML, and the runtime executes it.
+A standalone TypeScript runtime that parses, validates, and executes WorkflowSkill YAML definitions. A user describes a workflow in natural language, Claude Code generates WorkflowSkill YAML (via `.claude/skills/workflow-author/`), and the runtime executes it.
 
 **Repo layout:**
 - `SPEC.md` — language specification (source of truth for all behavior)
 - `PROPOSAL.md` — justification and alternatives
 - `examples/` — runnable workflow examples (at repo root, referenced from SPEC.md and PROPOSAL.md)
 - `runtime/` — reference TypeScript implementation (all source, tests, and tooling live here)
+- `.claude/skills/workflow-author/SKILL.md` — teaches Claude Code to author valid WorkflowSkill YAML
 
 ## Verify Every Change
 
@@ -21,14 +22,13 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 
 ## Do Not Edit
 
-- **`runtime/src/generator/skill-prompt.ts`** — auto-generated from `runtime/src/generator/workflow-author.md`. Edit the `.md`, then run `npx tsx scripts/generate-skill-prompt.ts` from `runtime/`.
 - **`runtime/package-lock.json`** — managed by npm.
 
 ## Engineering Principles
 
 - **No silent fallbacks.** Throw clear errors. Never silently degrade.
 - **Fix root causes, not symptoms.** Fix the prompt, not the extraction logic.
-- **Improve the skill, not the parser.** When LLM output causes runtime failures, fix the workflow-author skill to generate better prompts — don't add parsing heuristics to the executor. Other spec implementations won't share custom parsing logic.
+- **Improve the skill, not the parser.** When LLM output causes runtime failures, fix the workflow-author skill (`/workflow-author`) to generate better prompts — don't add parsing heuristics to the executor. Other spec implementations won't share custom parsing logic.
 
 ## Architecture
 
@@ -62,24 +62,22 @@ runtime/src/
 │       ├── html-select.ts       # html.select (cheerio)
 │       ├── gmail.ts             # gmail.search, gmail.read, gmail.send
 │       └── sheets.ts            # sheets.read, sheets.write, sheets.append
-├── generator/      # LLM-powered workflow generation (single-shot and conversational)
-│   ├── workflow-author.md  # Skill prompt that teaches LLMs to author workflows
-│   ├── skill-prompt.ts     # Auto-generated TS export of workflow-author.md
-│   └── conversation.ts     # Multi-turn conversational generation loop
-├── cli/            # Three commands: validate, run, generate
+├── cli/            # Two commands: validate, run
 └── index.ts        # Single entry point re-exporting all public APIs
 
 runtime/test/fixtures/           # 12 targeted + 3 graduation + 4 malformed workflow fixtures
-runtime/test/unit/               # Unit tests (parser, expression, types, validator, executor, generator)
+runtime/test/unit/               # Unit tests (parser, expression, types, validator, executor)
 runtime/test/integration/        # Integration tests (runtime, graduation)
 
 examples/                        # Real-world workflow examples (repo root)
 examples/hello-world/            # Zero-config example — returns "Hello, world!" (no API keys needed)
 examples/fetch-job-postings/     # LinkedIn scraper example
 examples/hello-world-gmail/      # Gmail send example (requires Google OAuth2)
+
+.claude/skills/workflow-author/  # Claude Code skill for authoring WorkflowSkill YAML
 ````
 
-**Dependency flow:** types → parser + expression → validator + executor → runtime → cli + generator
+**Dependency flow:** types → parser + expression → validator + executor → runtime → cli
 
 ## Key Design Decisions
 
@@ -94,7 +92,7 @@ examples/hello-world-gmail/      # Gmail send example (requires Google OAuth2)
 - **Workflow output `value`** uses `$steps` references to map from the final runtime context. Resolved after all steps complete. Exit step output takes precedence when fired.
 - **Backwards compatibility** — outputs without `value` use legacy key-matching behavior. Legacy `source`/`default` fields are accepted at parse time and normalized to `value`.
 - **Run log observability** — `StepRecord` includes `inputs` (resolved values passed to the executor), `retries` (attempt count + per-attempt error messages when retries occurred), and enriched `error` messages (prefixed with tool name for tool steps, step/field context for expression failures). These fields satisfy PR7/PR8 requirements for debugging artifacts.
-- **Runtime events** use the same `onEvent` callback pattern as `ConversationEvent` in the generator. `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `runtime/src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
+- **Runtime events** — `RuntimeEvent` is a discriminated union on `type`, optional on `RunOptions`. Events emitted from runtime internals; rendering in `renderRuntimeEvent()` in `runtime/src/cli/format.ts`. All CLI live output goes to stderr; stdout reserved for JSON run log.
 - **Every run attempt produces a run log** — parse failures, validation failures, and execution failures all produce a structured `RunLog` on stdout and disk. `runWorkflow()` returns a `RunLog` on validation failure (no longer throws `WorkflowExecutionError`). `buildFailedRunLog(name, error, startedAt?)` constructs the minimal log for pre-execution failures. `RunLogError` carries `phase: 'parse' | 'validate' | 'execute'`, `message`, and optional `details`. `WorkflowExecutionError` is kept exported for backwards compatibility but is no longer thrown by `runWorkflow()`.
 
 ## Development Commands
@@ -115,15 +113,26 @@ npm run validate:examples  # Validate all workflow fixtures
 # CLI (via tsx for development)
 npx tsx src/cli/index.ts validate <files...>
 npx tsx src/cli/index.ts run <file>
-npx tsx src/cli/index.ts generate "<prompt>"
 ```
+
+## Workflow Generation
+
+**Skill location: `.claude/skills/workflow-author/SKILL.md`**
+
+To generate a workflow, invoke the skill with a description of the task:
+
+```
+/workflow-author fetch the top 10 Hacker News stories and return their titles, scores, and URLs
+```
+
+The skill teaches Claude to research the task (using WebFetch/WebSearch), propose a design, write the SKILL.md, and validate it against the runtime CLI. This is the intended way to test the runtime — generate a workflow here in Claude Code and run it.
 
 ## Credential Configuration
 
 Set env vars or create a `.env` file in `runtime/`:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...       # Required for real LLM calls
+ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
 GOOGLE_CLIENT_ID=...               # Optional: enables Gmail/Sheets tools
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...

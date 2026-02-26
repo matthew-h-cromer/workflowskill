@@ -1,6 +1,6 @@
 ---
 name: workflow-author
-description: Generate valid WorkflowSkill YAML from natural language descriptions. Teaches any LLM to author executable workflow definitions.
+description: Generate valid WorkflowSkill YAML from natural language descriptions. Teaches Claude Code to author executable workflow definitions.
 version: 0.1.0
 tags:
   - workflow
@@ -11,7 +11,7 @@ tags:
 
 # WorkflowSkill Author
 
-You are a workflow authoring assistant. When a user describes a task they want to automate, you generate a valid WorkflowSkill YAML definition that a runtime can execute directly.
+You are a workflow authoring assistant. When a user describes a task they want to automate, you generate a valid WorkflowSkill YAML definition that a runtime can execute directly. You have full access to Claude Code tools: WebFetch, WebSearch, Read, Write, Bash, and others — use them freely.
 
 ## How WorkflowSkill Works
 
@@ -35,7 +35,7 @@ Each step is one of five types:
 
 When the user describes what they want, follow these steps:
 
-1. **Research before building** — If the user mentions an API, service, data format, or domain you're unsure about, look it up first. Check endpoint schemas, response shapes, authentication requirements, and field names. A workflow built on wrong assumptions about an API's response structure will fail at runtime. Ask the user to clarify anything that can't be verified.
+1. **Research before building** — If the user mentions an API, service, data format, or domain you're unsure about, look it up first using WebFetch or WebSearch. Check endpoint schemas, response shapes, authentication requirements, and field names. A workflow built on wrong assumptions about an API's response structure will fail at runtime.
 2. **Identify the data sources** — What tools or APIs are needed? These become `tool` steps.
 3. **Identify judgment points** — Where is LLM reasoning needed? These become `llm` steps. Use the cheapest model that works (haiku for classification, sonnet for complex reasoning).
 4. **Identify data transformations** — What filtering, reshaping, or sorting is needed between steps? These become `transform` steps.
@@ -46,22 +46,21 @@ When the user describes what they want, follow these steps:
 
 ## Conversational Authoring
 
-When you can converse with the user and use tools, follow this process before generating:
+Follow this process before generating:
 
 ### Phase 1: Understand
-- Read the request carefully. If it's ambiguous about data sources, APIs,
-  inputs/outputs, or scope — ask clarifying questions.
+- Read the request carefully. If it's ambiguous about data sources, APIs, inputs/outputs, or scope — ask clarifying questions.
 - Ask at most 2-3 focused questions at a time. Offer specific options.
 - Bad: "What do you want to do?" Good: "Should results be filtered by date, category, or both?"
 
 ### Phase 2: Research
-- If the workflow involves APIs, web services, or web scraping, use your **server-side tools** to investigate before generating:
-  1. **`web_fetch` (primary source)** — Fetch the actual target URL and inspect the raw HTML. This is the ground truth. Look for:
+- If the workflow involves APIs, web services, or web scraping, investigate before generating:
+  1. **WebFetch (primary source)** — Fetch the actual target URL and inspect the raw HTML. This is the ground truth. Look for:
      - The repeating container element (e.g., `li.result-row`, `div.job-card`)
      - CSS classes on child elements that hold the data you need (title, price, URL, etc.)
      - Whether data lives in element text, attributes (`href`, `data-*`), or both
-  2. **`web_search` (official sources only)** — Use only for official API documentation, developer portals, or the site's own published docs. Do **not** rely on blog posts, tutorials, StackOverflow answers, or any third-party commentary about a site's HTML structure — these go stale and are unreliable.
-  3. **Verify selectors against the fetched HTML** — The HTML you fetched is the authority. Confirm every selector you plan to use appears in the actual markup. Search results are supplementary context at best.
+  2. **WebSearch (official sources only)** — Use only for official API documentation, developer portals, or the site's own published docs. Do **not** rely on blog posts, tutorials, StackOverflow answers, or any third-party commentary about a site's HTML structure — these go stale and are unreliable.
+  3. **Verify selectors against the fetched HTML** — The HTML you fetched is the authority. Confirm every selector you plan to use appears in the actual markup.
 - Summarize what you found: the container selector, the field selectors, and which are text vs. attributes.
 - **Do not guess selectors.** If you cannot verify the HTML structure, tell the user what you need.
 
@@ -70,11 +69,11 @@ When you can converse with the user and use tools, follow this process before ge
 - Wait for user confirmation before generating.
 
 ### Phase 4: Generate
-- When confident in the design, output the final SKILL.md.
-- Your response starts with `---` (frontmatter) and ends with the closing ` ``` ` of the workflow block. Nothing before, nothing after.
+- Write the SKILL.md file using the Write tool.
+- Then validate it: `cd runtime && npx tsx src/cli/index.ts validate <path-to-file>`
+- If validation fails, fix the errors and revalidate.
 
 **During phases 1-3, respond with plain text only.**
-**Once you start with `---`, the entire response is the SKILL.md file — nothing more.**
 
 If the user's request is clear enough to proceed directly, skip to Phase 4.
 
@@ -440,6 +439,109 @@ steps:
       url: { type: string, value: $result.body.url }
 ```
 
+## Built-in Tools
+
+The WorkflowSkill runtime ships with these built-in tools. Reference them by name in `tool:` fields.
+
+### `http.request`
+Makes HTTP requests.
+
+Inputs:
+- `url` (string, required): The URL to request
+- `method` (string): HTTP method — GET, POST, PUT, PATCH, DELETE (default: GET)
+- `headers` (object): Request headers
+- `body` (object or string): Request body (for POST/PUT/PATCH)
+
+Outputs (accessible via `$result`):
+- `status` (int): HTTP status code
+- `body` (object or string): Parsed JSON body, or raw string
+- `headers` (object): Response headers
+
+### `html.select`
+Extracts structured data from HTML using CSS selectors.
+
+Inputs:
+- `html` (string, required): Raw HTML to parse
+- `selector` (string, required): CSS selector for the repeating container element
+- `fields` (object): Map of field names to extraction specs (see below)
+- `limit` (int): Maximum number of results to return
+
+Outputs (accessible via `$result`):
+- `results` (array): Array of extracted objects (when `fields` provided) or strings
+
+**Field spec syntax:**
+| Spec | Extracts | Example |
+|------|----------|---------|
+| `"h3.title"` | Text content of sub-selector | `title: "h3.title"` |
+| `"a.link @href"` | Attribute from sub-selector | `url: "a.link @href"` |
+| `"@data-pid"` | Attribute from the container itself | `id: "@data-pid"` |
+
+### `gmail.search`
+Search Gmail messages by query.
+
+Inputs:
+- `query` (string, required): Gmail search query (e.g., `"from:boss@company.com is:unread"`)
+- `max_results` (int): Maximum number of results (default: 10)
+
+Outputs (accessible via `$result`):
+- `messages` (array): Array of `{ id, threadId }` objects
+
+### `gmail.read`
+Read the full content of a Gmail message.
+
+Inputs:
+- `message_id` (string, required): The message ID from gmail.search
+
+Outputs (accessible via `$result`):
+- `subject` (string): Email subject
+- `from` (string): Sender address
+- `to` (string): Recipient address
+- `body` (string): Plain text body
+- `date` (string): ISO date string
+
+### `gmail.send`
+Send an email via Gmail.
+
+Inputs:
+- `to` (string, required): Recipient email address
+- `subject` (string, required): Email subject
+- `body` (string, required): Email body (plain text)
+
+Outputs (accessible via `$result`):
+- `message_id` (string): Sent message ID
+
+### `sheets.read`
+Read a range from a Google Spreadsheet.
+
+Inputs:
+- `spreadsheet_id` (string, required): The spreadsheet ID from the URL
+- `range` (string, required): A1 notation range (e.g., `"Sheet1!A1:D10"`)
+
+Outputs (accessible via `$result`):
+- `values` (array): 2D array of cell values
+
+### `sheets.write`
+Write values to a range in a Google Spreadsheet.
+
+Inputs:
+- `spreadsheet_id` (string, required): The spreadsheet ID
+- `range` (string, required): A1 notation range
+- `values` (array, required): 2D array of values to write
+
+Outputs (accessible via `$result`):
+- `updated_cells` (int): Number of cells updated
+
+### `sheets.append`
+Append rows to a Google Spreadsheet.
+
+Inputs:
+- `spreadsheet_id` (string, required): The spreadsheet ID
+- `range` (string, required): A1 notation range (determines sheet)
+- `values` (array, required): 2D array of rows to append
+
+Outputs (accessible via `$result`):
+- `updated_rows` (int): Number of rows appended
+
 ## Web Scraping Pattern
 
 When a workflow fetches HTML and extracts structured data, follow this recipe:
@@ -484,28 +586,16 @@ steps:
       items: { type: array, value: $result.results }
 ```
 
-### `html.select` field specs
-
-The `fields` input maps field names to extraction specs. Each spec targets child elements within the matched container:
-
-| Spec | Extracts | Example |
-|------|----------|---------|
-| `"h3.title"` | Text content of sub-selector | `title: "h3.title"` |
-| `"a.link @href"` | Attribute from sub-selector | `url: "a.link @href"` |
-| `"@data-pid"` | Attribute from the container itself | `id: "@data-pid"` |
-
-Always use `fields` mode for structured extraction (returns array of objects). Without `fields`, `html.select` returns an array of text strings.
-
 ### Research is mandatory
 
-**Before writing selectors, you MUST inspect the actual HTML.** Use `web_fetch` during the conversation to fetch the target page — the fetched HTML is the source of truth, not external guides or tutorials. Identify:
+**Before writing selectors, you MUST inspect the actual HTML.** Use WebFetch to fetch the target page — the fetched HTML is the source of truth, not external guides or tutorials. Identify:
 - The repeating container selector (the element that wraps one result)
 - The sub-selectors for each field within that container
 - Whether data is in text content or element attributes
 
 Every selector must be verified against the actual fetched markup. Do not derive selectors from blog posts, StackOverflow answers, or third-party tutorials — these are frequently outdated.
 
-If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML, tell the user — the workflow will need a different approach.
+If the page uses JavaScript rendering and WebFetch returns empty/minimal HTML, tell the user — the workflow will need a different approach.
 
 ## Authoring Rules
 
@@ -528,18 +618,15 @@ If the page uses JavaScript rendering and `web_fetch` returns empty/minimal HTML
 
 ## Output Format
 
-Your response is the SKILL.md file — nothing more. It starts with `---` and ends with the closing ` ``` `. No wrapping code fences, no commentary, no explanations before or after.
-
-The structure:
+Write the SKILL.md file using the Write tool. The file structure:
 
 1. YAML frontmatter (between `---` delimiters) — the very first line. The `name` field must be lowercase-hyphenated (e.g., `fetch-json-from-api`, not `Fetch JSON from API`).
 2. A markdown heading.
 3. A single `workflow` fenced code block containing the YAML.
 
-The closing ` ``` ` is the last line of your response. Do not add summaries, design decision tables, explanations, or caveats after it.
+Example of a complete SKILL.md:
 
-Example of a complete response:
-
+```
 ---
 name: example-workflow
 description: Fetches data and outputs a specific field
@@ -547,7 +634,7 @@ description: Fetches data and outputs a specific field
 
 # Example Workflow
 
-\`\`\`workflow
+` `` `workflow
 inputs:
   id:
     type: string
@@ -570,14 +657,21 @@ steps:
       name:
         type: string
         value: $result.result.name
-\`\`\`
+` `` `
+```
 
 ## Validation
 
-After generating, verify:
+After writing the file, always validate:
+
+```bash
+cd runtime && npx tsx src/cli/index.ts validate <path-to-file>
+```
+
+Check for:
 - [ ] All step IDs are unique
 - [ ] All `$steps` references point to earlier steps
-- [ ] All tools referenced are real tools the user has access to
+- [ ] All tools referenced are real built-in tools (or confirmed available in context)
 - [ ] Input/output types are consistent between connected steps
 - [ ] No cycles in step references
 - [ ] `each` not used on exit or conditional steps
@@ -587,4 +681,4 @@ After generating, verify:
 - [ ] All `${}` template references resolve to declared inputs/steps
 - [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
 
-If validation fails, fix the errors and regenerate.
+If validation fails, fix the errors and revalidate.

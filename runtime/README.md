@@ -17,7 +17,6 @@ workflowskill run ../examples/hello-world/hello-world.md
 ```bash
 workflowskill validate <files...>              # Validate workflow files
 workflowskill run <file> [-i <json>]           # Execute a workflow
-workflowskill generate "<prompt>" [-o <file>]  # Generate from natural language
 ```
 
 Dev mode: `npx tsx src/cli/index.ts <command>`
@@ -29,7 +28,6 @@ import {
   parseWorkflowFromMd,
   validateWorkflow,
   runWorkflow,
-  generateWorkflow,
   MockToolAdapter,
   MockLLMAdapter,
 } from "workflowskill";
@@ -42,25 +40,6 @@ const runLog = await runWorkflow({
   inputs: { message: "hello" },
   toolAdapter, // implements ToolAdapter
   llmAdapter,  // implements LLMAdapter
-});
-
-const generated = await generateWorkflow({
-  prompt: "Triage my daily emails",
-  llmAdapter,
-  toolDescriptors: [
-    {
-      name: "gmail.search",
-      description: "Search Gmail messages by query.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "The search query" },
-          max_results: { type: "integer", description: "Maximum results" },
-        },
-        required: ["query"],
-      },
-    },
-  ],
 });
 ```
 
@@ -115,7 +94,7 @@ npm run validate:examples  # Validate all fixtures
 Create a `.env` file in this directory:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps and workflow generation
+ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
 GOOGLE_CLIENT_ID=...               # Required for Gmail and Sheets tools
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...

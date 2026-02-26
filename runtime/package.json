@@ -9,7 +9,6 @@
     "workflowskill": "dist/cli/index.mjs"
   },
   "scripts": {
-    "prebuild": "tsx scripts/generate-skill-prompt.ts",
     "build": "tsdown src/index.ts src/cli/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -14,11 +14,9 @@ paths:
 | `test/unit/expression.test.ts` | Lexer, parser, evaluator, prompt interpolation, $result reference |
 | `test/unit/validator.test.ts` | DAG cycles, type mismatches, missing tools, structural correctness |
 | `test/unit/executor.test.ts` | All 5 executor types: transform, conditional, exit, tool, llm |
-| `test/unit/generator.test.ts` | Single-shot generation, validation failure, toolDescriptors, conversational |
-| `test/unit/conversation.test.ts` | Conversation loop: direct gen, multi-turn, pause_turn, server_tool passthrough |
-| `test/unit/adapters.test.ts` | MockToolAdapter + MockLLMAdapter |
+| `test/unit/adapters.test.ts` | MockToolAdapter |
 | `test/unit/config.test.ts` | loadConfig: env vars, .env fallback, precedence |
-| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: model aliases, server-side tools, pause_turn |
+| `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: call(), model aliases, responseFormat |
 | `test/unit/http-request.test.ts` | http.request tool |
 | `test/unit/html-select.test.ts` | html.select tool |
 | `test/unit/gmail.test.ts` | Gmail tools |
