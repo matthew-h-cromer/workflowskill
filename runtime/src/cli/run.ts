@@ -8,7 +8,7 @@ import { runWorkflow, buildFailedRunLog } from '../runtime/index.js';
 import type { RunLog } from '../types/index.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
-import { BuiltinToolAdapter } from '../adapters/builtin-tool-adapter.js';
+import { DevToolAdapter } from '../dev-tools/dev-tool-adapter.js';
 import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
 import { renderRuntimeEvent } from './format.js';
 
@@ -87,8 +87,8 @@ export async function runCommand(
   // Load config and create adapters
   const config = loadConfig();
 
-  // Tool adapter: always real — http.request/html.select have no API key dependency
-  const toolAdapter = await BuiltinToolAdapter.create(config);
+  // Dev tool adapter: always real — http.request/html.select have no API key dependency
+  const toolAdapter = await DevToolAdapter.create(config);
 
   // Warn if workflow uses Google tools but no creds
   if (!config.googleCredentials) {

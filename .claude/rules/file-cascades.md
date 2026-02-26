@@ -14,9 +14,9 @@ Implementation file → `runtime/src/index.ts` (re-export) → tests → CLAUDE.
 
 `.claude/skills/workflow-author/SKILL.md` — edit directly, no build step needed.
 
-## New built-in tool
+## New dev tool
 
-`runtime/src/adapters/tools/<name>.ts` → `runtime/src/adapters/builtin-tool-adapter.ts` (register) → tests → CLAUDE.md (Built-in Tools)
+`runtime/src/dev-tools/tools/<name>.ts` → `runtime/src/dev-tools/dev-tool-adapter.ts` (register) → tests → CLAUDE.md (Dev Tools)
 
 ## Spec-level changes
 

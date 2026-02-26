@@ -1,7 +1,7 @@
-// Tests for src/adapters/tools/html-select.ts
+// Tests for src/dev-tools/tools/html-select.ts
 
 import { describe, it, expect } from 'vitest';
-import { handler, descriptor } from '../../src/adapters/tools/html-select.js';
+import { handler, descriptor } from '../../src/dev-tools/tools/html-select.js';
 
 const sampleHtml = `
 <html>

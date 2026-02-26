@@ -66,7 +66,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `executor` | Step executors (tool, llm, transform, conditional, exit) |
 | `runtime` | Orchestrator, lifecycle, run log |
 | `cli` | CLI commands (validate, run) |
-| `adapters` | Tool/LLM adapters, built-in tools |
+| `adapters` | Mock adapters, AnthropicLLMAdapter |
+| `dev-tools` | DevToolAdapter, dev tool implementations (http, gmail, sheets) |
 | `types` | TypeScript interfaces |
 | `rfc` | RFC specification document |
 

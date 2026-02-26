@@ -11,7 +11,7 @@ export type { ToolHandler } from './adapters/mock-tool-adapter.js';
 export { MockLLMAdapter } from './adapters/mock-llm-adapter.js';
 export type { LLMHandler } from './adapters/mock-llm-adapter.js';
 export { AnthropicLLMAdapter } from './adapters/anthropic-llm-adapter.js';
-export { BuiltinToolAdapter } from './adapters/builtin-tool-adapter.js';
+export { DevToolAdapter } from './dev-tools/dev-tool-adapter.js';
 export { loadConfig } from './config/index.js';
 export type { WorkflowSkillConfig, GoogleCredentials } from './config/index.js';
 export {

@@ -1,4 +1,4 @@
-// Tests for src/adapters/tools/gmail.ts
+// Tests for src/dev-tools/tools/gmail.ts
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -25,7 +25,7 @@ import {
   searchDescriptor,
   readDescriptor,
   sendDescriptor,
-} from '../../src/adapters/tools/gmail.js';
+} from '../../src/dev-tools/tools/gmail.js';
 
 describe('gmail tools', () => {
   const fakeAuth = {} as Parameters<typeof createHandlers>[0];

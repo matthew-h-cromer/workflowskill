@@ -1,4 +1,4 @@
-// Tests for src/adapters/tools/sheets.ts
+// Tests for src/dev-tools/tools/sheets.ts
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -24,7 +24,7 @@ import {
   readDescriptor,
   writeDescriptor,
   appendDescriptor,
-} from '../../src/adapters/tools/sheets.js';
+} from '../../src/dev-tools/tools/sheets.js';
 
 describe('sheets tools', () => {
   const fakeAuth = {} as Parameters<typeof createHandlers>[0];

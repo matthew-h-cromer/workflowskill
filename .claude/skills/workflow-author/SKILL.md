@@ -439,9 +439,9 @@ steps:
       url: { type: string, value: $result.body.url }
 ```
 
-## Built-in Tools
+## Dev Tools
 
-The WorkflowSkill runtime ships with these built-in tools. Reference them by name in `tool:` fields.
+The WorkflowSkill runtime ships with these dev tools for local workflow authoring. Reference them by name in `tool:` fields. (In production, the host agent ecosystem's tools are wired in instead.)
 
 ### `http.request`
 Makes HTTP requests.
@@ -671,7 +671,7 @@ cd runtime && npx tsx src/cli/index.ts validate <path-to-file>
 Check for:
 - [ ] All step IDs are unique
 - [ ] All `$steps` references point to earlier steps
-- [ ] All tools referenced are real built-in tools (or confirmed available in context)
+- [ ] All tools referenced are real dev tools (or confirmed available in context)
 - [ ] Input/output types are consistent between connected steps
 - [ ] No cycles in step references
 - [ ] `each` not used on exit or conditional steps

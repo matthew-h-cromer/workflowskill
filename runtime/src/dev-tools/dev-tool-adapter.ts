@@ -1,4 +1,4 @@
-// Built-in tool adapter — registers real tool implementations.
+// Dev tool adapter — registers real tool implementations for local workflow authoring.
 // Lazy-loads Google modules only when credentials are present.
 
 import type { ToolAdapter, ToolDescriptor, ToolResult } from '../types/index.js';
@@ -6,7 +6,7 @@ import type { WorkflowSkillConfig } from '../config/index.js';
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
 
-export class BuiltinToolAdapter implements ToolAdapter {
+export class DevToolAdapter implements ToolAdapter {
   private tools = new Map<
     string,
     { handler: ToolHandler; descriptor: ToolDescriptor }
@@ -36,11 +36,11 @@ export class BuiltinToolAdapter implements ToolAdapter {
   }
 
   /**
-   * Create a BuiltinToolAdapter with all available tools registered.
+   * Create a DevToolAdapter with all available tools registered.
    * Google tools are only registered if credentials are provided.
    */
-  static async create(config: WorkflowSkillConfig): Promise<BuiltinToolAdapter> {
-    const adapter = new BuiltinToolAdapter();
+  static async create(config: WorkflowSkillConfig): Promise<DevToolAdapter> {
+    const adapter = new DevToolAdapter();
 
     // Always-available tools (no external deps beyond what's in package.json)
     const httpMod = await import('./tools/http-request.js');

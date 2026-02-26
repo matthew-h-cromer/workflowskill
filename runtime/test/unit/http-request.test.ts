@@ -1,7 +1,7 @@
-// Tests for src/adapters/tools/http-request.ts
+// Tests for src/dev-tools/tools/http-request.ts
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handler, descriptor } from '../../src/adapters/tools/http-request.js';
+import { handler, descriptor } from '../../src/dev-tools/tools/http-request.js';
 
 describe('http.request tool', () => {
   const originalFetch = globalThis.fetch;

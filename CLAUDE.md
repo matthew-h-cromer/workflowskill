@@ -52,16 +52,17 @@ runtime/src/
 │   └── types.ts    # StepExecutionError, StepOutput, DispatchResult
 ├── runtime/        # Orchestrator: validate → init context → 8-step lifecycle → run log
 ├── config/         # loadConfig() — env vars with .env fallback
-├── adapters/       # ToolAdapter/LLMAdapter interfaces + implementations
-│   ├── mock-tool-adapter.ts    # Mock for testing
-│   ├── mock-llm-adapter.ts     # Mock for testing
-│   ├── anthropic-llm-adapter.ts # Real Anthropic SDK adapter
-│   ├── builtin-tool-adapter.ts  # Registers all built-in tools
-│   └── tools/                   # Built-in tool implementations
+├── dev-tools/      # Dev tool adapter + tool implementations (for local workflow authoring)
+│   ├── dev-tool-adapter.ts     # DevToolAdapter — registers all dev tools
+│   └── tools/                   # Dev tool implementations
 │       ├── http-request.ts      # http.request (Node fetch)
 │       ├── html-select.ts       # html.select (cheerio)
 │       ├── gmail.ts             # gmail.search, gmail.read, gmail.send
 │       └── sheets.ts            # sheets.read, sheets.write, sheets.append
+├── adapters/       # Mock adapters + LLM adapter
+│   ├── mock-tool-adapter.ts    # Mock for testing
+│   ├── mock-llm-adapter.ts     # Mock for testing
+│   └── anthropic-llm-adapter.ts # Real Anthropic SDK adapter
 ├── cli/            # Two commands: validate, run
 └── index.ts        # Single entry point re-exporting all public APIs
 

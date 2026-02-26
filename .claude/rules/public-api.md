@@ -15,5 +15,6 @@ Update this file whenever a public function or type is added or removed.
 - **Validator:** `validateWorkflow`
 - **Executors:** `dispatch`, `executeTransform`, `executeConditional`, `executeExit`, `executeTool`, `executeLLM`, `StepExecutionError`
 - **Runtime:** `runWorkflow`, `WorkflowExecutionError`
-- **Adapters:** `MockToolAdapter`, `MockLLMAdapter`, `AnthropicLLMAdapter`, `BuiltinToolAdapter`
+- **Adapters:** `MockToolAdapter`, `MockLLMAdapter`, `AnthropicLLMAdapter`
+- **Dev Tools:** `DevToolAdapter`
 - **Config:** `loadConfig`

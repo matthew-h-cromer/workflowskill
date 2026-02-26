@@ -1,11 +1,14 @@
 ---
 paths:
   - "src/adapters/**"
+  - "src/dev-tools/**"
 ---
 
-# Adapters and Tools
+# Adapters and Dev Tools
 
-## Built-in Tools
+## Dev Tools
+
+Dev tools are local implementations for workflow authoring and testing. In production, the runtime's `ToolAdapter` is wired to the host agent ecosystem's tools instead.
 
 | Tool | Description | Deps |
 | --- | --- | --- |
@@ -36,9 +39,9 @@ interface LLMAdapter {
 }
 ```
 
-## Adding a New Built-in Tool
+## Adding a New Dev Tool
 
-1. Create `src/adapters/tools/<name>.ts` implementing the tool function
-2. Register in `src/adapters/builtin-tool-adapter.ts`
+1. Create `src/dev-tools/tools/<name>.ts` implementing the tool function
+2. Register in `src/dev-tools/dev-tool-adapter.ts`
 3. Add unit tests in `test/unit/<name>.test.ts`
 4. Update this file
