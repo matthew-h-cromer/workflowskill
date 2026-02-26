@@ -64,20 +64,20 @@ npm install
 **hello-world** — no API keys needed:
 
 ```bash
-workflowskill run ../examples/hello-world/hello-world.md
+workflowskill run ../examples/hello-world.md
 ```
 
 **fetch-job-postings** — scrapes LinkedIn job listings, no API keys needed:
 
 ```bash
-workflowskill run ../examples/fetch-job-postings/fetch-job-postings.md \
+workflowskill run ../examples/fetch-job-postings.md \
   --input '{"keywords": "software engineer", "location": "United States"}'
 ```
 
 **hello-world-gmail** — sends an email via Gmail (requires Google credentials in `runtime/.env`, see [Getting Google OAuth2 credentials](#getting-google-oauth2-credentials)):
 
 ```bash
-workflowskill run ../examples/hello-world-gmail/hello-world-gmail.md \
+workflowskill run ../examples/hello-world-gmail.md \
   --input '{"to": "you@example.com"}'
 ```
 

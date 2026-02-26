@@ -8,7 +8,7 @@ description: Returns "Hello, world!". No API keys or external services required.
 The simplest possible workflow. Run it immediately after `npm install && npm run build`:
 
 ```sh
-workflowskill run examples/hello-world/hello-world.md
+workflowskill run examples/hello-world.md
 ```
 
 ```workflow

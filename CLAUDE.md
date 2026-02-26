@@ -71,9 +71,9 @@ runtime/test/unit/               # Unit tests (parser, expression, types, valida
 runtime/test/integration/        # Integration tests (runtime, graduation)
 
 examples/                        # Real-world workflow examples (repo root)
-examples/hello-world/            # Zero-config example — returns "Hello, world!" (no API keys needed)
-examples/fetch-job-postings/     # LinkedIn scraper example
-examples/hello-world-gmail/      # Gmail send example (requires Google OAuth2)
+examples/hello-world.md          # Zero-config example — returns "Hello, world!" (no API keys needed)
+examples/fetch-job-postings.md   # LinkedIn scraper example
+examples/hello-world-gmail.md    # Gmail send example (requires Google OAuth2)
 
 .claude/skills/workflow-author/  # Claude Code skill for authoring WorkflowSkill YAML
 ````
