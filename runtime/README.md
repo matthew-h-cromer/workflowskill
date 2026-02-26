@@ -9,13 +9,7 @@ Reference TypeScript implementation of the [WorkflowSkill](../) specification.
 ```bash
 npm install
 npm run build
-```
-
-Validate and run a workflow:
-
-```bash
-npx tsx src/cli/index.ts validate test/fixtures/echo.md
-npx tsx src/cli/index.ts run test/fixtures/echo.md -i '{"message": "hi"}'
+workflowskill run ../examples/hello-world/hello-world.md
 ```
 
 ## CLI

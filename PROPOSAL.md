@@ -7,10 +7,18 @@
 - [Executive Summary](#executive-summary)
 - [Why Now](#why-now)
 - [Problem Statement](#problem-statement)
+  - [Workflows Are Misaligned As Skills](#workflows-are-misaligned-as-skills)
+  - [Workflows Are Prevalent](#workflows-are-prevalent)
+  - [The Cost Problem](#the-cost-problem)
+  - [The Reliability Problem](#the-reliability-problem)
 - [Alternatives](#alternatives)
 - [Security Considerations](#security-considerations)
 - [Adoption Path](#adoption-path)
 - [Future Work](#future-work)
+  - [Approval Gates](#approval-gates)
+  - [Workflow Composability](#workflow-composability)
+  - [Extended Transform Operations](#extended-transform-operations)
+  - [Workflow Registry](#workflow-registry)
 - [Appendix: Use Case Taxonomy](#appendix-use-case-taxonomy)
 
 ## Executive Summary
@@ -29,11 +37,11 @@ WorkflowSkill is designed as an extension to the existing AgentSkills standard. 
 
 ## Why Now
 
-The AgentSkill standard has crossed the adoption threshold. 27+ agent products implement it. ClawHub hosts over 10,700 skills. The community is already building workflow tooling on its own: flowmind chains skills into repeatable sequences, Lobster adds a typed pipeline shell. The gap between "skills as documentation" and "skills as executable programs" is visible and felt.
+The AgentSkill standard (defined at [agentskills.io](https://agentskills.io)) has crossed the adoption threshold. 27+ agent products implement it. [ClawHub](https://clawhub.io) hosts over 10,700 skills. The community is already building workflow tooling on its own: flowmind (a community-built OpenClaw meta-skill) chains skills into repeatable sequences, Lobster (OpenClaw's built-in typed workflow shell) adds a typed pipeline shell. The gap between "skills as documentation" and "skills as executable programs" is visible and felt.
 
 Three signals indicate this is the right moment:
 
-**Critical mass.** The standard is adopted widely enough that a workflow extension benefits the entire ecosystem, not one platform. A format that works across Claude Code, Codex, Cursor, Gemini CLI, and OpenClaw is worth standardizing. A format that works in one of those is a feature.
+**Critical mass.** The standard is adopted widely enough that a workflow extension benefits the entire ecosystem, not one platform. A format that works across Claude Code, Codex, Cursor, Gemini CLI, and [OpenClaw](https://openclaw.dev) is worth standardizing. A format that works in one of those is a feature.
 
 **Proven demand.** Community-built tools validate the need. flowmind exists because users wanted to chain skills into sequences and the platform didn't support it. Lobster exists because OpenClaw needed typed pipelines with approval gates. These are independent implementations of the same idea: structured, repeatable execution of multi-step workflows.
 
@@ -162,7 +170,7 @@ Adoption is centered on building a working implementation and proving the spec i
 
 **Phase 2: Community feedback.** Run real workflows in production on OpenClaw. Publish results: cost comparisons, reliability metrics, authoring experience. Gather feedback from workflow authors and platform maintainers. Iterate on the spec where real usage reveals gaps or unnecessary complexity.
 
-**Phase 3: Formal proposal.** Submit the refined WorkflowSkill extension to the AgentSkill working group under AAIF / Linux Foundation governance. The reference implementation and production data serve as evidence of viability. The goal is inclusion in the AgentSkill specification, not a competing standard.
+**Phase 3: Formal proposal.** Submit the refined WorkflowSkill extension to the AgentSkill working group under AAIF (AI Agent Interoperability Framework) / Linux Foundation governance. The reference implementation and production data serve as evidence of viability. The goal is inclusion in the AgentSkill specification, not a competing standard.
 
 **Phase 4: Conformance test suite.** Once the spec is stable and accepted, publish a platform-agnostic test suite that any runtime can run to verify compliance. Tests cover step type execution, expression resolution, error handling semantics, conditional branching, iteration, and run log format. The suite is what makes cross-platform adoption practical: the OpenClaw module is one implementation, the tests define correctness.
 
@@ -172,13 +180,19 @@ This path is deliberately incremental. It does not require any existing platform
 
 The following capabilities are considered for inclusion once the core specification has proven its value in production.
 
+### Approval Gates
+
 **Approval gates.** Pause execution and wait for human authorization before high-stakes steps. This is the most architecturally complex addition: it requires state serialization, process suspension and resumption, a notification contract with the platform, and timeout handling. It is also the only feature that forces the runtime to maintain state across process boundaries. Every other executor is fire-and-forget within a single run.
+
+### Workflow Composability
 
 **Workflow composability.** Invoke one WorkflowSkill as a step within another, with typed inputs and outputs validated across the boundary. This requires scoping rules for child workflows, nested run log merging, and cross-skill versioning semantics. Composability becomes valuable once the community has built a critical mass of standalone workflows to compose.
 
 **Fallback paths.** Declare alternative step definitions that execute when a primary step fails. More expressive than `on_error: ignore` because the fallback can take a completely different action rather than continuing with null output.
 
 **Loop step type.** Repeat-until patterns for polling, convergence, and retry-with-adaptation. The `each` field handles iteration over known collections. The loop step addresses cases where the number of iterations isn't known in advance: waiting for an API to return a specific status, refining output until a quality threshold is met, or retrying with modified parameters.
+
+### Extended Transform Operations
 
 **Extended transform operations.** `pick` (select specific fields from an object), `format` (interpolate values into a string template), `group`, `flatten`, `merge`, `concat`, `count`, and `unique`. The initial three operations (filter, map, sort) are orthogonal primitives that cover the majority of data reshaping needs. `pick` is a special case of `map`. `format` duplicates what the expression language already provides in prompt templates. Additional operations will be added based on demand from real workflows.
 
@@ -191,6 +205,8 @@ The following capabilities are considered for inclusion once the core specificat
 **Parallel execution.** Steps execute sequentially in declaration order. Some workflows contain independent branches that could run concurrently. A future version may introduce parallel execution groups or automatic parallelism based on dependency analysis. Deferred because the sequential model is simpler to reason about, debug, and log, and because the performance bottleneck in most workflows is external API latency rather than step sequencing.
 
 **Spec versioning.** A `version` field on the workflow block declaring which spec version the workflow was written against. This becomes necessary when new step types, expression operators, or execution semantics are added. Deferred from the initial spec to avoid premature versioning before the format stabilizes through real usage.
+
+### Workflow Registry
 
 **Workflow registry.** A package registry for published WorkflowSkills, with semantic versioning, dependency resolution, and discoverability. This is what turns WorkflowSkill from a format into an ecosystem. ClawHub already hosts 10,700+ skills, but they are flat files with no versioning, no dependency graph, and no composability contract. A registry changes that. A team publishes `email-triage@1.2.0`. Another team builds `morning-briefing@1.0.0` that depends on it. When `email-triage` ships a breaking change, semver catches it. When a user searches for "slack notification," they find a tested, versioned workflow they can drop into their own composition. This is the pattern that made npm the engine of the Node ecosystem: small, composable, versioned packages that build on each other. Spec versioning is the prerequisite. Workflow composability (invoking one WorkflowSkill as a step in another) is the enabling feature. The registry is where the compounding value lives. Deferred because it requires both of those foundations, plus decisions about hosting, namespacing, trust verification, and governance that should be informed by real community usage rather than designed in advance.
 

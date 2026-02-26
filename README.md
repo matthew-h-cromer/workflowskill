@@ -1,30 +1,41 @@
 # WorkflowSkill
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-green.svg)](https://nodejs.org)
+
 A declarative workflow language for AI agents. Describe a task in YAML — the runtime handles parsing, validation, execution, error handling, and observability.
 
+> **Status:** Early-stage specification and reference implementation.
+
 ```yaml
-workflow:
-  steps:
-    - id: fetch
-      type: tool
-      tool: http.request
-      inputs:
-        - name: url
-          value: $inputs.endpoint
-      outputs:
-        - name: body
+inputs:
+  endpoint:
+    type: string
 
-    - id: summarize
-      type: llm
-      prompt: "Summarize this content: $steps.fetch.output.body"
-      outputs:
-        - name: summary
+outputs:
+  summary:
+    type: string
+    value: $steps.summarize.output.summary
 
-    - id: done
-      type: exit
-      status: success
-      output:
-        value: $steps.summarize.output.summary
+steps:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs:
+      url:
+        type: string
+        value: $inputs.endpoint
+    outputs:
+      body:
+        type: string
+
+  - id: summarize
+    type: llm
+    prompt: "Summarize this content: $steps.fetch.output.body"
+    outputs:
+      summary:
+        type: string
+        value: $result
 ```
 
 ## Repositories
@@ -38,8 +49,9 @@ workflow:
 
 | Document | Description |
 |----------|-------------|
-| [SPEC.md](SPEC.md) | Full language specification — the source of truth for all behavior |
 | [PROPOSAL.md](PROPOSAL.md) | Design rationale, requirements, and alternatives considered |
+| [SPEC.md](SPEC.md) | Full language specification — the source of truth for all behavior |
+| [examples/](examples/) | Runnable workflow examples |
 | [runtime/](runtime/) | Reference TypeScript implementation |
 
 ## Quick start
@@ -47,15 +59,18 @@ workflow:
 ```bash
 cd runtime
 npm install
-npm run build
+```
 
-# Validate a workflow
-npx tsx src/cli/index.ts validate test/fixtures/echo.md
+**Zero-config (no API key needed):**
 
-# Run a workflow
-npx tsx src/cli/index.ts run test/fixtures/echo.md -i '{"message": "hello"}'
+```bash
+workflowskill run examples/hello-world/hello-world.md
+```
 
-# Generate from natural language (requires ANTHROPIC_API_KEY)
+**Requires `ANTHROPIC_API_KEY`:**
+
+```bash
+# Generate a workflow from natural language
 npx tsx src/cli/index.ts generate "Triage my Gmail inbox and summarize unread messages"
 ```
 
@@ -65,7 +80,7 @@ WorkflowSkill workflows are YAML documents with five step types:
 
 | Step type | Description |
 |-----------|-------------|
-| `tool` | Invoke an external tool (HTTP, Gmail, Sheets, or custom) |
+| `tool` | Invoke an MCP server endpoint, built-in tool (HTTP, Gmail, Sheets), or any registered function |
 | `llm` | Call a language model with a templated prompt |
 | `transform` | Filter, map, or sort data without side effects |
 | `conditional` | Branch execution based on an expression |
@@ -83,7 +98,7 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 - **Expression engine** — `$`-reference language with `${...}` template interpolation
 - **Validator** — pre-execution DAG and type checking
 - **Executor** — five step type executors
-- **Built-in tools** — `http.request`, `html.select`, Gmail, Google Sheets
+- **Built-in tools** — `http.request`, `html.select`, Gmail, Google Sheets (MCP server endpoints and custom functions also supported)
 - **Generator** — LLM-powered workflow generation from natural language
 - **CLI** — `validate`, `run`, and `generate` commands
 - **Run log** — structured observability output for every run
@@ -92,4 +107,4 @@ See [`runtime/`](runtime/) for setup, API docs, and development instructions.
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -7,6 +7,7 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 **Repo layout:**
 - `SPEC.md` — language specification (source of truth for all behavior)
 - `PROPOSAL.md` — justification and alternatives
+- `examples/` — runnable workflow examples (at repo root, referenced from SPEC.md and PROPOSAL.md)
 - `runtime/` — reference TypeScript implementation (all source, tests, and tooling live here)
 
 ## Verify Every Change
@@ -71,7 +72,11 @@ runtime/src/
 runtime/test/fixtures/           # 12 targeted + 3 graduation + 4 malformed workflow fixtures
 runtime/test/unit/               # Unit tests (parser, expression, types, validator, executor, generator)
 runtime/test/integration/        # Integration tests (runtime, graduation)
-runtime/examples/                # Real-world workflow examples
+
+examples/                        # Real-world workflow examples (repo root)
+examples/hello-world/            # Zero-config example — returns "Hello, world!" (no API keys needed)
+examples/fetch-job-postings/     # LinkedIn scraper example
+examples/hello-world-gmail/      # Gmail send example (requires Google OAuth2)
 ````
 
 **Dependency flow:** types → parser + expression → validator + executor → runtime → cli + generator

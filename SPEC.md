@@ -4,11 +4,77 @@
 
 ## Contents
 
+- [Quick Example](#quick-example)
 - [Context](#context)
 - [Proposal Requirements](#proposal-requirements)
 - [Authoring Model](#authoring-model)
 - [WorkflowSkill](#workflowskill)
+  - [Backwards Compatibility](#backwards-compatibility)
+  - [Workflow Inputs and Outputs](#workflow-inputs-and-outputs)
+  - [Step Definition](#step-definition)
+  - [Step Inputs and Outputs](#step-inputs-and-outputs)
+  - [Expression Language](#expression-language)
+  - [Step Types](#step-types)
+  - [Flow Control](#flow-control)
 - [Runtime](#runtime)
+  - [Execution Model](#execution-model)
+  - [Step Executors](#step-executors)
+  - [Error Handling](#error-handling)
+  - [Run Log](#run-log)
+  - [Runtime Boundaries](#runtime-boundaries)
+  - [Conformance](#conformance)
+
+## Quick Example
+
+A minimal workflow that fetches data, transforms it, and exits with a result:
+
+```yaml
+inputs:
+  query:
+    type: string
+    default: "software engineer"
+
+outputs:
+  jobs:
+    type: array
+    value: $steps.extract.output.items
+
+steps:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs:
+      url:
+        type: string
+        value: "https://example.com/jobs?q=${inputs.query}"
+    outputs:
+      html:
+        type: string
+        value: $result.body
+
+  - id: extract
+    type: tool
+    tool: html.select
+    inputs:
+      html:
+        type: string
+        value: $steps.fetch.output.html
+      selector:
+        type: string
+        value: ".job-title"
+    outputs:
+      items:
+        type: array
+        value: $result.results
+
+  - id: guard_empty
+    type: exit
+    condition: $steps.extract.output.items.length == 0
+    status: success
+    output: { jobs: [] }
+```
+
+Steps wire data with `$steps.<id>.output.<field>`. The `condition` guard on the exit step fires only when the results are empty. See [examples/](examples/) for runnable workflows.
 
 ## Context
 
@@ -91,15 +157,15 @@ description: string
 inputs:
   <name>: { type: string|int|float|boolean|array|object, default: <value> }
 outputs:
-  <name>: { type: string|int|float|boolean|array|object, source: <expression> }
+  <name>: { type: string|int|float|boolean|array|object, value: <expression> }
 steps:
   - id: string
     type: tool|llm|transform|conditional|exit
     description: string
     inputs:
-      <name>: { type: <type>, source: <expression>, default: <value> }
+      <name>: { type: <type>, value: <expression>, default: <value> }
     outputs:
-      <name>: { type: <type>, source: <expression> }
+      <name>: { type: <type>, value: <expression> }
 
     # Tool fields
     tool: string                    # registered tool name
@@ -170,41 +236,43 @@ Every step declares typed inputs and outputs. This serves three purposes:
 
 **Composability contracts.** When workflow composition is supported (see Future Work), input and output schemas are validated across the boundary between parent and child workflows.
 
-**Step input `source`** — a `$`-expression that resolves from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). This wires data from earlier steps or workflow inputs into the current step.
+**Step input `value`** — a `$`-expression that resolves from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). This wires data from earlier steps or workflow inputs into the current step.
 
 ```yaml
 inputs:
   messages:
     type: array
     items: { type: object, properties: { from: string, subject: string, body: string } }
-    source: $steps.fetch_emails.output.messages
+    value: $steps.fetch_emails.output.messages
 ```
 
-**Step output `source`** — a `$`-expression that resolves against the raw executor result using the `$output` reference. This maps fields from the executor's raw response into named output keys. Outputs without `source` pass through from the raw result by key name (backwards compatible).
+**Step output `value`** — a `$`-expression that resolves against the raw executor result using the `$result` reference. This maps fields from the executor's raw response into named output keys. Outputs without `value` pass through from the raw result by key name (backwards compatible).
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $output.body.title
+    value: $result.body.title
 ```
 
-**Workflow output `source`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
+**Workflow output `value`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
 
 ```yaml
 outputs:
   title:
     type: string
-    source: $steps.fetch.output.title
+    value: $steps.fetch.output.title
 ```
+
+> **Backwards compatibility.** Runtimes must also accept `source` as an alias for `value` on step inputs, step outputs, and workflow outputs.
 
 **Resolution order:**
-1. **Step output `source`**: resolved immediately after the executor returns. A temporary context with `$output` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
-2. **Workflow output `source`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `source` resolution.
+1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$result` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
+2. **Workflow output `value`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `value` resolution.
 
 ### Expression Language
 
-Expressions appear in `condition` guards, `each` fields, input `source` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
+Expressions appear in `condition` guards, `each` fields, input `value` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
 
 **References:**
 
@@ -215,7 +283,7 @@ Expressions appear in `condition` guards, `each` fields, input `source` referenc
 | `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
 | `$item` | The current element when inside an `each` iteration |
 | `$index` | The current index when inside an `each` iteration |
-| `$output` | The raw result of the current step's executor (only valid in step output `source`) |
+| `$result` | The raw result of the current step's executor (only valid in step output `value`) |
 
 **Properties:**
 
