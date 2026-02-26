@@ -121,7 +121,73 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 - **CLI** — `validate` and `run` commands
 - **Run log** — structured observability output for every run
 
-See [`runtime/`](runtime/) for setup, API docs, and development instructions.
+## Library API
+
+```typescript
+import {
+  parseWorkflowFromMd,
+  validateWorkflow,
+  runWorkflow,
+  MockToolAdapter,
+  MockLLMAdapter,
+} from "workflowskill";
+
+const workflow = parseWorkflowFromMd(markdownContent);
+const validation = validateWorkflow(workflow, toolAdapter);
+
+const runLog = await runWorkflow({
+  workflow,
+  inputs: { message: "hello" },
+  toolAdapter, // implements ToolAdapter
+  llmAdapter,  // implements LLMAdapter
+});
+```
+
+## Adapters
+
+`ToolAdapter` and `LLMAdapter` are the integration boundaries. Mock implementations are provided for testing.
+
+```typescript
+interface ToolAdapter {
+  invoke(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
+  has(toolName: string): boolean;
+  list?(): ToolDescriptor[];
+}
+
+interface LLMAdapter {
+  call(
+    model: string | undefined,
+    prompt: string,
+    responseFormat?: Record<string, unknown>,
+  ): Promise<LLMResult>;
+}
+```
+
+## Development
+
+All commands run from `runtime/`:
+
+```bash
+npm run typecheck          # tsc --noEmit
+npm run test               # Run all tests (vitest)
+npm run test:coverage      # With coverage report
+npm run lint               # ESLint
+npm run build              # tsdown
+npm run validate:examples  # Validate all fixtures
+```
+
+## Configuration
+
+Create a `.env` file in `runtime/`:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
+GOOGLE_CLIENT_ID=...               # Required for Gmail and Sheets tools
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+```
+
+The runtime degrades gracefully: missing `ANTHROPIC_API_KEY` → mock LLM adapter with a warning. Missing Google credentials → Google tools not registered (warning if a workflow references them).
 
 ## License
 
