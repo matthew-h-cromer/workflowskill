@@ -20,6 +20,7 @@ import type {
   ValidationError,
   RuntimeEvent,
 } from '../types/index.js';
+import { parseContent } from '../parser/parse-content.js';
 import { resolveExpression, resolveTemplate, containsTemplate } from '../expression/index.js';
 import { validateWorkflow } from '../validator/index.js';
 import { dispatch, StepExecutionError } from '../executor/index.js';
@@ -232,6 +233,54 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
     steps: stepRecords,
     outputs,
   };
+}
+
+// ─── High-level API ──────────────────────────────────────────────────────────
+
+export interface RunWorkflowSkillOptions {
+  /** SKILL.md content or raw workflow YAML block. */
+  content: string;
+  inputs?: Record<string, unknown>;
+  toolAdapter: ToolAdapter;
+  llmAdapter: LLMAdapter;
+  /** Fallback name used when content has no frontmatter. Defaults to 'inline'. */
+  workflowName?: string;
+  onEvent?: (event: RuntimeEvent) => void;
+}
+
+/**
+ * Parse content and execute the workflow in one call. Never throws.
+ * Empty or unparseable content → failed RunLog (phase: 'parse').
+ * Unexpected execution exception → failed RunLog (phase: 'execute').
+ * Validation failures are handled internally by runWorkflow.
+ */
+export async function runWorkflowSkill(options: RunWorkflowSkillOptions): Promise<RunLog> {
+  const { content, inputs, toolAdapter, llmAdapter, workflowName = 'inline', onEvent } = options;
+  const startedAt = new Date();
+
+  const parsed = parseContent(content);
+  if (!parsed.ok) {
+    return buildFailedRunLog(workflowName, {
+      phase: 'parse',
+      message: parsed.message,
+      details: parsed.details,
+    }, startedAt);
+  }
+
+  const resolvedName = parsed.name ?? workflowName;
+  try {
+    return await runWorkflow({
+      workflow: parsed.workflow,
+      inputs,
+      toolAdapter,
+      llmAdapter,
+      workflowName: resolvedName,
+      onEvent,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return buildFailedRunLog(resolvedName, { phase: 'execute', message }, startedAt);
+  }
 }
 
 // ─── Step lifecycle ─────────────────────────────────────────────────────────

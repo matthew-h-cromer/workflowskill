@@ -138,29 +138,45 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 
 ## Library API
 
+Two entry points collapse parse → validate → run into single calls that accept raw content and never throw.
+
 ```typescript
 import {
-  parseWorkflowFromMd,
-  validateWorkflow,
-  runWorkflow,
-  MockToolAdapter,
-  MockLLMAdapter,
+  runWorkflowSkill,
+  validateWorkflowSkill,
 } from "workflowskill";
 
-const workflow = parseWorkflowFromMd(markdownContent);
-const validation = validateWorkflow(workflow, toolAdapter);
-
-const runLog = await runWorkflow({
-  workflow,
-  inputs: { message: "hello" },
-  toolAdapter, // implements ToolAdapter
-  llmAdapter,  // implements LLMAdapter
+// Validate a workflow (synchronous, never throws)
+const result = validateWorkflowSkill({
+  content,          // SKILL.md with frontmatter or bare workflow YAML
+  toolAdapter,      // optional — skips tool availability checks if absent
 });
+
+if (!result.valid) {
+  console.error(result.errors);
+}
+
+// Run a workflow (async, never throws — always returns a RunLog)
+const log = await runWorkflowSkill({
+  content,          // SKILL.md with frontmatter or bare workflow YAML
+  inputs: { ... },
+  toolAdapter,      // implements ToolAdapter
+  llmAdapter,       // implements LLMAdapter
+});
+
+if (log.status === "success") {
+  console.log(log.outputs);
+}
 ```
+
+Key ergonomic properties:
+- **Accepts raw content** — SKILL.md with frontmatter or bare workflow YAML, no parsing step needed
+- **Never throws** — parse, validation, and execution failures are encoded in the return value
+- **`RunLog` is always returned**, with `error?: { phase, message, details }` on failure
 
 ## Adapters
 
-`ToolAdapter` and `LLMAdapter` are the integration boundaries. Mock implementations are provided for testing.
+`ToolAdapter` and `LLMAdapter` are the integration boundaries:
 
 ```typescript
 interface ToolAdapter {
@@ -177,6 +193,47 @@ interface LLMAdapter {
   ): Promise<LLMResult>;
 }
 ```
+
+Built-in implementations:
+- **`DevToolAdapter`** — provides `http.request`, `html.select`, Gmail, and Google Sheets tools for standalone use
+- **`AnthropicLLMAdapter`** — wraps the Anthropic SDK; reads `ANTHROPIC_API_KEY` from the environment
+
+For testing, **`MockToolAdapter`** and **`MockLLMAdapter`** let you supply handler functions without any external dependencies.
+
+## Run log
+
+Every call to `runWorkflowSkill` returns a `RunLog`:
+
+```typescript
+interface RunLog {
+  id: string;
+  workflow: string;
+  status: "success" | "failed";
+  summary: {
+    steps_executed: number;
+    steps_skipped: number;
+    total_tokens: number;
+    total_duration_ms: number;
+  };
+  started_at: string;           // ISO 8601
+  completed_at: string;         // ISO 8601
+  duration_ms: number;
+  inputs: Record<string, unknown>;
+  steps: StepRecord[];
+  outputs: Record<string, unknown>;
+  error?: {
+    phase: "parse" | "validate" | "execute";
+    message: string;
+    details?: unknown;
+  };
+}
+```
+
+`error` is present only when the run failed. `outputs` is populated on success (and on `exit` steps with `status: failed`).
+
+## Low-level API
+
+`parseWorkflowFromMd`, `validateWorkflow`, and `runWorkflow` are still exported for consumers who need fine-grained control over each phase.
 
 ## Development
 

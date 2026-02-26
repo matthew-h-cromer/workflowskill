@@ -10,6 +10,7 @@ import type {
   ToolAdapter,
   ConditionalStep,
 } from '../types/index.js';
+import { parseContent } from '../parser/parse-content.js';
 
 /**
  * Validate a workflow definition before execution.
@@ -378,4 +379,49 @@ function detectCycles(
   }
 
   return errors;
+}
+
+// ─── High-level API ──────────────────────────────────────────────────────────
+
+export interface ValidateWorkflowSkillOptions {
+  content: string;
+  toolAdapter?: ToolAdapter;
+}
+
+export interface ValidateWorkflowSkillResult {
+  valid: boolean;
+  errors: Array<{ path: string; message: string }>;
+  name?: string;
+  stepCount?: number;
+  stepTypes?: string[];
+}
+
+/**
+ * Parse content and validate the workflow in one synchronous call.
+ * Matches the shape of the plugin's ValidateResult exactly.
+ */
+export function validateWorkflowSkill(options: ValidateWorkflowSkillOptions): ValidateWorkflowSkillResult {
+  const { content, toolAdapter } = options;
+
+  const parsed = parseContent(content);
+  if (!parsed.ok) {
+    return {
+      valid: false,
+      errors: parsed.details ?? [{ path: 'parse', message: parsed.message }],
+    };
+  }
+
+  const result = validateWorkflow(parsed.workflow, toolAdapter);
+  if (!result.valid) {
+    return { valid: false, errors: result.errors };
+  }
+
+  const stepTypes = [...new Set(parsed.workflow.steps.map((s) => s.type))];
+  return {
+    valid: true,
+    errors: [],
+    name: parsed.name,
+    stepCount: parsed.workflow.steps.length,
+    stepTypes,
+  };
 }
