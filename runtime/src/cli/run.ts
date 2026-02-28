@@ -50,9 +50,13 @@ export async function runCommand(
   // Load config and create adapters
   const config = loadConfig();
   const toolAdapter = await DevToolAdapter.create(config);
-  const llmAdapter = config.anthropicApiKey
-    ? new AnthropicLLMAdapter(config.anthropicApiKey)
-    : new MockLLMAdapter();
+  let llmAdapter;
+  if (config.anthropicApiKey) {
+    llmAdapter = new AnthropicLLMAdapter(config.anthropicApiKey);
+  } else {
+    console.error('Warning: ANTHROPIC_API_KEY not set — using mock LLM adapter. LLM steps will return empty responses.');
+    llmAdapter = new MockLLMAdapter();
+  }
 
   const log = await runWorkflowSkill({
     content,

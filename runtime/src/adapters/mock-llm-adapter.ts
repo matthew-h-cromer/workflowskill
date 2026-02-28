@@ -1,7 +1,7 @@
 // Mock LLM adapter for testing.
 // Returns configurable responses without making real API calls.
 
-import type { LLMResult } from '../types/index.js';
+import type { LLMAdapter, LLMResult } from '../types/index.js';
 
 export type LLMHandler = (
   model: string | undefined,
@@ -9,7 +9,7 @@ export type LLMHandler = (
   responseFormat?: Record<string, unknown>,
 ) => LLMResult | Promise<LLMResult>;
 
-export class MockLLMAdapter {
+export class MockLLMAdapter implements LLMAdapter {
   private handler: LLMHandler;
 
   constructor(handler?: LLMHandler) {

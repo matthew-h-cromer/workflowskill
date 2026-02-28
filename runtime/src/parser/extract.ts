@@ -11,7 +11,9 @@ export interface ExtractResult {
  * Frontmatter is delimited by --- at the start of the file.
  */
 export function extractFrontmatter(content: string): string | null {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  // Normalize Windows line endings before matching
+  const normalized = content.replace(/\r\n/g, '\n');
+  const match = normalized.match(/^---\n([\s\S]*?)\n---/);
   return match?.[1] ?? null;
 }
 
@@ -21,8 +23,10 @@ export function extractFrontmatter(content: string): string | null {
  * Throws if no workflow block is found.
  */
 export function extractWorkflowBlock(content: string): string {
+  // Normalize Windows line endings before matching
+  const normalized = content.replace(/\r\n/g, '\n');
   // Match ```workflow ... ``` block
-  const match = content.match(/```workflow\s*\n([\s\S]*?)\n```/);
+  const match = normalized.match(/```workflow\s*\n([\s\S]*?)\n```/);
   if (!match?.[1]) {
     throw new ExtractError(
       'No ```workflow fenced code block found in SKILL.md. ' +

@@ -24,7 +24,7 @@ export {
   StepExecutionError,
 } from './executor/index.js';
 export type { StepOutput, ConditionalOutput, ExitOutput, StepErrorContext, DispatchResult } from './executor/index.js';
-export { runWorkflow, WorkflowExecutionError, runWorkflowSkill } from './runtime/index.js';
+export { runWorkflow, WorkflowExecutionError, runWorkflowSkill, buildFailedRunLog } from './runtime/index.js';
 export type { RunOptions, RunWorkflowSkillOptions } from './runtime/index.js';
 export { validateWorkflowSkill } from './validator/index.js';
 export type { ValidateWorkflowSkillOptions, ValidateWorkflowSkillResult } from './validator/index.js';

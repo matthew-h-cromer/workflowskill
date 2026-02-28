@@ -1,7 +1,7 @@
 // Anthropic LLM adapter — implements LLMAdapter using the Anthropic SDK.
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMResult } from '../types/index.js';
+import type { LLMAdapter, LLMResult } from '../types/index.js';
 
 /** Model alias map: short names → full model IDs. */
 const MODEL_ALIASES: Record<string, string> = {
@@ -17,7 +17,7 @@ function resolveModel(model: string | undefined, fallback: string = DEFAULT_MODE
   return MODEL_ALIASES[model] ?? model;
 }
 
-export class AnthropicLLMAdapter {
+export class AnthropicLLMAdapter implements LLMAdapter {
   private client: Anthropic;
 
   constructor(apiKey: string) {

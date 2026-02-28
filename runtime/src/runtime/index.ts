@@ -292,9 +292,9 @@ interface LifecycleResult {
 }
 
 /**
- * Execute one step through the 8-step lifecycle:
+ * Execute one step through the 9-step lifecycle:
  * 1. Guard  2. Resolve inputs  3. Iterate (each)  4. Dispatch
- * 5. Validate output  6. Handle errors  7. Retry  8. Record
+ * 5. Map outputs  6. Validate output  7. Retry  8. Handle errors  9. Record
  */
 async function executeStepLifecycle(
   step: Step,
@@ -333,10 +333,7 @@ async function executeStepLifecycle(
     tool: step.type === 'tool' ? step.tool : undefined,
   });
 
-  // 2. Resolve inputs
-  const resolvedInputs = resolveInputs(step.inputs, context, step.id);
-
-  // 3. Iterate (each) — if present, execute once per element
+  // 3. Iterate (each) — if present, execute once per element; each handles its own input resolution
   if (step.each) {
     return executeWithEach(
       step,
@@ -349,6 +346,9 @@ async function executeStepLifecycle(
       onEvent,
     );
   }
+
+  // 2. Resolve inputs (only for non-each steps)
+  const resolvedInputs = resolveInputs(step.inputs, context, step.id);
 
   // 4-7. Dispatch with retry + error handling
   try {

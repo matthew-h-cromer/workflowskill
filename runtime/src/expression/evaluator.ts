@@ -124,6 +124,8 @@ function evaluateBinary(
     case '<=':
       return toNumber(lval) <= toNumber(rval);
     case '&&':
+      // Returns boolean (not short-circuit value). The expression language is designed
+      // for boolean guards (e.g. condition fields), not value coalescing.
       return isTruthy(lval) && isTruthy(rval);
     case '||':
       return isTruthy(lval) || isTruthy(rval);
