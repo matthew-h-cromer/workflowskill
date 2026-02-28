@@ -243,6 +243,8 @@ This is a pure data operation — never use an LLM step to merge or zip arrays.
     - handle_items
   else:
     - handle_empty
+  inputs: {}
+  outputs: {}
 ```
 
 ### Exit Step
@@ -256,6 +258,8 @@ Use exit steps for **conditional early termination** — to stop the workflow wh
   output:
     count: 0
     items: []
+  inputs: {}
+  outputs: {}
 ```
 
 For normal workflow output, prefer `value` on workflow outputs instead of a trailing exit step.
@@ -316,7 +320,7 @@ Use `$`-prefixed references to wire data between steps:
 | `$index` | Current index in iteration |
 | `$result` | Raw executor result (only valid in step output `value`) |
 | `$steps.<id>.output.field[0]` | First element of an array field |
-| `$items[$index]` | Element at computed index |
+| `$item[$index]` | Nested array element at computed index (only valid inside `each`) |
 
 Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
 
@@ -540,7 +544,7 @@ Inputs:
 - `values` (array, required): 2D array of rows to append
 
 Outputs (accessible via `$result`):
-- `updated_rows` (int): Number of rows appended
+- `updated_range` (string): The range that was updated (e.g. `"Sheet1!A1:C3"`)
 
 ## Web Scraping Pattern
 

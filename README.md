@@ -61,6 +61,7 @@ steps:
 ```bash
 cd runtime
 npm install
+npm run build
 ```
 
 **hello-world** — no API keys needed:
@@ -120,7 +121,7 @@ WorkflowSkill workflows are YAML documents with five step types:
 | `conditional` | Branch execution based on an expression |
 | `exit` | Terminate early with a status and output |
 
-Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore | retry`.
+Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
 
 See [SPEC.md](SPEC.md) for the full language reference.
 
