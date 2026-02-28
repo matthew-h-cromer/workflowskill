@@ -10,17 +10,12 @@ const schemaTypeEnum = z.enum(['string', 'int', 'float', 'boolean', 'array', 'ob
 // FieldSchema can be recursive (items/properties contain FieldSchema).
 // We avoid deep recursion issues by using z.unknown() for nested levels.
 // This is sufficient for validation — we don't need infinite depth.
+// Note: `default` is intentionally not supported at nested level (only workflow inputs use `default`).
 const nestedFieldSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
-  // Backwards compat: accept legacy `default` and normalize to `value`
-  default: z.unknown().optional(),
   items: z.record(z.string(), z.unknown()).optional(),
   properties: z.record(z.string(), z.unknown()).optional(),
-}).transform((obj) => {
-  const { default: legacy, ...rest } = obj;
-  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
-  return rest;
 });
 
 export const fieldSchema = z.object({
@@ -147,7 +142,7 @@ const transformFilterStepSchema = stepBaseSchema.extend({
 const transformMapStepSchema = stepBaseSchema.extend({
   type: z.literal('transform'),
   operation: z.literal('map'),
-  expression: z.record(z.string(), z.string()),
+  expression: z.record(z.string(), z.unknown()),
 });
 
 const transformSortStepSchema = stepBaseSchema.extend({

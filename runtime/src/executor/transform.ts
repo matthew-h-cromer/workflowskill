@@ -81,13 +81,24 @@ function executeMap(
 
 /**
  * Resolve a map expression value.
- * $-prefixed strings are resolved as expressions. Otherwise treated as literals.
- * Spec note: the spec also allows nested objects and non-string literals in map expressions,
- * but the current Zod schema constrains values to Record<string, string>.
+ * - String starting with `$` → expression reference
+ * - Non-string primitive (number, boolean, null) → pass through as literal
+ * - Object (non-array) → recurse, applying same rules to each value
+ * - String not starting with `$` → literal string
  */
-function resolveMapValue(value: string, context: RuntimeContext): unknown {
-  if (value.startsWith('$')) {
-    return resolveExpression(value, context);
+function resolveMapValue(value: unknown, context: RuntimeContext): unknown {
+  if (typeof value === 'string') {
+    if (value.startsWith('$')) {
+      return resolveExpression(value, context);
+    }
+    return value;
+  }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = resolveMapValue(v, context);
+    }
+    return result;
   }
   return value;
 }

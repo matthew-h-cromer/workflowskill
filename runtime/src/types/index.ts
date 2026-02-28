@@ -122,8 +122,8 @@ export interface TransformFilterStep extends StepBase {
 export interface TransformMapStep extends StepBase {
   type: 'transform';
   operation: 'map';
-  /** Object defining the output shape per item. */
-  expression: Record<string, string>;
+  /** Object defining the output shape per item. Values may be expression references, literal primitives, or nested objects. */
+  expression: Record<string, unknown>;
 }
 
 export interface TransformSortStep extends StepBase {
