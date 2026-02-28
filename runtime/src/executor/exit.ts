@@ -3,7 +3,7 @@
 
 import type { ExitStep, RuntimeContext } from '../types/index.js';
 import type { ExitOutput } from './types.js';
-import { resolveExpression } from '../expression/index.js';
+import { resolveExpression, containsTemplate, resolveTemplate } from '../expression/index.js';
 
 /**
  * Execute an exit step.
@@ -34,8 +34,16 @@ function resolveOutputObject(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
-    if (typeof val === 'string' && val.startsWith('$')) {
-      result[key] = resolveExpression(val, context);
+    if (typeof val === 'string') {
+      if (val.startsWith('$$')) {
+        result[key] = val.slice(1);
+      } else if (containsTemplate(val)) {
+        result[key] = resolveTemplate(val, context);
+      } else if (val.startsWith('$')) {
+        result[key] = resolveExpression(val, context);
+      } else {
+        result[key] = val;
+      }
     } else {
       result[key] = val;
     }
