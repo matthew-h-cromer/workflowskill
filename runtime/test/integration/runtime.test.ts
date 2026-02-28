@@ -1126,3 +1126,44 @@ describe('runtime events', () => {
     }
   });
 });
+
+// ─── each + on_error: ignore per-iteration behavior (L8) ─────────────────────
+// Current behavior: a failed iteration halts the each loop and marks the whole step as failed.
+// With on_error: ignore, the workflow continues (step output = null).
+
+describe('each + on_error: ignore', () => {
+  it('workflow continues when each step fails mid-iteration with on_error: ignore', async () => {
+    const workflow = loadWorkflow('each-ignore');
+    const tools = new MockToolAdapter();
+    let callCount = 0;
+    tools.register('flaky_tool', () => {
+      callCount++;
+      if (callCount === 2) {
+        // Second iteration fails
+        return { output: null, error: 'Item 2 failed' };
+      }
+      return { output: { result: `ok-${callCount}` } };
+    });
+    const llm = new MockLLMAdapter();
+
+    const log = await runWorkflow({
+      workflow,
+      inputs: { items: ['a', 'b', 'c'] },
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'each-ignore',
+    });
+
+    // Workflow completes successfully because on_error: ignore continues after failure
+    expect(log.status).toBe('success');
+
+    // The step is marked failed (a failing iteration fails the whole step)
+    const stepRecord = log.steps.find((s) => s.id === 'process');
+    expect(stepRecord).toBeDefined();
+    expect(stepRecord?.status).toBe('failed');
+    expect(stepRecord?.error).toContain('Item 2 failed');
+
+    // Step output is null when on_error: ignore absorbs the failure
+    expect(log.outputs['results']).toBeNull();
+  });
+});

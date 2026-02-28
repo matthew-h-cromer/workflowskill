@@ -1,5 +1,5 @@
 ---
-name: hello-world-email
+name: hello-world-gmail
 description: Sends a 'Hello World' email to a provided email address
 ---
 
@@ -30,4 +30,8 @@ steps:
       body:
         type: string
         value: "Hello, World!"
+    outputs:
+      message_id:
+        type: string
+        value: $result.message_id
 ```
