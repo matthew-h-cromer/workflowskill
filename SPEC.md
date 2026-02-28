@@ -219,7 +219,7 @@ A workflow should have a defined schema for inputs and outputs. Being able to ex
 | id | yes | Unique identifier within the workflow. Referenced by other steps via `$steps.<id>.output`. |
 | type | yes | One of: `tool`, `llm`, `transform`, `conditional`, `exit`. |
 | description | no | Human-readable explanation. Displayed in run logs. |
-| inputs | yes | Schema declaring what this step expects, with type and source for each field. |
+| inputs | yes | Schema declaring what this step expects, with type and value for each field. |
 | outputs | yes | Schema declaring what this step produces. |
 | condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
 | each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
@@ -389,13 +389,13 @@ Execution proceeds in two phases.
 2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
 3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results.
 4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
-5. **Map outputs.** If any declared output has a `source` field, resolve it against the raw executor result using a temporary context where `$output` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `source` pass through by key name.
+5. **Map outputs.** If any declared output has a `value` field (or its `source` alias), resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `value` pass through by key name.
 6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.
-7. **Handle errors.** If the step failed, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
-8. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
+7. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
+8. **Handle errors.** If the step still failed after all retry attempts, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
 9. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
 
-After the last step completes, the runtime resolves workflow output `source` expressions from the final runtime context. For each declared workflow output with a `source`, the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
+After the last step completes, the runtime resolves workflow output `value` expressions from the final runtime context. For each declared workflow output with a `value` (or its `source` alias), the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
 
 ### Step Executors
 
@@ -421,7 +421,7 @@ Filter evaluates the `where` expression per item. Items where it returns true ar
   operation: filter
   where: $item.score >= $inputs.min_score
   inputs:
-    items: { type: array, source: $steps.score_emails.output }
+    items: { type: array, value: $steps.score_emails.output }
   outputs:
     items: { type: array }
 ```
@@ -437,7 +437,7 @@ Map projects each item into a new shape. Each value in the `expression` object i
     author: $item.author.login
     deployed_at: $item.created_at
   inputs:
-    items: { type: array, source: $steps.fetch_deploys.output.deployments }
+    items: { type: array, value: $steps.fetch_deploys.output.deployments }
   outputs:
     items: { type: array }
 ```
@@ -453,7 +453,7 @@ Sort orders items by a single field. Defaults to ascending:
   field: score
   direction: desc
   inputs:
-    items: { type: array, source: $steps.filter_important.output.items }
+    items: { type: array, value: $steps.filter_important.output.items }
   outputs:
     items: { type: array }
 ```
@@ -536,7 +536,7 @@ A conformant WorkflowSkill runtime must:
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
-9. Resolve step output `source` expressions using the `$output` reference after each step's executor returns.
-10. Resolve workflow output `source` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
+9. Resolve step output `value` expressions (and their `source` alias) using the `$result` reference after each step's executor returns.
+10. Resolve workflow output `value` expressions (and their `source` alias) from the final runtime context after all steps complete, with exit step output taking precedence.
 
 A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.

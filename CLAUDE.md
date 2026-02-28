@@ -50,7 +50,7 @@ runtime/src/
 │   ├── tool.ts     # Tool invocation via ToolAdapter
 │   ├── llm.ts      # LLM call with prompt interpolation via LLMAdapter
 │   └── types.ts    # StepExecutionError, StepOutput, DispatchResult
-├── runtime/        # Orchestrator: validate → init context → 8-step lifecycle → run log
+├── runtime/        # Orchestrator: validate → init context → 9-step lifecycle → run log
 ├── config/         # loadConfig() — env vars with .env fallback
 ├── dev-tools/      # Dev tool adapter + tool implementations (for local workflow authoring)
 │   ├── dev-tool-adapter.ts     # DevToolAdapter — registers all dev tools
