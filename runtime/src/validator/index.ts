@@ -79,9 +79,9 @@ export function validateWorkflow(
       });
     }
 
-    // Validate $steps references in input values (expressions)
+    // Validate $steps references in input values (expressions and templates)
     for (const [inputName, input] of Object.entries(step.inputs)) {
-      if (typeof input.value === 'string' && input.value.startsWith('$')) {
+      if (typeof input.value === 'string' && hasStepReferences(input.value)) {
         validateSourceReference(
           input.value,
           step.id,
@@ -156,9 +156,9 @@ export function validateWorkflow(
     }
   }
 
-  // Validate workflow output value references (expressions)
+  // Validate workflow output value references (expressions and templates)
   for (const [outputName, outputDef] of Object.entries(workflow.outputs)) {
-    if (typeof outputDef.value === 'string' && outputDef.value.startsWith('$')) {
+    if (typeof outputDef.value === 'string' && hasStepReferences(outputDef.value)) {
       const refs = extractStepReferences(outputDef.value);
       for (const refId of refs) {
         if (!stepMap.has(refId)) {
@@ -182,16 +182,25 @@ export function validateWorkflow(
 }
 
 /**
- * Extract step IDs referenced via $steps.<id> from an expression string.
+ * Extract step IDs referenced from an expression or template string.
+ * Handles both expression form ($steps.<id>) and template form (${steps.<id>...}).
  */
 function extractStepReferences(expr: string): string[] {
   const refs: string[] = [];
-  const regex = /\$steps\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  // Expression form: $steps.<id>
+  const exprRegex = /\$steps\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  // Template form: ${steps.<id>...}
+  const tmplRegex = /\$\{steps\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
   let match;
-  while ((match = regex.exec(expr)) !== null) {
-    refs.push(match[1]!);
-  }
-  return refs;
+  while ((match = exprRegex.exec(expr)) !== null) refs.push(match[1]!);
+  while ((match = tmplRegex.exec(expr)) !== null) refs.push(match[1]!);
+  // Deduplicate
+  return [...new Set(refs)];
+}
+
+/** Returns true if the string contains $steps references in either expression or template form. */
+function hasStepReferences(value: string): boolean {
+  return value.startsWith('$steps.') || /\$\{steps\./.test(value);
 }
 
 /**
@@ -309,9 +318,11 @@ function detectCycles(
   for (const step of steps) {
     const stepDeps = new Set<string>();
 
-    // Collect all $steps references from inputs, conditions, each, output
+    // Collect data-flow dependencies from $steps references (expressions and templates).
+    // Conditional branch targets are execution-order dependencies, NOT data-flow edges —
+    // adding them here causes false cycle reports when branch steps reference the conditional.
     for (const input of Object.values(step.inputs)) {
-      if (typeof input.value === 'string' && input.value.startsWith('$')) {
+      if (typeof input.value === 'string') {
         for (const ref of extractStepReferences(input.value)) {
           stepDeps.add(ref);
         }
@@ -325,14 +336,6 @@ function detectCycles(
     if (step.each) {
       for (const ref of extractStepReferences(step.each)) {
         stepDeps.add(ref);
-      }
-    }
-
-    // Conditional steps depend on their branch targets
-    if (step.type === 'conditional') {
-      for (const id of step.then) stepDeps.add(id);
-      if (step.else) {
-        for (const id of step.else) stepDeps.add(id);
       }
     }
 

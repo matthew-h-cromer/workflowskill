@@ -461,3 +461,98 @@ describe('validateWorkflow - collects all errors', () => {
     expect(result.errors.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+// ─── Template reference validation (C5) ─────────────────────────────────────
+
+describe('validateWorkflow - template reference validation', () => {
+  it('detects undefined step references inside ${...} template strings', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'http.request',
+          inputs: {
+            url: { type: 'string', value: 'https://api.example.com/${steps.nonexistent.output.id}' },
+          },
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['http.request']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('undefined step "nonexistent"'))).toBe(true);
+  });
+
+  it('accepts valid step references inside ${...} template strings', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'get_id',
+          type: 'tool',
+          tool: 'http.request',
+          inputs: {},
+          outputs: { id: { type: 'string' } },
+        },
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'http.request',
+          inputs: {
+            url: { type: 'string', value: 'https://api.example.com/${steps.get_id.output.id}' },
+          },
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['http.request']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ─── Cycle detection: no false positives with conditional branches (C6) ───────
+
+describe('validateWorkflow - conditional branch cycle detection', () => {
+  it('does not report false cycle when branch step references the conditional step output', () => {
+    // A conditional step followed by a branch step that references the conditional's
+    // upstream data. This is valid — no real cycle exists.
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'http.request',
+          inputs: {},
+          outputs: { score: { type: 'float' } },
+        },
+        {
+          id: 'check',
+          type: 'conditional',
+          condition: '$steps.fetch.output.score > 5',
+          then: ['handle_high'],
+          inputs: {},
+          outputs: {},
+        },
+        {
+          id: 'handle_high',
+          type: 'exit',
+          status: 'success',
+          inputs: {},
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['http.request']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+    expect(result.errors.filter(e => e.message.includes('Cycle'))).toHaveLength(0);
+  });
+});
