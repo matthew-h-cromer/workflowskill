@@ -391,7 +391,7 @@ inputs:
 
 When you need to call an API once per item in a list, use `each` on a tool step. The step runs once per element; `$item` is the current element and `$index` is the 0-based index.
 
-**Rate limiting:** The runtime executes iterations sequentially. Use `delay` to insert a pause between iterations and avoid hitting rate limits. For example, `delay: "1s"` waits 1 second between each iteration (but not after the last). Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add `delay` for rate limiting, a preceding filter step to cap the count (see the `slice_ids` step in the Hacker News example below), and include `retry` with `backoff`.
+**Rate limiting:** The runtime executes iterations sequentially. **Always add `delay` to every `each` loop that calls an external service.** `delay: "1s"` waits 1 second between iterations (not after the last). External APIs rate-limit without warning; a missing `delay` is a latent failure. For tool steps calling HTTP APIs, `delay: "2s"` is a safe default. Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add `delay`, a preceding filter step to cap the count (see the `slice_ids` step in the Hacker News example below), and include `retry` with `backoff`.
 
 **Output collection:** Each iteration's output is collected into an array. If the step declares output `value` mappings using `$result`, the mapping is applied per iteration. The step record's `output` is the array of per-iteration mapped results.
 
@@ -485,7 +485,7 @@ steps:
 
 ### Iterating with `each` on LLM Steps
 
-When you have an array of items that each need LLM reasoning (summarization, classification, extraction), use `each` on the LLM step — just like tool steps. **Do not dump the entire array into a single prompt.**
+When you have an array of items that each need LLM reasoning (summarization, classification, extraction), use `each` on the LLM step — just like tool steps. **Do not dump the entire array into a single prompt.** Always add `delay` to LLM `each` loops — LLM APIs enforce token-per-minute limits, and `delay: "1s"` is the minimum safe default.
 
 **Why iterate instead of batch:**
 - **Token bounds** — Each call processes one item, so prompt size is predictable and bounded. Batching N items risks hitting context limits when items are large (e.g., HTML content).
@@ -645,7 +645,7 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 3. **Always declare inputs and outputs.** They enable validation and composability.
 4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
 5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. Required for LLM steps (which return raw text/JSON). Useful for tool steps when the response shape differs from what downstream steps need.
-6. **Use `each` for per-item processing** on both tool and LLM steps. See *Iteration Patterns*.
+6. **Use `each` for per-item processing** on both tool and LLM steps. Always include `delay` on every `each` loop that calls an external service — `delay: "2s"` for HTTP tool steps, `delay: "1s"` for LLM steps. See *Iteration Patterns*.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
 9. **Use `condition` guards for early exits** rather than letting empty data flow through.
@@ -657,7 +657,7 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
 16. **When JSON output is used, LLM prompts must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
 17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any LLM call. See *Patterns*.
-18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, add `delay` for rate limiting (e.g., `delay: "1s"`), cap iteration count, and add `retry` with `backoff`. See *Iteration Patterns*.
+18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, always add `delay: "2s"` (minimum), cap iteration count, and add `retry` with `backoff`. `delay` is not optional — external APIs rate-limit without warning and delays are free. Same applies to `each` + `llm` steps: always add `delay: "1s"`. See *Iteration Patterns*.
 19. **Prefer plain text LLM output over JSON.** For single-value tasks (summarization, classification, scoring), use `value: $result` and instruct the model to return plain text. Reserve JSON (`value: $result.field`) for multi-field output where every field requires LLM reasoning. In `each` + LLM patterns, always use plain text + a `map` transform to zip LLM output with structural data from the source array. See *Iteration Patterns*.
 
 ## Output Format
@@ -719,6 +719,7 @@ After writing the file, always validate it against the runtime. The validation c
 - [ ] All `${}` template references resolve to declared inputs/steps
 - [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
 - [ ] LLM steps with `each` prefer plain text output (`value: $result`) over JSON (`value: $result.field`)
+- [ ] Every `each` loop that calls an external service has `delay` (tool steps: `"2s"` minimum; LLM steps: `"1s"` minimum)
 - [ ] `each` + `http.request` steps are bounded (preceded by a cap) and have `retry` with `backoff`
 
 If validation fails, fix the errors and revalidate.
