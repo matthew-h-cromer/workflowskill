@@ -12,7 +12,7 @@ Implementation file → `runtime/src/index.ts` (re-export) → tests → CLAUDE.
 
 ## Workflow-author skill
 
-`.claude/skills/workflow-author/SKILL.md` — edit directly, no build step needed.
+`.claude/skills/workflow-author/SKILL.md` — edit directly, then regenerate affected fixtures in `runtime/test/workflow-authoring/fixtures/` and re-run the evaluation suite.
 
 ## New dev tool
 

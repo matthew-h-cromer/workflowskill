@@ -249,7 +249,11 @@ This is a pure data operation — never use an LLM step to merge or zip arrays.
 
 ### Exit Step
 
-Use exit steps for **conditional early termination** — to stop the workflow when a condition is met:
+Use exit steps for **conditional early termination** — to stop the workflow when a condition is met.
+
+`status` must be `success` or `failed` — those are the only valid values.
+
+Early exit on empty result (success):
 ```yaml
 - id: early_exit
   type: exit
@@ -258,6 +262,18 @@ Use exit steps for **conditional early termination** — to stop the workflow wh
   output:
     count: 0
     items: []
+  inputs: {}
+  outputs: {}
+```
+
+Early exit on error condition (failed):
+```yaml
+- id: guard_empty
+  type: exit
+  condition: $steps.fetch.output.data.length == 0
+  status: failed
+  output:
+    error: "No data returned from API"
   inputs: {}
   outputs: {}
 ```

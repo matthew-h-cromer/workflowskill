@@ -52,3 +52,17 @@ Instantiate per-test, not in `beforeEach`:
 3 graduation: graduation-email-triage, graduation-deploy-report, graduation-content-moderation
 
 4 malformed: malformed-bad-schema, malformed-bad-yaml, malformed-no-block, malformed-no-frontmatter
+
+## Workflow Authoring Evaluation
+
+`test/workflow-authoring/` evaluates the workflow-author skill (SKILL.md) against 12 test cases.
+
+| File | What It Does |
+| --- | --- |
+| `test/workflow-authoring/cases.ts` | 12 EvalCase definitions + reusable PatternCheck functions (each mapped to a SKILL.md rule) |
+| `test/workflow-authoring/harness.ts` | `evaluate(content, evalCase)` — runs parse/validate + structural + pattern checks |
+| `test/workflow-authoring/scorecard.ts` | `buildScorecard()` + `formatScorecard()` — aggregates results, annotates failures with `[SKILL.md: ...]` |
+| `test/workflow-authoring/workflow-authoring.test.ts` | Vitest runner with `beforeAll` per case; prints scorecard in `afterAll` |
+| `test/workflow-authoring/fixtures/` | 12 generated `.md` files (one per test case, committed) |
+
+**Pattern checks return `true` (pass) or a string (failure detail).** The harness uses `result === true` strict comparison — not truthiness — because non-empty strings are truthy in JavaScript.

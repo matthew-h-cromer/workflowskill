@@ -109,6 +109,23 @@ Claude will research the task, propose a design, write the SKILL.md, and validat
 
 `http.request` and `html.select` work with no setup. For Google tools, add credentials to `runtime/.env` (see `runtime/.env.example`).
 
+**Run the generated workflow:**
+
+```bash
+# Validate (no API keys needed)
+workflowskill validate path/to/workflow.md
+
+# Run it (requires ANTHROPIC_API_KEY for LLM steps, Google creds for Gmail/Sheets)
+workflowskill run path/to/workflow.md
+
+# Pass inputs as JSON
+workflowskill run path/to/workflow.md --input '{"keywords": "rust developer"}'
+```
+
+The CLI shows live progress on stderr and writes a structured [run log](#run-log) as JSON to stdout and to `runs/<name>-<timestamp>.json`.
+
+**Evaluate the output:** Check `status` for overall success. If a step failed, its `error` field explains why. For `each` steps, `iterations` shows per-item results. Compare per-step `inputs` and `output` values against your expectations to find where the data flow broke down.
+
 ## Language overview
 
 WorkflowSkill workflows are YAML documents with five step types:
@@ -248,6 +265,8 @@ npm run lint               # ESLint
 npm run build              # tsdown
 npm run validate:examples  # Validate all fixtures
 ```
+
+The test suite includes a workflow-authoring evaluation (`test/workflow-authoring/`) that scores the workflow-author skill against 12 test cases. The fixtures are committed snapshots — they validate deterministically without LLM calls. **If you make a meaningful change to `.claude/skills/workflow-author/SKILL.md`, identify which fixtures exercise the changed rule and regenerate them** (delete the fixture, re-run `/workflow-author` with the original prompt, save the output). Passing tests after a skill edit only confirms the old fixtures still meet the quality bar — not that the skill itself improved.
 
 ## Configuration
 
