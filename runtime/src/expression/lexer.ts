@@ -18,6 +18,7 @@ export type TokenType =
   | 'AND'          // &&
   | 'OR'           // ||
   | 'NOT'          // !
+  | 'CONTAINS'     // contains
   | 'LPAREN'       // (
   | 'RPAREN'       // )
   | 'LBRACKET'     // [
@@ -192,6 +193,8 @@ export function lex(input: string): Token[] {
         tokens.push({ type: 'BOOLEAN', value: word, position: start });
       } else if (word === 'null') {
         tokens.push({ type: 'NULL', value: word, position: start });
+      } else if (word === 'contains') {
+        tokens.push({ type: 'CONTAINS', value: word, position: start });
       } else {
         tokens.push({ type: 'IDENTIFIER', value: word, position: start });
       }

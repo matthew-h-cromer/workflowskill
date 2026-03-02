@@ -138,21 +138,21 @@ steps:
 
 ### LLM Step
 ```yaml
-- id: analyze
+- id: summarize
   type: llm
   model: haiku          # optional: haiku, sonnet, opus
   prompt: |
-    Analyze this data.
+    Summarize this data in 2-3 sentences.
     Data: $steps.fetch_data.output.result
 
-    Respond with raw JSON only — no markdown fences, no commentary.
+    Write only the summary — no formatting, no preamble.
   inputs:
     data:
       type: object
       value: $steps.fetch_data.output.result
   outputs:
-    analysis:
-      type: object
+    summary:
+      type: string
       value: $result
 ```
 
@@ -314,18 +314,29 @@ outputs:
 
 This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `value` pass through from the raw result by key name.
 
-**LLM step outputs require `value`.** LLM steps return the model's raw text (parsed as JSON when valid). Without `value`, downstream `$steps.<id>.output.<key>` references fail for plain text responses. Always use `value: $result` or `value: $result.field`:
+**LLM step outputs require `value`.** LLM steps return the model's raw text (parsed as JSON when valid). Without `value`, downstream `$steps.<id>.output.<key>` references fail for plain text responses.
+
+**Default: plain text with `value: $result`.** For single-value tasks (summarization, classification, scoring, extraction of one field), instruct the model to return plain text and capture it with `value: $result`:
 
 ```yaml
-- id: score
+- id: classify
+  type: llm
+  model: haiku
+  outputs:
+    priority:
+      type: string
+      value: $result                       # captures raw text: "high", "medium", or "low"
+```
+
+**JSON with `value: $result.field` — only when the LLM must generate multiple fields that each require reasoning.** If the output has multiple fields but only one requires LLM judgment, use plain text for the LLM and a `map` transform to zip the LLM output with structural data:
+
+```yaml
+- id: analyze
   type: llm
   outputs:
-    result_array:       # maps the whole parsed response
-      type: array
-      value: $result
-    summary:            # extracts a single field
-      type: string
-      value: $result.summary
+    analysis:
+      type: object
+      value: $result                       # parsed JSON object
 ```
 
 ## Expression Language
@@ -343,11 +354,13 @@ Use `$`-prefixed references to wire data between steps:
 | `$steps.<id>.output.field[0]` | First element of an array field |
 | `$item[$index]` | Nested array element at computed index (only valid inside `each`) |
 
-Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
+Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`, `contains`
+
+`contains` tests for substring or membership: `$item.title contains "Manager"` (string substring, case-sensitive); `$item.tags contains "urgent"` (array membership for primitives). Use in `transform filter` `where` clauses and `condition` guards to match text without an LLM.
 
 Bracket indexing: `[0]`, `[$index]`, or any expression inside `[]` for array element access.
 
-**Expression language limitations:** No function calls, no ternary expressions, no regex. Use `${}` template interpolation to build computed strings.
+**Expression language limitations:** No function calls, no ternary expressions, no regex. Use `contains` for substring and array membership tests. Use `${}` template interpolation to build computed strings.
 
 ### Template Interpolation and Dynamic URLs
 
@@ -477,7 +490,9 @@ When you have an array of items that each need LLM reasoning (summarization, cla
 - **Error isolation** — If one item produces malformed output, only that item fails. With `on_error: ignore`, the rest succeed. Batching loses *all* results if the model returns one malformed JSON array.
 - **Prompt simplicity** — "Summarize this one item" is a trivial prompt. "Parse N items and return an N-element array with exact positional correspondence" is fragile and error-prone.
 
-**Pattern: `each` + LLM with per-item output mapping**
+**Pattern: `each` + LLM with plain text output + map transform**
+
+Use plain text output (`value: $result`) for the LLM step, then zip the LLM results with structural data from the source array using a `map` transform:
 
 ```yaml
 steps:
@@ -506,32 +521,56 @@ steps:
       Title: $item.title
       Content: $item.content
 
-      Return a JSON object with exactly these fields:
-      - "title": the exact title string
-      - "description": a 1-2 sentence plain-text summary
-
-      Respond with raw JSON only — no markdown fences, no commentary.
+      Write only the summary — no formatting, no preamble.
     inputs:
       item:
         type: object
         value: $item
     outputs:
-      title:
+      summary:
         type: string
-        value: $result.title
-      description:
-        type: string
-        value: $result.description
+        value: $result                         # plain text — one summary per iteration
+
+  - id: combine_results
+    type: transform
+    operation: map
+    description: Zip summaries with source data
+    expression:
+      title: $item.title
+      description: $steps.summarize.output[$index].summary
+    inputs:
+      items: { type: array, value: $steps.fetch_items.output }
+    outputs:
+      items: { type: array }
 ```
 
-After this step, `$steps.summarize.output` is an array of `{ title, description }` objects — one per iteration.
+After this, `$steps.combine_results.output.items` is an array of `{ title, description }` objects — structural data from the tool step, LLM-generated text from the summarize step.
+
+**Why plain text over JSON for `each` + LLM:**
+- **Fence risk** — Models frequently wrap JSON in markdown fences (`` ```json...``` ``) despite explicit instructions. The runtime parses with `JSON.parse`, which rejects fenced output. Plain text has no parsing step — what the model writes is what you get.
+- **Silent failures** — When JSON parsing fails, the output stays as a raw string. `$result.field` on a string returns `undefined`, which propagates as `{}` downstream. No error is thrown — the workflow "succeeds" with empty objects.
+- **Structural data doesn't need LLM generation** — Fields like `title`, `id`, `score` already exist in the source data. Only the LLM-generated field (summary, classification, score) needs to come from the model. Use a `map` transform to zip them together.
 
 **Workflow output for each+LLM:**
 ```yaml
 outputs:
   summaries:
     type: array
-    value: $steps.summarize.output              # the collected array
+    value: $steps.combine_results.output.items  # the zipped array
+```
+
+**Anti-pattern — JSON output in `each` + LLM:**
+```yaml
+# BAD: model may return fenced JSON → parse fails → $result.field returns undefined → silent {}
+- id: summarize
+  type: llm
+  each: $steps.fetch_items.output
+  prompt: |
+    Return a JSON object with "title" and "description" fields.
+    Respond with raw JSON only — no markdown fences.
+  outputs:
+    title: { type: string, value: $result.title }        # undefined if fenced
+    description: { type: string, value: $result.description }  # undefined if fenced
 ```
 
 **Anti-pattern — batching all items into one prompt:**
@@ -716,9 +755,10 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 13. **Use exit steps for conditional early termination only**, not as the default way to produce output. Exit output keys must match the declared workflow output keys.
 14. **Transform steps are for arrays only.** Never use a transform to extract fields from a single object.
 15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
-16. **LLM prompts requesting JSON must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
-17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. See *Patterns*.
+16. **When JSON output is used, LLM prompts must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
+17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any LLM call. See *Patterns*.
 18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, cap iteration count and add `retry` with `backoff`. See *Iteration Patterns*.
+19. **Prefer plain text LLM output over JSON.** For single-value tasks (summarization, classification, scoring), use `value: $result` and instruct the model to return plain text. Reserve JSON (`value: $result.field`) for multi-field output where every field requires LLM reasoning. In `each` + LLM patterns, always use plain text + a `map` transform to zip LLM output with structural data from the source array. See *Iteration Patterns*.
 
 ## Output Format
 
@@ -778,6 +818,7 @@ After writing the file, always validate it against the runtime. The validation c
 - [ ] LLM step outputs have `value` using `$result`
 - [ ] All `${}` template references resolve to declared inputs/steps
 - [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
+- [ ] LLM steps with `each` prefer plain text output (`value: $result`) over JSON (`value: $result.field`)
 - [ ] `each` + `http.request` steps are bounded (preceded by a cap) and have `retry` with `backoff`
 
 If validation fails, fix the errors and revalidate.

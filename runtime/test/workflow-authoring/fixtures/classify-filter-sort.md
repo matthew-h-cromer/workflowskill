@@ -37,51 +37,49 @@ steps:
         type: array
         value: $result.body
 
-  - id: classify_items
+  - id: classify_priority
     type: llm
     model: haiku
-    description: Classify each item by priority (high/medium/low) and return the item with its classification
+    description: Classify each item by priority (high/medium/low)
     each: $steps.fetch_items.output.items
+    on_error: ignore
     prompt: |
-      You are a priority classifier. Classify the following item by priority level.
+      Classify the following item by priority level based on its score and content.
 
       Item:
-      $steps.fetch_items.output.items
-
-      The current item to classify is:
       - title: $item.title
       - score: $item.score
-      - id: $item.id
-
-      Respond with raw JSON only — no markdown fences, no commentary. Return an object with these fields:
-      {
-        "id": <the item id>,
-        "title": <the item title>,
-        "score": <the item score as a number>,
-        "priority": "<high|medium|low>"
-      }
 
       Priority guidelines:
       - high: score >= 70 or clearly urgent/important content
       - medium: score 30-69 or moderately important content
       - low: score < 30 or low-importance content
+
+      Respond with exactly one word: high, medium, or low.
     inputs:
       item:
         type: object
         value: $item
     outputs:
-      id:
-        type: string
-        value: $result.id
-      title:
-        type: string
-        value: $result.title
-      score:
-        type: float
-        value: $result.score
       priority:
         type: string
-        value: $result.priority
+        value: $result
+
+  - id: combine_classified
+    type: transform
+    operation: map
+    description: Zip priority classifications with source item data
+    expression:
+      title: $item.title
+      score: $item.score
+      priority: $steps.classify_priority.output[$index].priority
+    inputs:
+      items:
+        type: array
+        value: $steps.fetch_items.output.items
+    outputs:
+      items:
+        type: array
 
   - id: filter_high_priority
     type: transform
@@ -91,7 +89,7 @@ steps:
     inputs:
       items:
         type: array
-        value: $steps.classify_items.output
+        value: $steps.combine_classified.output.items
     outputs:
       items:
         type: array

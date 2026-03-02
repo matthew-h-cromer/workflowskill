@@ -129,6 +129,9 @@ function evaluateBinary(
       return isTruthy(lval) && isTruthy(rval);
     case '||':
       return isTruthy(lval) || isTruthy(rval);
+    case 'contains':
+      if (Array.isArray(lval)) return lval.includes(rval);
+      return String(lval ?? '').includes(String(rval ?? ''));
     default:
       throw new EvalError(`Unknown operator: ${op}`);
   }

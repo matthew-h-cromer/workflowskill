@@ -39,7 +39,7 @@ export interface LiteralNode {
   value: string | number | boolean | null;
 }
 
-/** Binary operations: ==, !=, >, <, >=, <=, &&, || */
+/** Binary operations: ==, !=, >, <, >=, <=, &&, ||, contains */
 export interface BinaryNode {
   kind: 'binary';
   operator: string;
@@ -119,7 +119,7 @@ export function parseExpression(tokens: Token[]): ASTNode {
   function parseComparison(): ASTNode {
     let left = parseUnary();
     const t = peek().type;
-    if (t === 'EQ' || t === 'NEQ' || t === 'GT' || t === 'GTE' || t === 'LT' || t === 'LTE') {
+    if (t === 'EQ' || t === 'NEQ' || t === 'GT' || t === 'GTE' || t === 'LT' || t === 'LTE' || t === 'CONTAINS') {
       const op = current().value;
       pos++;
       const right = parseUnary();

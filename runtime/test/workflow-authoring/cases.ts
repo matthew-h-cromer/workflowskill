@@ -304,6 +304,32 @@ export const mapStepsHaveExpression: PatternCheck = {
 };
 
 /**
+ * `each` + LLM steps should use plain text output (`value: $result`) rather than
+ * JSON field extraction (`value: $result.field`).
+ * SKILL.md Rule 19 / "Iterating with each on LLM Steps".
+ */
+export const eachLlmPrefersPlainText: PatternCheck = {
+  name: 'each + LLM steps use plain text output (value: $result)',
+  skillRef: 'Rule 19 / "Iteration Patterns"',
+  check: ({ workflow }) => {
+    if (!workflow) return 'no parsed workflow';
+    const eachLlmSteps = workflow.steps.filter(
+      (s): s is LLMStep => s.type === 'llm' && s.each !== undefined,
+    );
+    if (eachLlmSteps.length === 0) return true;
+    for (const step of eachLlmSteps) {
+      for (const [key, output] of Object.entries(step.outputs)) {
+        const val = String(output.value ?? '');
+        if (/^\$result\./.test(val)) {
+          return `step "${step.id}" output "${key}" uses "${val}" — each + LLM should use plain text (value: $result) and a map transform`;
+        }
+      }
+    }
+    return true;
+  },
+};
+
+/**
  * each + http.request steps must have retry with backoff to handle rate limits.
  * SKILL.md Rule 18 / "Iterating with each on Tool Steps".
  */
@@ -516,7 +542,7 @@ export const EVAL_CASES: EvalCase[] = [
     prompt: 'Fetch a list of items from an API, use an LLM to classify each item by priority (high/medium/low), filter to keep only high-priority items, sort by score descending, return the result',
     expectations: {
       minSteps: 3,
-      maxSteps: 6,
+      maxSteps: 7,
       requiredStepTypes: ['tool', 'llm', 'transform'],
       requiredTools: ['http.request'],
       patterns: [
@@ -524,6 +550,7 @@ export const EVAL_CASES: EvalCase[] = [
         retryUsesCorrectFields,
         httpToolsHaveRetry,
         llmOutputsHaveResultValue,
+        eachLlmPrefersPlainText,
         transformsHaveItemsInput,
         filterStepsHaveWhere,
         sortStepsHaveDirection,

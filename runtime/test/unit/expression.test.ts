@@ -358,6 +358,47 @@ describe('resolveExpression', () => {
     expect(() => resolveExpression('$unknown', ctx)).toThrow(EvalError);
   });
 
+  // contains operator
+  it('contains: string substring match (true)', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: 'Senior Product Manager' } };
+    expect(resolveExpression('$item.title contains "Product Manager"', c)).toBe(true);
+  });
+
+  it('contains: string substring non-match (false)', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: 'Software Engineer' } };
+    expect(resolveExpression('$item.title contains "Product Manager"', c)).toBe(false);
+  });
+
+  it('contains: string substring is case-sensitive', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: 'Senior Product Manager' } };
+    expect(resolveExpression('$item.title contains "product manager"', c)).toBe(false);
+  });
+
+  it('contains: empty string is always contained', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: 'Anything' } };
+    expect(resolveExpression('$item.title contains ""', c)).toBe(true);
+  });
+
+  it('contains: null/undefined LHS returns false', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: null } };
+    expect(resolveExpression('$item.title contains "Manager"', c)).toBe(false);
+  });
+
+  it('contains: array membership (true)', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { tags: ['urgent', 'billing'] } };
+    expect(resolveExpression('$item.tags contains "urgent"', c)).toBe(true);
+  });
+
+  it('contains: array membership (false)', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { tags: ['urgent', 'billing'] } };
+    expect(resolveExpression('$item.tags contains "low"', c)).toBe(false);
+  });
+
+  it('contains: array membership with number', () => {
+    const c: RuntimeContext = { inputs: {}, steps: {}, item: { ids: [41, 42, 43] } };
+    expect(resolveExpression('$item.ids contains 42', c)).toBe(true);
+  });
+
   // Length on array
   it('resolves .length == 0 on empty array', () => {
     const emptyCtx: RuntimeContext = {
