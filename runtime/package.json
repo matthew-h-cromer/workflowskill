@@ -2,9 +2,31 @@
   "name": "workflowskill",
   "version": "0.1.0",
   "description": "WorkflowSkill runtime - execute declarative agent workflows",
+  "author": "Matthew Cromer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matthew-h-cromer/workflowskill.git",
+    "directory": "runtime"
+  },
+  "homepage": "https://github.com/matthew-h-cromer/workflowskill#readme",
+  "bugs": {
+    "url": "https://github.com/matthew-h-cromer/workflowskill/issues"
+  },
   "type": "module",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "skill"
+  ],
   "bin": {
     "workflowskill": "dist/cli/index.mjs"
   },
@@ -15,7 +37,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
-    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/echo.md test/fixtures/two-step-pipe.md test/fixtures/llm-judgment.md test/fixtures/filter-exit.md test/fixtures/branch.md test/fixtures/each-loop.md test/fixtures/error-fail.md test/fixtures/error-ignore.md test/fixtures/retry-backoff.md test/fixtures/sort-pipeline.md test/fixtures/graduation-*.md"
+    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/echo.md test/fixtures/two-step-pipe.md test/fixtures/llm-judgment.md test/fixtures/filter-exit.md test/fixtures/branch.md test/fixtures/each-loop.md test/fixtures/error-fail.md test/fixtures/error-ignore.md test/fixtures/retry-backoff.md test/fixtures/sort-pipeline.md test/fixtures/graduation-*.md",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run lint && npm run build"
   },
   "engines": {
     "node": ">=20"
