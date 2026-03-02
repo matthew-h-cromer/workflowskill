@@ -4,10 +4,14 @@
 [![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-green.svg)](https://nodejs.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/matthew-h-cromer/workflowskill/issues)
 
-A declarative workflow language for AI agents. Describe a task in YAML — the runtime handles parsing, validation, execution, error handling, and observability.
-
 > [!IMPORTANT]
 > **Pre-release.** The spec and reference runtime are complete and tested, but the API is not yet frozen. This is a good time to influence direction — open an issue if something feels wrong, missing, or over-engineered.
+
+A declarative workflow language for AI agents.
+
+1. You prompt what you need: "I want to check this website daily"
+2. Your agent writes a [WorkflowSkill](https://agentskills.io/home) that can be executed deterministically by any compatible runtime.
+3. The WorkflowSkill runs reliably and cheaply for repetitive tasks — no agent needed.
 
 ```yaml
 inputs:
@@ -42,19 +46,19 @@ steps:
 
 ## Repositories
 
-| Repo | Description |
-|------|-------------|
-| **workflowskill** (this repo) | Specification, proposal, and reference runtime |
+| Repo                                                                                 | Description                                                          |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| **workflowskill** (this repo)                                                        | Specification, proposal, and reference runtime                       |
 | [openclaw-workflowskill](https://github.com/matthew-h-cromer/openclaw-workflowskill) | OpenClaw plugin — validate, run, and review workflows from the agent |
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [PROPOSAL.md](PROPOSAL.md) | Design rationale, requirements, and alternatives considered |
-| [SPEC.md](SPEC.md) | Full language specification — the source of truth for all behavior |
-| [examples/](examples/) | Runnable workflow examples |
-| [runtime/](runtime/) | Reference TypeScript implementation |
+| Document                   | Description                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
+| [PROPOSAL.md](PROPOSAL.md) | Design rationale, requirements, and alternatives considered        |
+| [SPEC.md](SPEC.md)         | Full language specification — the source of truth for all behavior |
+| [examples/](examples/)     | Runnable workflow examples                                         |
+| [runtime/](runtime/)       | Reference TypeScript implementation                                |
 
 ## Quick start
 
@@ -63,6 +67,8 @@ cd runtime
 npm install
 npm run build
 ```
+
+### Example WorkflowSkills to test
 
 **hello-world** — no API keys needed:
 
@@ -84,28 +90,29 @@ workflowskill run ../examples/hello-world-gmail.md \
   --input '{"to": "you@example.com"}'
 ```
 
-**Generate a workflow with Claude Code:**
+### Authoring WorkflowSkills
 
-The intended way to test the runtime is to generate workflows with Claude Code and run them. Open this repo in Claude Code — it has web access, file I/O, and can invoke the CLI, so it can take a task description all the way from research to a validated, runnable workflow.
+A WorkflowSkill is authored via natural conversation with any agent system that adopts the [agent skills standard](https://agentskills.io/home).
 
-Use the workflow-author skill:
+Steps to author a WorkflowSkill:
 
-```
-/workflow-author fetch the top 10 Hacker News stories and return their titles, scores, and URLs
-```
+1. Prompt your agent to create a workflow, "I want to check this website daily"
+   - This repo is configured to work with Claude Code via .claude/ — for other agent tools, provide the contents of runtime/skill/SKILL.md as context.
+2. Your agent writes a WorkflowSkill.
+3. The WorkflowSkill can then be executed deterministically via `workflowskill run <workflow.md>`
 
-Claude will research the task, propose a design, write the SKILL.md, and validate it with the CLI. The dev tools available to generated workflows are:
+Your agent will research the task, write the workflow file, and validate it with the CLI. The dev tools available to generated workflows are:
 
-| Tool | What it does | Needs credentials |
-|------|--------------|-------------------|
-| `http.request` | HTTP GET/POST/PUT/PATCH/DELETE | No |
-| `html.select` | CSS selector extraction from HTML | No |
-| `gmail.search` | Search Gmail by query | Google OAuth2 |
-| `gmail.read` | Read a Gmail message by ID | Google OAuth2 |
-| `gmail.send` | Send email via Gmail | Google OAuth2 |
-| `sheets.read` | Read a Google Sheets range | Google OAuth2 |
-| `sheets.write` | Write to a Google Sheets range | Google OAuth2 |
-| `sheets.append` | Append rows to a Google Sheets range | Google OAuth2 |
+| Tool            | What it does                         | Needs credentials |
+| --------------- | ------------------------------------ | ----------------- |
+| `http.request`  | HTTP GET/POST/PUT/PATCH/DELETE       | No                |
+| `html.select`   | CSS selector extraction from HTML    | No                |
+| `gmail.search`  | Search Gmail by query                | Google OAuth2     |
+| `gmail.read`    | Read a Gmail message by ID           | Google OAuth2     |
+| `gmail.send`    | Send email via Gmail                 | Google OAuth2     |
+| `sheets.read`   | Read a Google Sheets range           | Google OAuth2     |
+| `sheets.write`  | Write to a Google Sheets range       | Google OAuth2     |
+| `sheets.append` | Append rows to a Google Sheets range | Google OAuth2     |
 
 `http.request` and `html.select` work with no setup. For Google tools, add credentials to `runtime/.env` (see `runtime/.env.example`).
 
@@ -130,13 +137,13 @@ The CLI shows live progress on stderr and writes a structured [run log](#run-log
 
 WorkflowSkill workflows are YAML documents with five step types:
 
-| Step type | Description |
-|-----------|-------------|
-| `tool` | Invoke an MCP server endpoint, dev tool (HTTP, Gmail, Sheets), or any registered function |
-| `llm` | Call a language model with a templated prompt |
-| `transform` | Filter, map, or sort data without side effects |
-| `conditional` | Branch execution based on an expression |
-| `exit` | Terminate early with a status and output |
+| Step type     | Description                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `tool`        | Invoke an MCP server endpoint, dev tool (HTTP, Gmail, Sheets), or any registered function |
+| `llm`         | Call a language model with a templated prompt                                             |
+| `transform`   | Filter, map, or sort data without side effects                                            |
+| `conditional` | Branch execution based on an expression                                                   |
+| `exit`        | Terminate early with a status and output                                                  |
 
 Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
 
@@ -188,6 +195,7 @@ if (log.status === "success") {
 ```
 
 Key ergonomic properties:
+
 - **Accepts raw content** — SKILL.md with frontmatter or bare workflow YAML, no parsing step needed
 - **Never throws** — parse, validation, and execution failures are encoded in the return value
 - **`RunLog` is always returned**, with `error?: { phase, message, details }` on failure
@@ -213,6 +221,7 @@ interface LLMAdapter {
 ```
 
 Built-in implementations:
+
 - **`DevToolAdapter`** — provides `http.request`, `html.select`, Gmail, and Google Sheets tools for standalone use
 - **`AnthropicLLMAdapter`** — wraps the Anthropic SDK; reads `ANTHROPIC_API_KEY` from the environment
 
@@ -233,8 +242,8 @@ interface RunLog {
     total_tokens: number;
     total_duration_ms: number;
   };
-  started_at: string;           // ISO 8601
-  completed_at: string;         // ISO 8601
+  started_at: string; // ISO 8601
+  completed_at: string; // ISO 8601
   duration_ms: number;
   inputs: Record<string, unknown>;
   steps: StepRecord[];
@@ -284,9 +293,9 @@ The runtime degrades gracefully: missing `ANTHROPIC_API_KEY` → mock LLM adapte
 ### Getting Google OAuth2 credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
-2. Enable the APIs you need: **Gmail API** and/or **Google Sheets API** under *APIs & Services > Library*.
-3. Go to *APIs & Services > OAuth consent screen*. Choose **External** and fill in the app name and your email.
-4. Go to *APIs & Services > Credentials > Create Credentials > OAuth client ID*. Choose **Desktop app**. Copy the **Client ID** and **Client Secret** into your `.env`.
+2. Enable the APIs you need: **Gmail API** and/or **Google Sheets API** under _APIs & Services > Library_.
+3. Go to _APIs & Services > OAuth consent screen_. Choose **External** and fill in the app name and your email.
+4. Go to _APIs & Services > Credentials > Create Credentials > OAuth client ID_. Choose **Desktop app**. Copy the **Client ID** and **Client Secret** into your `.env`.
 5. Get a refresh token. The easiest way is [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground/):
    - Click the gear icon, check **Use your own OAuth credentials**, and enter your Client ID and Client Secret.
    - In the left panel, select the scopes you need: `https://www.googleapis.com/auth/gmail.modify` (under **Gmail API v1**) and/or `https://www.googleapis.com/auth/spreadsheets` (under **Sheets API v4**). Click **Authorize APIs** and sign in.
