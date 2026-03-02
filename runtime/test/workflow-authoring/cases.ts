@@ -82,7 +82,7 @@ export const llmOutputsHaveResultValue: PatternCheck = {
  */
 export const workflowOutputsHaveValue: PatternCheck = {
   name: 'Workflow outputs use value with $steps references',
-  skillRef: 'Rule 4 / "Workflow Output Resolution" section',
+  skillRef: 'Rule 4 / "Output Resolution" section',
   check: ({ workflow }) => {
     if (!workflow) return 'no parsed workflow';
     const outputs = Object.entries(workflow.outputs);
@@ -236,7 +236,7 @@ export const exitStepsHaveConditionGuard: PatternCheck = {
  */
 export const usesTemplateInterpolation: PatternCheck = {
   name: 'uses template interpolation ${...} for dynamic values in each loops',
-  skillRef: '"each Iteration Pattern" / Template Interpolation',
+  skillRef: '"Iteration Patterns" / Template Interpolation',
   check: ({ workflow }) => {
     if (!workflow) return false;
     // Verify at least one step has BOTH `each` AND a template `${...}` in its inputs
@@ -300,6 +300,27 @@ export const mapStepsHaveExpression: PatternCheck = {
     return mapSteps.every(
       (s) => typeof s.expression === 'object' && s.expression !== null && !Array.isArray(s.expression),
     );
+  },
+};
+
+/**
+ * each + http.request steps must have retry with backoff to handle rate limits.
+ * SKILL.md Rule 18 / "Iterating with each on Tool Steps".
+ */
+export const eachHttpHasBackoff: PatternCheck = {
+  name: 'each + http.request steps have retry with backoff',
+  skillRef: 'Rule 18 / "Iteration Patterns"',
+  check: ({ workflow }) => {
+    if (!workflow) return 'no parsed workflow';
+    const eachHttpSteps = workflow.steps.filter(
+      (s): s is ToolStep => s.type === 'tool' && s.tool === 'http.request' && s.each !== undefined,
+    );
+    if (eachHttpSteps.length === 0) return true;
+    const missing = eachHttpSteps.filter((s) => !s.retry?.backoff).map((s) => s.id);
+    if (missing.length > 0) {
+      return `each + http.request step(s) missing retry with backoff: ${missing.join(', ')}`;
+    }
+    return true;
   },
 };
 
@@ -483,6 +504,7 @@ export const EVAL_CASES: EvalCase[] = [
         noLegacySourceField,
         retryUsesCorrectFields,
         httpToolsHaveRetry,
+        eachHttpHasBackoff,
         usesTemplateInterpolation,
         workflowOutputsHaveValue,
         stepsReferencesAreValid,

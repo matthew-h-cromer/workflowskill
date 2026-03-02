@@ -10,6 +10,7 @@ A standalone TypeScript runtime that parses, validates, and executes WorkflowSki
 - `examples/` — runnable workflow examples (at repo root, referenced from SPEC.md and PROPOSAL.md)
 - `runtime/` — reference TypeScript implementation (all source, tests, and tooling live here)
 - `.claude/skills/workflow-author/SKILL.md` — teaches Claude Code to author valid WorkflowSkill YAML
+- `runtime/skill/SKILL.md` — **copy of the above** (bundled with the npm package). Must always match `.claude/skills/workflow-author/SKILL.md`.
 
 ## Verify Every Change
 
@@ -120,6 +121,11 @@ npx tsx src/cli/index.ts run <file>
 ## Workflow Generation
 
 **Skill location: `.claude/skills/workflow-author/SKILL.md`**
+**Bundled copy: `runtime/skill/SKILL.md`**
+
+**Two copies, one source of truth.** `.claude/skills/workflow-author/SKILL.md` is the authoritative copy. `runtime/skill/SKILL.md` is a verbatim copy bundled with the npm package. **After every edit to SKILL.md, copy it to both locations.** The eval fixtures in `runtime/test/workflow-authoring/fixtures/` are generated from whichever copy Claude Code loads — if the copies diverge, tests may pass against a stale skill while the live skill has regressed.
+
+**SKILL.md must remain platform-agnostic.** It teaches any Claude Code instance to author valid WorkflowSkill YAML — it is not specific to this runtime implementation. Never put repo-specific paths (`cd runtime`, `npx tsx src/cli/...`) or dev commands (`npm run ...`) in SKILL.md. Platform-specific CLI commands for validating and running workflows belong here in CLAUDE.md.
 
 To generate a workflow, invoke the skill with a description of the task:
 
@@ -176,6 +182,32 @@ cd runtime && npx vitest test/workflow-authoring/workflow-authoring.test.ts
 4. **Improve:** edit `.claude/skills/workflow-author/SKILL.md` — strengthen the relevant rule/example
 5. **Regenerate:** delete the fixture(s) that exercise the changed rule, re-run `/workflow-author`, save the new output
 6. **Re-evaluate:** run tests again, verify the fix and check for regressions
+
+## Extending the Workflow-Author Skill
+
+**When to update SKILL.md:**
+- New step type → add to Step Type Reference with YAML example
+- New dev tool → add to Dev Tools section with inputs/outputs
+- New expression syntax → add to Expression Language reference table
+- New step field → add to YAML Structure template + explain semantics
+- Changed field semantics → update relevant section and YAML examples
+- New pattern → add a Patterns sub-section with YAML example
+
+**When NOT to update SKILL.md:**
+- Internal runtime refactors (no YAML surface area change)
+- Test infrastructure changes
+- CLI changes (those belong in CLAUDE.md)
+- Bug fixes that don't change authored YAML behavior
+
+**How to update SKILL.md:**
+1. Edit `.claude/skills/workflow-author/SKILL.md` (primary copy)
+2. Copy to `runtime/skill/SKILL.md` (must stay in sync)
+3. Preserve rule numbers — eval suite references by number; append new rules at the end
+4. Preserve section names used in eval `skillRef` strings — check `cases.ts`; if renaming, update `skillRef` too
+5. Add eval coverage — if new feature has correctness constraints, add a `PatternCheck` to `cases.ts`
+6. Regenerate affected fixtures and re-run eval suite
+7. Keep it platform-agnostic — no repo paths or CLI commands
+8. Stay under ~800 lines — consolidate rather than append
 
 ## Credential Configuration
 
