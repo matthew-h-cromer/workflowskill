@@ -1,28 +1,38 @@
-// Tool: html.select — extract data from HTML using CSS selectors.
+// Tool: web.scrape — fetch a URL and extract data from the HTML response using CSS selectors.
 
 import * as cheerio from 'cheerio';
-import type { ToolDescriptor, ToolResult } from '../../types/index.js';
+import type { ToolDescriptor, ToolResult } from '../types/index.js';
 
-export interface HtmlSelectArgs {
-  html: string;
+export interface WebScrapeArgs {
+  url: string;
   selector: string;
+  method?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
   attribute?: string;
   limit?: number;
   fields?: Record<string, string>;
 }
 
 export const descriptor: ToolDescriptor = {
-  name: 'html.select',
+  name: 'web.scrape',
   description:
-    'Extract data from HTML using CSS selectors. Returns text content, attribute values, or structured objects.',
+    'Fetch a URL and extract data from the HTML response using CSS selectors. Returns text content, attribute values, or structured objects.',
   inputSchema: {
     type: 'object',
     properties: {
-      html: { type: 'string', description: 'HTML content to search' },
-      selector: { type: 'string', description: 'CSS selector to match elements' },
+      url: { type: 'string', description: 'The URL to fetch' },
+      selector: { type: 'string', description: 'CSS selector to match elements in the HTML response' },
+      method: { type: 'string', description: 'HTTP method (default: GET)' },
+      headers: { type: 'object', description: 'Request headers as key-value pairs' },
+      timeout: {
+        type: 'number',
+        description: 'Request timeout in milliseconds (default: 30000)',
+      },
       attribute: {
         type: 'string',
-        description: 'Attribute to extract instead of text content (ignored when fields is present)',
+        description:
+          'Attribute to extract instead of text content (ignored when fields is present)',
       },
       limit: { type: 'number', description: 'Maximum number of results to return' },
       fields: {
@@ -31,7 +41,7 @@ export const descriptor: ToolDescriptor = {
           'Map of field names to sub-selectors for structured extraction. Each value is a CSS selector scoped to the matched parent. Append " @attr" to extract an attribute (e.g. "a @href", "img @src"). Bare "@attr" extracts from the parent itself. When present, returns array of objects instead of strings.',
       },
     },
-    required: ['html', 'selector'],
+    required: ['url', 'selector'],
   },
   outputSchema: {
     type: 'object',
@@ -65,15 +75,50 @@ function parseFieldSpec(spec: string): { subSelector: string | null; attr: strin
 }
 
 export async function handler(args: Record<string, unknown>): Promise<ToolResult> {
-  const { html, selector, attribute, limit, fields } = args as unknown as HtmlSelectArgs;
+  const { url, selector, method, headers, timeout, attribute, limit, fields } =
+    args as unknown as WebScrapeArgs;
 
-  if (!html || typeof html !== 'string') {
-    return { output: null, error: 'html.select: "html" is required and must be a string' };
+  if (!url || typeof url !== 'string') {
+    return { output: null, error: 'web.scrape: "url" is required and must be a string' };
   }
   if (!selector || typeof selector !== 'string') {
-    return { output: null, error: 'html.select: "selector" is required and must be a string' };
+    return { output: null, error: 'web.scrape: "selector" is required and must be a string' };
   }
 
+  // Fetch the URL
+  let response: Response;
+  try {
+    const controller = new AbortController();
+    const timeoutMs = typeof timeout === 'number' ? timeout : 30000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    response = await fetch(url, {
+      method: method ?? 'GET',
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { output: null, error: `web.scrape: fetch failed: ${message}` };
+  }
+
+  // Reject non-2xx responses
+  if (!response.ok) {
+    return { output: null, error: `web.scrape: HTTP ${response.status}` };
+  }
+
+  // Reject JSON responses — CSS selectors are meaningless on JSON data
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return {
+      output: null,
+      error: 'web.scrape: response is JSON — use a different tool for JSON APIs',
+    };
+  }
+
+  const html = await response.text();
   const $ = cheerio.load(html);
   const elements = $(selector);
 
@@ -107,7 +152,7 @@ export async function handler(args: Record<string, unknown>): Promise<ToolResult
     return { output: { results } };
   }
 
-  // Simple extraction: return array of strings (original behavior)
+  // Simple extraction: return array of strings
   let results: string[] = [];
   elements.each((_i, el) => {
     if (attribute) {

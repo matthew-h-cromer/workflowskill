@@ -53,13 +53,9 @@ runtime/src/
 │   └── types.ts    # StepExecutionError, StepOutput, DispatchResult
 ├── runtime/        # Orchestrator: validate → init context → 9-step lifecycle → run log
 ├── config/         # loadConfig() — env vars with .env fallback
-├── dev-tools/      # Dev tool adapter + tool implementations (for local workflow authoring)
-│   ├── dev-tool-adapter.ts     # DevToolAdapter — registers all dev tools
-│   └── tools/                   # Dev tool implementations
-│       ├── http-request.ts      # http.request (Node fetch)
-│       ├── html-select.ts       # html.select (cheerio)
-│       ├── gmail.ts             # gmail.search, gmail.read, gmail.send
-│       └── sheets.ts            # sheets.read, sheets.write, sheets.append
+├── tools/          # Builtin tool adapter + bundled tool implementations
+│   ├── builtin-tool-adapter.ts # BuiltinToolAdapter — registers bundled tools
+│   └── web-scrape.ts           # web.scrape (Node fetch + cheerio)
 ├── adapters/       # Mock adapters + LLM adapter
 │   ├── mock-tool-adapter.ts    # Mock for testing
 │   ├── mock-llm-adapter.ts     # Mock for testing
@@ -75,7 +71,6 @@ runtime/test/workflow-authoring/ # Skill evaluation suite (cases, harness, score
 examples/                        # Real-world workflow examples (repo root)
 examples/hello-world.md          # Zero-config example — returns "Hello, world!" (no API keys needed)
 examples/fetch-job-postings.md   # LinkedIn scraper example
-examples/hello-world-gmail.md    # Gmail send example (requires Google OAuth2)
 
 .claude/skills/workflow-author/  # Claude Code skill for authoring WorkflowSkill YAML
 ````
@@ -141,7 +136,7 @@ The skill researches the task (using WebFetch/WebSearch), proposes a design, wri
 # Validate first (no API keys needed)
 cd runtime && npx tsx src/cli/index.ts validate <path-to-workflow.md>
 
-# Run it (requires ANTHROPIC_API_KEY for LLM steps, Google creds for Gmail/Sheets)
+# Run it (requires ANTHROPIC_API_KEY for LLM steps)
 cd runtime && npx tsx src/cli/index.ts run <path-to-workflow.md>
 
 # Pass inputs as JSON
@@ -187,7 +182,7 @@ cd runtime && npx vitest test/workflow-authoring/workflow-authoring.test.ts
 
 **When to update SKILL.md:**
 - New step type → add to Step Type Reference with YAML example
-- New dev tool → add to Dev Tools section with inputs/outputs
+- New tool → add to Tools section with inputs/outputs
 - New expression syntax → add to Expression Language reference table
 - New step field → add to YAML Structure template + explain semantics
 - Changed field semantics → update relevant section and YAML examples
@@ -215,9 +210,6 @@ Set env vars or create a `.env` file in `runtime/`:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
-GOOGLE_CLIENT_ID=...               # Optional: enables Gmail/Sheets tools
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
 ```
 
-The CLI finds `runtime/.env` automatically regardless of working directory. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback). No Google creds → Google tools not registered (warning if workflow references them).
+The CLI finds `runtime/.env` automatically regardless of working directory. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback).

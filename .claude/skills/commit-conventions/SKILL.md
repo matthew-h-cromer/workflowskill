@@ -67,7 +67,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `runtime` | Orchestrator, lifecycle, run log |
 | `cli` | CLI commands (validate, run) |
 | `adapters` | Mock adapters, AnthropicLLMAdapter |
-| `dev-tools` | DevToolAdapter, dev tool implementations (http, gmail, sheets) |
+| `tools` | BuiltinToolAdapter, builtin tool implementations (http, html) |
 | `types` | TypeScript interfaces |
 | `rfc` | RFC specification document |
 

@@ -17,11 +17,8 @@ paths:
 | `test/unit/adapters.test.ts` | MockToolAdapter |
 | `test/unit/config.test.ts` | loadConfig: env vars, .env fallback, precedence |
 | `test/unit/anthropic-llm-adapter.test.ts` | Anthropic SDK adapter: call(), model aliases, responseFormat |
-| `test/unit/http-request.test.ts` | http.request tool |
-| `test/unit/html-select.test.ts` | html.select tool |
-| `test/unit/gmail.test.ts` | Gmail tools |
-| `test/unit/sheets.test.ts` | Sheets tools |
-| `test/unit/dev-tool-adapter.test.ts` | DevToolAdapter registration and invocation |
+| `test/unit/web-scrape.test.ts` | web.scrape tool (fetch + CSS extraction) |
+| `test/unit/builtin-tool-adapter.test.ts` | BuiltinToolAdapter registration and invocation |
 | `test/integration/runtime.test.ts` | All 12 targeted workflows end-to-end with mock adapters |
 | `test/integration/graduation.test.ts` | 3 spec examples: email-triage, deploy-report, content-moderation |
 

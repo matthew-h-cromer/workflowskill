@@ -406,7 +406,7 @@ steps:
 
   - id: fetch_details
     type: tool
-    tool: http.request
+    tool: api.get_item                  # platform-specific tool; use web.scrape for HTML pages
     each: $steps.get_ids.output.ids    # iterate over ids array
     on_error: ignore                    # skip failed fetches, continue
     inputs:
@@ -432,9 +432,9 @@ outputs:
     value: $steps.fetch_details.output   # the collected array of per-iteration results
 ```
 
-**Pattern: List → Fetch Details → Filter → Summarize**
+**Pattern: List → Slice → Fetch Details**
 
-Full example for "fetch Hacker News top stories":
+Full example using generic tool names (substitute platform-specific tools as needed):
 
 ```yaml
 inputs:
@@ -443,19 +443,19 @@ inputs:
     default: 10
   base_url:
     type: string
-    default: "https://hacker-news.firebaseio.com/v0/item/"
+    default: "https://api.example.com/item/"
 
 outputs:
-  stories:
+  items:
     type: array
-    value: $steps.fetch_stories.output
+    value: $steps.fetch_details.output
 
 steps:
-  - id: get_top_ids
+  - id: get_ids
     type: tool
-    tool: http.request
+    tool: api.list_items
     inputs:
-      url: { type: string, value: "https://hacker-news.firebaseio.com/v0/topstories.json" }
+      url: { type: string, value: "https://api.example.com/items" }
     outputs:
       ids: { type: array, value: $result.body }
 
@@ -464,14 +464,16 @@ steps:
     operation: filter
     where: $index < $inputs.count       # cap iteration count to avoid rate limiting
     inputs:
-      items: { type: array, value: $steps.get_top_ids.output.ids }
+      items: { type: array, value: $steps.get_ids.output.ids }
     outputs:
       ids: { type: array }
 
-  - id: fetch_stories
+  - id: fetch_details
     type: tool
-    tool: http.request
+    tool: api.get_item
     each: $steps.slice_ids.output.ids
+    delay: "2s"
+    retry: { max: 3, delay: "2s", backoff: 1.5 }
     on_error: ignore
     inputs:
       url:
@@ -500,8 +502,9 @@ Use plain text output (`value: $result`) for the LLM step, then zip the LLM resu
 steps:
   - id: fetch_items
     type: tool
-    tool: http.request
+    tool: api.get_item                  # platform-specific; use web.scrape for HTML pages
     each: $steps.get_ids.output.ids
+    delay: "2s"
     on_error: ignore
     inputs:
       url:
@@ -594,34 +597,21 @@ outputs:
 
 When a workflow fetches HTML and extracts structured data, follow this recipe:
 
-### Step pattern: fetch → guard → extract
+### Step pattern: scrape → guard
+
+`web.scrape` fetches the URL and applies CSS selectors in one step:
 
 ```yaml
 steps:
-  - id: fetch_page
+  - id: scrape_data
     type: tool
-    tool: http.request
+    tool: web.scrape
     retry: { max: 3, delay: "2s", backoff: 1.5 }
     inputs:
       url: { type: string, value: "https://example.com/search" }
-      method: { type: string, value: "GET" }
       headers:
         type: object
         value: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" }
-    outputs:
-      html: { type: string, value: $result.body }
-
-  - id: guard_empty
-    type: exit
-    condition: $steps.fetch_page.output.html == ""
-    status: success
-    output: { results: [] }
-
-  - id: extract_data
-    type: tool
-    tool: html.select
-    inputs:
-      html: { type: string, value: $steps.fetch_page.output.html }
       selector: { type: string, value: "li.result-item" }
       fields:
         type: object
@@ -630,6 +620,46 @@ steps:
           url: "a.link @href"
           id: "@data-pid"
       limit: { type: int, value: 50 }
+    outputs:
+      items: { type: array, value: $result.results }
+
+  - id: guard_empty
+    type: exit
+    condition: $steps.scrape_data.output.items.length == 0
+    status: success
+    output: { results: [] }
+    inputs: {}
+    outputs: {}
+```
+
+### Multi-page scraping with `each`
+
+When scraping multiple pages, combine `web.scrape` with `each`:
+
+```yaml
+steps:
+  - id: get_page_list
+    type: tool
+    tool: api.get_sitemap    # returns list of page URLs to scrape
+    outputs:
+      pages:
+        type: array
+
+  - id: scrape_pages
+    type: tool
+    tool: web.scrape
+    each: $steps.get_page_list.output.pages
+    delay: "2s"
+    retry: { max: 3, delay: "2s", backoff: 1.5 }
+    on_error: ignore
+    inputs:
+      url: { type: string, value: $item }
+      selector: { type: string, value: "article.post" }
+      fields:
+        type: object
+        value:
+          title: "h1.title"
+          body: "div.content"
     outputs:
       items: { type: array, value: $result.results }
 ```
@@ -645,7 +675,7 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 3. **Always declare inputs and outputs.** They enable validation and composability.
 4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
 5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. Required for LLM steps (which return raw text/JSON). Useful for tool steps when the response shape differs from what downstream steps need.
-6. **Use `each` for per-item processing** on both tool and LLM steps. Always include `delay` on every `each` loop that calls an external service — `delay: "2s"` for HTTP tool steps, `delay: "1s"` for LLM steps. See *Iteration Patterns*.
+6. **Use `each` for per-item processing** on both tool and LLM steps. Always include `delay` on every `each` loop that calls an external service — `delay: "2s"` for tool steps (including `web.scrape`), `delay: "1s"` for LLM steps. See *Iteration Patterns*.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
 9. **Use `condition` guards for early exits** rather than letting empty data flow through.
@@ -657,7 +687,7 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
 16. **When JSON output is used, LLM prompts must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
 17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any LLM call. See *Patterns*.
-18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, always add `delay: "2s"` (minimum), cap iteration count, and add `retry` with `backoff`. `delay` is not optional — external APIs rate-limit without warning and delays are free. Same applies to `each` + `llm` steps: always add `delay: "1s"`. See *Iteration Patterns*.
+18. **Prefer bulk endpoints over per-item iteration.** When per-item `each` + tool calls (including `web.scrape`) are unavoidable, always add `delay: "2s"` (minimum), cap iteration count, and add `retry` with `backoff`. `delay` is not optional — external sites and APIs rate-limit without warning and delays are free. Same applies to `each` + `llm` steps: always add `delay: "1s"`. See *Iteration Patterns*.
 19. **Prefer plain text LLM output over JSON.** For single-value tasks (summarization, classification, scoring), use `value: $result` and instruct the model to return plain text. Reserve JSON (`value: $result.field`) for multi-field output where every field requires LLM reasoning. In `each` + LLM patterns, always use plain text + a `map` transform to zip LLM output with structural data from the source array. See *Iteration Patterns*.
 
 ## Output Format
@@ -720,6 +750,6 @@ After writing the file, always validate it against the runtime. The validation c
 - [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
 - [ ] LLM steps with `each` prefer plain text output (`value: $result`) over JSON (`value: $result.field`)
 - [ ] Every `each` loop that calls an external service has `delay` (tool steps: `"2s"` minimum; LLM steps: `"1s"` minimum)
-- [ ] `each` + `http.request` steps are bounded (preceded by a cap) and have `retry` with `backoff`
+- [ ] `each` + `web.scrape` steps are bounded (preceded by a cap) and have `retry` with `backoff`
 
 If validation fails, fix the errors and revalidate.

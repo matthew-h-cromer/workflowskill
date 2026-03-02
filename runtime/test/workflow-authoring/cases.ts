@@ -113,21 +113,21 @@ export const transformsHaveItemsInput: PatternCheck = {
 };
 
 /**
- * http.request steps should include a retry policy.
+ * web.scrape steps should include a retry policy.
  * SKILL.md Rule 8 / "Authoring Rules".
  */
-export const httpToolsHaveRetry: PatternCheck = {
-  name: 'http.request steps have retry policies',
+export const scrapeToolsHaveRetry: PatternCheck = {
+  name: 'web.scrape steps have retry policies',
   skillRef: 'Rule 8 / "Authoring Rules"',
   check: ({ workflow }) => {
     if (!workflow) return 'no parsed workflow';
-    const httpSteps = workflow.steps.filter(
-      (s): s is ToolStep => s.type === 'tool' && s.tool === 'http.request',
+    const scrapeSteps = workflow.steps.filter(
+      (s): s is ToolStep => s.type === 'tool' && s.tool === 'web.scrape',
     );
-    if (httpSteps.length === 0) return true;
-    const missing = httpSteps.filter((s) => s.retry === undefined).map((s) => s.id);
+    if (scrapeSteps.length === 0) return true;
+    const missing = scrapeSteps.filter((s) => s.retry === undefined).map((s) => s.id);
     if (missing.length > 0) {
-      return `http.request step(s) missing retry: ${missing.join(', ')}`;
+      return `web.scrape step(s) missing retry: ${missing.join(', ')}`;
     }
     return true;
   },
@@ -330,21 +330,21 @@ export const eachLlmPrefersPlainText: PatternCheck = {
 };
 
 /**
- * each + http.request steps must have retry with backoff to handle rate limits.
+ * each + web.scrape steps must have retry with backoff to handle rate limits.
  * SKILL.md Rule 18 / "Iterating with each on Tool Steps".
  */
-export const eachHttpHasBackoff: PatternCheck = {
-  name: 'each + http.request steps have retry with backoff',
+export const eachScrapeHasBackoff: PatternCheck = {
+  name: 'each + web.scrape steps have retry with backoff',
   skillRef: 'Rule 18 / "Iteration Patterns"',
   check: ({ workflow }) => {
     if (!workflow) return 'no parsed workflow';
-    const eachHttpSteps = workflow.steps.filter(
-      (s): s is ToolStep => s.type === 'tool' && s.tool === 'http.request' && s.each !== undefined,
+    const eachScrapeSteps = workflow.steps.filter(
+      (s): s is ToolStep => s.type === 'tool' && s.tool === 'web.scrape' && s.each !== undefined,
     );
-    if (eachHttpSteps.length === 0) return true;
-    const missing = eachHttpSteps.filter((s) => !s.retry?.backoff).map((s) => s.id);
+    if (eachScrapeSteps.length === 0) return true;
+    const missing = eachScrapeSteps.filter((s) => !s.retry?.backoff).map((s) => s.id);
     if (missing.length > 0) {
-      return `each + http.request step(s) missing retry with backoff: ${missing.join(', ')}`;
+      return `each + web.scrape step(s) missing retry with backoff: ${missing.join(', ')}`;
     }
     return true;
   },
@@ -410,13 +410,13 @@ export const EVAL_CASES: EvalCase[] = [
   },
   {
     id: 'fetch-url',
-    prompt: 'Fetch a URL and return the response body',
+    prompt: 'Fetch a web page URL and extract all paragraph text from it',
     expectations: {
       minSteps: 1,
       maxSteps: 3,
       requiredStepTypes: ['tool'],
-      requiredTools: ['http.request'],
-      patterns: [noLegacySourceField, retryUsesCorrectFields, httpToolsHaveRetry, stepsReferencesAreValid],
+      requiredTools: ['web.scrape'],
+      patterns: [noLegacySourceField, retryUsesCorrectFields, scrapeToolsHaveRetry, stepsReferencesAreValid],
     },
   },
   {
@@ -488,11 +488,10 @@ export const EVAL_CASES: EvalCase[] = [
       minSteps: 2,
       maxSteps: 4,
       requiredStepTypes: ['tool', 'transform'],
-      requiredTools: ['http.request'],
       patterns: [
         noLegacySourceField,
         retryUsesCorrectFields,
-        httpToolsHaveRetry,
+        scrapeToolsHaveRetry,
         transformsHaveItemsInput,
         filterStepsHaveWhere,
         workflowOutputsHaveValue,
@@ -507,11 +506,10 @@ export const EVAL_CASES: EvalCase[] = [
       minSteps: 2,
       maxSteps: 4,
       requiredStepTypes: ['tool', 'exit'],
-      requiredTools: ['http.request'],
       patterns: [
         noLegacySourceField,
         retryUsesCorrectFields,
-        httpToolsHaveRetry,
+        scrapeToolsHaveRetry,
         exitStepsHaveConditionGuard,
         workflowOutputsHaveValue,
         stepsReferencesAreValid,
@@ -525,12 +523,11 @@ export const EVAL_CASES: EvalCase[] = [
       minSteps: 1,
       maxSteps: 4,
       requiredStepTypes: ['tool'],
-      requiredTools: ['http.request'],
       patterns: [
         noLegacySourceField,
         retryUsesCorrectFields,
-        httpToolsHaveRetry,
-        eachHttpHasBackoff,
+        scrapeToolsHaveRetry,
+        eachScrapeHasBackoff,
         usesTemplateInterpolation,
         workflowOutputsHaveValue,
         stepsReferencesAreValid,
@@ -544,11 +541,10 @@ export const EVAL_CASES: EvalCase[] = [
       minSteps: 3,
       maxSteps: 7,
       requiredStepTypes: ['tool', 'llm', 'transform'],
-      requiredTools: ['http.request'],
       patterns: [
         noLegacySourceField,
         retryUsesCorrectFields,
-        httpToolsHaveRetry,
+        scrapeToolsHaveRetry,
         llmOutputsHaveResultValue,
         eachLlmPrefersPlainText,
         transformsHaveItemsInput,
@@ -566,11 +562,10 @@ export const EVAL_CASES: EvalCase[] = [
       minSteps: 2,
       maxSteps: 6,
       requiredStepTypes: ['tool', 'conditional'],
-      requiredTools: ['http.request'],
       patterns: [
         noLegacySourceField,
         retryUsesCorrectFields,
-        httpToolsHaveRetry,
+        scrapeToolsHaveRetry,
         eachNotOnExitOrConditional,
         workflowOutputsHaveValue,
         stepsReferencesAreValid,

@@ -14,9 +14,9 @@ Implementation file → `runtime/src/index.ts` (re-export) → tests → CLAUDE.
 
 `.claude/skills/workflow-author/SKILL.md` → **copy to `runtime/skill/SKILL.md`** (must be identical) → regenerate affected fixtures in `runtime/test/workflow-authoring/fixtures/` → re-run the evaluation suite. Both copies must stay in sync — if they diverge, the eval suite may test a stale version of the skill.
 
-## New dev tool
+## New tool
 
-`runtime/src/dev-tools/tools/<name>.ts` → `runtime/src/dev-tools/dev-tool-adapter.ts` (register) → tests → CLAUDE.md (Dev Tools)
+`runtime/src/tools/<name>.ts` → `runtime/src/tools/builtin-tool-adapter.ts` (register) → tests → CLAUDE.md
 
 ## Spec-level changes
 

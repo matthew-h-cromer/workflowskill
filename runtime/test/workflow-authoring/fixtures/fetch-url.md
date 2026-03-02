@@ -1,9 +1,9 @@
 ---
-name: tier1-fetch-url
-description: Fetches a URL and returns the response body.
+name: fetch-url-paragraphs
+description: Fetches a web page URL and extracts all paragraph text from it.
 ---
 
-# Fetch URL
+# Fetch URL Paragraphs
 
 ```workflow
 inputs:
@@ -12,14 +12,14 @@ inputs:
     default: "https://example.com"
 
 outputs:
-  body:
-    type: string
-    value: $steps.fetch.output.body
+  paragraphs:
+    type: array
+    value: $steps.scrape_page.output.paragraphs
 
 steps:
-  - id: fetch
+  - id: scrape_page
     type: tool
-    tool: http.request
+    tool: web.scrape
     retry:
       max: 3
       delay: "2s"
@@ -28,11 +28,11 @@ steps:
       url:
         type: string
         value: $inputs.url
-      method:
+      selector:
         type: string
-        value: "GET"
+        value: "p"
     outputs:
-      body:
-        type: string
-        value: $result.body
+      paragraphs:
+        type: array
+        value: $result.results
 ```

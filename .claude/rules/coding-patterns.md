@@ -2,7 +2,7 @@
 
 ## Tech Stack
 
-TypeScript (strict), Node >=20, ESM only. Vitest for tests. Zod for schema validation. `yaml` (eemeli) for YAML parsing. Commander.js for CLI. tsdown for builds. `@anthropic-ai/sdk` for LLM calls. `cheerio` for HTML parsing. `@googleapis/gmail` + `@googleapis/sheets` + `google-auth-library` for Google integrations.
+TypeScript (strict), Node >=20, ESM only. Vitest for tests. Zod for schema validation. `yaml` (eemeli) for YAML parsing. Commander.js for CLI. tsdown for builds. `@anthropic-ai/sdk` for LLM calls. `cheerio` for HTML parsing.
 
 ## ESM Imports
 

@@ -37,28 +37,16 @@ inputs:
 outputs:
   jobs:
     type: array
-    value: $steps.extract.output.items
+    value: $steps.scrape.output.items
 
 steps:
-  - id: fetch
+  - id: scrape
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
       url:
         type: string
         value: "https://example.com/jobs?q=${inputs.query}"
-    outputs:
-      html:
-        type: string
-        value: $result.body
-
-  - id: extract
-    type: tool
-    tool: html.select
-    inputs:
-      html:
-        type: string
-        value: $steps.fetch.output.html
       selector:
         type: string
         value: ".job-title"
@@ -69,7 +57,7 @@ steps:
 
   - id: guard_empty
     type: exit
-    condition: $steps.extract.output.items.length == 0
+    condition: $steps.scrape.output.items.length == 0
     status: success
     output: { jobs: [] }
 ```

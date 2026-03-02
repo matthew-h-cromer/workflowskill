@@ -1,25 +1,18 @@
 ---
 paths:
   - "src/adapters/**"
-  - "src/dev-tools/**"
+  - "src/tools/**"
 ---
 
-# Adapters and Dev Tools
+# Adapters and Builtin Tools
 
-## Dev Tools
+## Bundled Tools
 
-Dev tools are local implementations for workflow authoring and testing. In production, the runtime's `ToolAdapter` is wired to the host agent ecosystem's tools instead.
+Builtin tools ship with the package. Additional tools can be registered via a custom `ToolAdapter`.
 
 | Tool | Description | Deps |
 | --- | --- | --- |
-| `http.request` | HTTP requests via Node fetch | None (built-in) |
-| `html.select` | CSS selector extraction | cheerio |
-| `gmail.search` | Search Gmail messages | @googleapis/gmail |
-| `gmail.read` | Read full message by ID | @googleapis/gmail |
-| `gmail.send` | Send email via Gmail | @googleapis/gmail |
-| `sheets.read` | Read spreadsheet range | @googleapis/sheets |
-| `sheets.write` | Write to spreadsheet range | @googleapis/sheets |
-| `sheets.append` | Append rows to spreadsheet | @googleapis/sheets |
+| `web.scrape` | Fetch a URL and extract data via CSS selectors | cheerio |
 
 ## ToolAdapter Interface
 
@@ -39,9 +32,9 @@ interface LLMAdapter {
 }
 ```
 
-## Adding a New Dev Tool
+## Adding a New Tool
 
-1. Create `src/dev-tools/tools/<name>.ts` implementing the tool function
-2. Register in `src/dev-tools/dev-tool-adapter.ts`
+1. Create `src/tools/<name>.ts` implementing the tool function
+2. Register in `src/tools/builtin-tool-adapter.ts`
 3. Add unit tests in `test/unit/<name>.test.ts`
 4. Update this file

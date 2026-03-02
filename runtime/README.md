@@ -16,7 +16,7 @@ A declarative workflow language for AI agents.
 
 ```yaml
 inputs:
-  endpoint:
+  url:
     type: string
 
 outputs:
@@ -25,20 +25,24 @@ outputs:
     value: $steps.summarize.output.summary
 
 steps:
-  - id: fetch
+  - id: scrape
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
       url:
         type: string
-        value: $inputs.endpoint
-    outputs:
-      body:
+        value: $inputs.url
+      selector:
         type: string
+        value: "p"
+    outputs:
+      text:
+        type: array
+        value: $result.results
 
   - id: summarize
     type: llm
-    prompt: "Summarize this content: $steps.fetch.output.body"
+    prompt: "Summarize this content: $steps.scrape.output.text"
     outputs:
       summary:
         type: string
@@ -75,20 +79,13 @@ A WorkflowSkill is authored via natural conversation with any agent system that 
 2. Your agent writes a WorkflowSkill.
 3. Run it deterministically: `workflowskill run <workflow.md>`
 
-Your agent will research the task, write the workflow file, and validate it with the CLI. The dev tools available to generated workflows are:
+Your agent will research the task, write the workflow file, and validate it with the CLI. The bundled tools available to generated workflows are:
 
-| Tool            | What it does                          | Needs credentials |
-| --------------- | ------------------------------------- | ----------------- |
-| `http.request`  | HTTP GET/POST/PUT/PATCH/DELETE        | No                |
-| `html.select`   | CSS selector extraction from HTML     | No                |
-| `gmail.search`  | Search Gmail by query                 | Google OAuth2     |
-| `gmail.read`    | Read a Gmail message by ID            | Google OAuth2     |
-| `gmail.send`    | Send email via Gmail                  | Google OAuth2     |
-| `sheets.read`   | Read a Google Sheets range            | Google OAuth2     |
-| `sheets.write`  | Write to a Google Sheets range        | Google OAuth2     |
-| `sheets.append` | Append rows to a Google Sheets range  | Google OAuth2     |
+| Tool          | What it does                                     |
+| ------------- | ------------------------------------------------ |
+| `web.scrape`  | Fetch a URL and extract data via CSS selectors   |
 
-`http.request` and `html.select` work with no setup. For Google tools, add credentials to `.env` (see [Configuration](#configuration)).
+Works with no setup or credentials.
 
 **Evaluate the output:** Check `status` for overall success. If a step failed, its `error` field explains why. For `each` steps, `iterations` shows per-item results. Compare per-step `inputs` and `output` values against your expectations to find where the data flow broke down.
 
@@ -96,13 +93,13 @@ Your agent will research the task, write the workflow file, and validate it with
 
 WorkflowSkill workflows are YAML documents with five step types:
 
-| Step type     | Description                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------ |
-| `tool`        | Invoke an MCP server endpoint, dev tool (HTTP, Gmail, Sheets), or any registered function |
-| `llm`         | Call a language model with a templated prompt                                              |
-| `transform`   | Filter, map, or sort data without side effects                                             |
-| `conditional` | Branch execution based on an expression                                                    |
-| `exit`        | Terminate early with a status and output                                                   |
+| Step type     | Description                                                                          |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `tool`        | Invoke a builtin tool (`web.scrape`), MCP server endpoint, or any registered adapter |
+| `llm`         | Call a language model with a templated prompt                                        |
+| `transform`   | Filter, map, or sort data without side effects                                       |
+| `conditional` | Branch execution based on an expression                                              |
+| `exit`        | Terminate early with a status and output                                             |
 
 Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
 
@@ -169,7 +166,7 @@ interface LLMAdapter {
 
 Built-in implementations:
 
-- **`DevToolAdapter`** — provides `http.request`, `html.select`, Gmail, and Google Sheets tools for standalone use
+- **`BuiltinToolAdapter`** — provides `web.scrape` for standalone use
 - **`AnthropicLLMAdapter`** — wraps the Anthropic SDK; reads `ANTHROPIC_API_KEY` from the environment
 
 For testing, **`MockToolAdapter`** and **`MockLLMAdapter`** let you supply handler functions without any external dependencies.
@@ -215,23 +212,9 @@ Create a `.env` file in your project directory (or export env vars in your shell
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
-GOOGLE_CLIENT_ID=...               # Required for Gmail and Sheets tools
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
 ```
 
-Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback). Missing Google credentials → Google tools not registered (warning if a workflow references them).
-
-### Getting Google OAuth2 credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
-2. Enable the APIs you need: **Gmail API** and/or **Google Sheets API** under _APIs & Services > Library_.
-3. Go to _APIs & Services > OAuth consent screen_. Choose **External** and fill in the app name and your email.
-4. Go to _APIs & Services > Credentials > Create Credentials > OAuth client ID_. Choose **Desktop app**. Copy the **Client ID** and **Client Secret** into your `.env`.
-5. Get a refresh token. The easiest way is [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground/):
-   - Click the gear icon, check **Use your own OAuth credentials**, and enter your Client ID and Client Secret.
-   - In the left panel, select the scopes you need: `https://www.googleapis.com/auth/gmail.modify` (under **Gmail API v1**) and/or `https://www.googleapis.com/auth/spreadsheets` (under **Sheets API v4**). Click **Authorize APIs** and sign in.
-   - Click **Exchange authorization code for tokens**. Copy the **Refresh token** into your `.env`.
+Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback).
 
 ## Documentation
 

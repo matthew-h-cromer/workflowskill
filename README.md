@@ -15,7 +15,7 @@ A declarative workflow language for AI agents.
 
 ```yaml
 inputs:
-  endpoint:
+  url:
     type: string
 
 outputs:
@@ -24,20 +24,24 @@ outputs:
     value: $steps.summarize.output.summary
 
 steps:
-  - id: fetch
+  - id: scrape
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
       url:
         type: string
-        value: $inputs.endpoint
-    outputs:
-      body:
+        value: $inputs.url
+      selector:
         type: string
+        value: "p"
+    outputs:
+      text:
+        type: array
+        value: $result.results
 
   - id: summarize
     type: llm
-    prompt: "Summarize this content: $steps.fetch.output.body"
+    prompt: "Summarize this content: $steps.scrape.output.text"
     outputs:
       summary:
         type: string
@@ -83,13 +87,6 @@ workflowskill run ../examples/fetch-job-postings.md \
   --input '{"keywords": "software engineer", "location": "United States"}'
 ```
 
-**hello-world-gmail** — sends an email via Gmail (requires Google credentials in `runtime/.env`, see [Getting Google OAuth2 credentials](#getting-google-oauth2-credentials)):
-
-```bash
-workflowskill run ../examples/hello-world-gmail.md \
-  --input '{"to": "you@example.com"}'
-```
-
 ### Authoring WorkflowSkills
 
 A WorkflowSkill is authored via natural conversation with any agent system that supports the [Agent Skills](https://agentskills.io/home) format.
@@ -101,20 +98,13 @@ Steps to author a WorkflowSkill:
 2. Your agent writes a WorkflowSkill.
 3. The WorkflowSkill can then be executed deterministically via `workflowskill run <workflow.md>`
 
-Your agent will research the task, write the workflow file, and validate it with the CLI. The dev tools available to generated workflows are:
+Your agent will research the task, write the workflow file, and validate it with the CLI. The bundled tools available to generated workflows are:
 
-| Tool            | What it does                         | Needs credentials |
-| --------------- | ------------------------------------ | ----------------- |
-| `http.request`  | HTTP GET/POST/PUT/PATCH/DELETE       | No                |
-| `html.select`   | CSS selector extraction from HTML    | No                |
-| `gmail.search`  | Search Gmail by query                | Google OAuth2     |
-| `gmail.read`    | Read a Gmail message by ID           | Google OAuth2     |
-| `gmail.send`    | Send email via Gmail                 | Google OAuth2     |
-| `sheets.read`   | Read a Google Sheets range           | Google OAuth2     |
-| `sheets.write`  | Write to a Google Sheets range       | Google OAuth2     |
-| `sheets.append` | Append rows to a Google Sheets range | Google OAuth2     |
+| Tool          | What it does                                     |
+| ------------- | ------------------------------------------------ |
+| `web.scrape`  | Fetch a URL and extract data via CSS selectors   |
 
-`http.request` and `html.select` work with no setup. For Google tools, add credentials to `runtime/.env` (see `runtime/.env.example`).
+Works with no setup or credentials.
 
 **Run the generated workflow:**
 
@@ -122,7 +112,7 @@ Your agent will research the task, write the workflow file, and validate it with
 # Validate (no API keys needed)
 workflowskill validate path/to/workflow.md
 
-# Run it (requires ANTHROPIC_API_KEY for LLM steps, Google creds for Gmail/Sheets)
+# Run it (requires ANTHROPIC_API_KEY for LLM steps)
 workflowskill run path/to/workflow.md
 
 # Pass inputs as JSON
@@ -137,13 +127,13 @@ The CLI shows live progress on stderr and writes a structured [run log](#run-log
 
 WorkflowSkill workflows are YAML documents with five step types:
 
-| Step type     | Description                                                                               |
-| ------------- | ----------------------------------------------------------------------------------------- |
-| `tool`        | Invoke an MCP server endpoint, dev tool (HTTP, Gmail, Sheets), or any registered function |
-| `llm`         | Call a language model with a templated prompt                                             |
-| `transform`   | Filter, map, or sort data without side effects                                            |
-| `conditional` | Branch execution based on an expression                                                   |
-| `exit`        | Terminate early with a status and output                                                  |
+| Step type     | Description                                                                         |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `tool`        | Invoke an MCP server endpoint, builtin tool (HTTP, HTML), or any registered adapter |
+| `llm`         | Call a language model with a templated prompt                                        |
+| `transform`   | Filter, map, or sort data without side effects                                       |
+| `conditional` | Branch execution based on an expression                                              |
+| `exit`        | Terminate early with a status and output                                             |
 
 Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
 
@@ -157,7 +147,7 @@ The reference implementation is a standalone TypeScript library and CLI in [`run
 - **Expression engine** — `$`-reference language with `${...}` template interpolation
 - **Validator** — pre-execution DAG and type checking
 - **Executor** — five step type executors
-- **Dev tools** — `http.request`, `html.select`, Gmail, Google Sheets (for local workflow authoring; in production, wire your own `ToolAdapter`)
+- **Builtin tools** — `web.scrape` (wire your own `ToolAdapter` for additional tools)
 - **CLI** — `validate` and `run` commands
 - **Run log** — structured observability output for every run
 
@@ -222,7 +212,7 @@ interface LLMAdapter {
 
 Built-in implementations:
 
-- **`DevToolAdapter`** — provides `http.request`, `html.select`, Gmail, and Google Sheets tools for standalone use
+- **`BuiltinToolAdapter`** — provides `web.scrape` for standalone use
 - **`AnthropicLLMAdapter`** — wraps the Anthropic SDK; reads `ANTHROPIC_API_KEY` from the environment
 
 For testing, **`MockToolAdapter`** and **`MockLLMAdapter`** let you supply handler functions without any external dependencies.
@@ -283,23 +273,9 @@ Create a `.env` file in `runtime/`:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
-GOOGLE_CLIENT_ID=...               # Required for Gmail and Sheets tools
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
 ```
 
-The CLI finds `runtime/.env` automatically regardless of your working directory. You can also export env vars directly in your shell. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback). Missing Google credentials → Google tools not registered (warning if a workflow references them).
-
-### Getting Google OAuth2 credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create or select a project.
-2. Enable the APIs you need: **Gmail API** and/or **Google Sheets API** under _APIs & Services > Library_.
-3. Go to _APIs & Services > OAuth consent screen_. Choose **External** and fill in the app name and your email.
-4. Go to _APIs & Services > Credentials > Create Credentials > OAuth client ID_. Choose **Desktop app**. Copy the **Client ID** and **Client Secret** into your `.env`.
-5. Get a refresh token. The easiest way is [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground/):
-   - Click the gear icon, check **Use your own OAuth credentials**, and enter your Client ID and Client Secret.
-   - In the left panel, select the scopes you need: `https://www.googleapis.com/auth/gmail.modify` (under **Gmail API v1**) and/or `https://www.googleapis.com/auth/spreadsheets` (under **Sheets API v4**). Click **Authorize APIs** and sign in.
-   - Click **Exchange authorization code for tokens**. Copy the **Refresh token** into your `.env`.
+The CLI finds `runtime/.env` automatically regardless of your working directory. You can also export env vars directly in your shell. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback).
 
 ## License
 

@@ -6,7 +6,7 @@ import { runWorkflowSkill } from '../runtime/index.js';
 import type { RunLog } from '../types/index.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
-import { DevToolAdapter } from '../dev-tools/dev-tool-adapter.js';
+import { BuiltinToolAdapter } from '../tools/builtin-tool-adapter.js';
 import type { LLMAdapter, LLMResult } from '../types/index.js';
 import { renderRuntimeEvent } from './format.js';
 
@@ -49,7 +49,7 @@ export async function runCommand(
 
   // Load config and create adapters
   const config = loadConfig();
-  const toolAdapter = await DevToolAdapter.create(config);
+  const toolAdapter = await BuiltinToolAdapter.create();
   let llmAdapter: LLMAdapter;
   if (config.anthropicApiKey) {
     llmAdapter = new AnthropicLLMAdapter(config.anthropicApiKey);

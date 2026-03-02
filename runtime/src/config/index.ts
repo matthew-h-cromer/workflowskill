@@ -5,17 +5,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** Google OAuth2 credentials for Gmail/Sheets tools. */
-export interface GoogleCredentials {
-  clientId: string;
-  clientSecret: string;
-  refreshToken: string;
-}
-
 /** WorkflowSkill configuration. */
 export interface WorkflowSkillConfig {
   anthropicApiKey?: string;
-  googleCredentials?: GoogleCredentials;
 }
 
 /**
@@ -97,13 +89,6 @@ export function loadConfig(cwd?: string): WorkflowSkillConfig {
   const anthropicKey = get('ANTHROPIC_API_KEY');
   if (anthropicKey) {
     config.anthropicApiKey = anthropicKey;
-  }
-
-  const clientId = get('GOOGLE_CLIENT_ID');
-  const clientSecret = get('GOOGLE_CLIENT_SECRET');
-  const refreshToken = get('GOOGLE_REFRESH_TOKEN');
-  if (clientId && clientSecret && refreshToken) {
-    config.googleCredentials = { clientId, clientSecret, refreshToken };
   }
 
   return config;

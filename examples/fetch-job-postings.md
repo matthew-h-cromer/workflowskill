@@ -25,12 +25,12 @@ inputs:
 outputs:
   jobs:
     type: array
-    value: $steps.extract_jobs.output.items
+    value: $steps.scrape_jobs.output.items
 
 steps:
-  - id: fetch_jobs_html
+  - id: scrape_jobs
     type: tool
-    tool: http.request
+    tool: web.scrape
     retry:
       max: 3
       delay: "2s"
@@ -45,25 +45,6 @@ steps:
       headers:
         type: object
         value: {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.5"}
-    outputs:
-      html:
-        type: string
-        value: $result.body
-
-  - id: guard_empty
-    type: exit
-    condition: $steps.fetch_jobs_html.output.html == ""
-    status: success
-    output:
-      jobs: []
-
-  - id: extract_jobs
-    type: tool
-    tool: html.select
-    inputs:
-      html:
-        type: string
-        value: $steps.fetch_jobs_html.output.html
       selector:
         type: string
         value: "li"
@@ -82,4 +63,13 @@ steps:
       items:
         type: array
         value: $result.results
+
+  - id: guard_empty
+    type: exit
+    condition: $steps.scrape_jobs.output.items.length == 0
+    status: success
+    output:
+      jobs: []
+    inputs: {}
+    outputs: {}
 ```

@@ -19,40 +19,15 @@ describe('loadConfig', () => {
 
   it('returns empty config when no env vars or .env file', () => {
     delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
-    delete process.env.GOOGLE_REFRESH_TOKEN;
 
     const config = loadConfig('/nonexistent');
     expect(config.anthropicApiKey).toBeUndefined();
-    expect(config.googleCredentials).toBeUndefined();
   });
 
   it('reads ANTHROPIC_API_KEY from env var', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-test-123';
     const config = loadConfig('/nonexistent');
     expect(config.anthropicApiKey).toBe('sk-test-123');
-  });
-
-  it('reads Google credentials from env vars', () => {
-    process.env.GOOGLE_CLIENT_ID = 'client-id';
-    process.env.GOOGLE_CLIENT_SECRET = 'client-secret';
-    process.env.GOOGLE_REFRESH_TOKEN = 'refresh-token';
-
-    const config = loadConfig('/nonexistent');
-    expect(config.googleCredentials).toEqual({
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      refreshToken: 'refresh-token',
-    });
-  });
-
-  it('does not set googleCredentials when only partial creds exist', () => {
-    process.env.GOOGLE_CLIENT_ID = 'client-id';
-    // Missing GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN
-
-    const config = loadConfig('/nonexistent');
-    expect(config.googleCredentials).toBeUndefined();
   });
 
   it('reads from .env file', () => {
