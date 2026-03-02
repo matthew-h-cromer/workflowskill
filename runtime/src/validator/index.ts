@@ -71,6 +71,14 @@ export function validateWorkflow(
       });
     }
 
+    // Structural: `delay` requires `each`
+    if (step.delay && !step.each) {
+      errors.push({
+        path: `${path}.delay`,
+        message: `"delay" requires "each" to be present`,
+      });
+    }
+
     // Tool availability
     if (step.type === 'tool' && toolAdapter && !toolAdapter.has(step.tool)) {
       errors.push({

@@ -515,6 +515,11 @@ async function executeWithEach(
       }
 
       emit(onEvent, { type: 'each_progress', stepId: step.id, current: i + 1, total: eachArray.length });
+
+      // Inter-iteration delay for rate limiting
+      if (step.delay && i < eachArray.length - 1) {
+        await sleep(parseDelay(step.delay));
+      }
     }
   } catch (err) {
     return handleStepError(step, err, context, startTime, baseResolvedInputs, totalRetries, onEvent);

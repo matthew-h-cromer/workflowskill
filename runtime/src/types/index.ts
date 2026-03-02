@@ -87,6 +87,8 @@ export interface StepBase {
   condition?: string;
   /** Iterate over an array. $item and $index available inside the step. */
   each?: string;
+  /** Inter-iteration delay when combined with each. Format: "1s", "500ms". */
+  delay?: string;
   /** Error handling strategy. Default: fail. */
   on_error?: OnError;
   /** Retry policy. */

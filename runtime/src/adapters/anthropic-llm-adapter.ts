@@ -21,7 +21,7 @@ export class AnthropicLLMAdapter implements LLMAdapter {
   private client: Anthropic;
 
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 });
   }
 
   async call(

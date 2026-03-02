@@ -1127,6 +1127,51 @@ describe('runtime events', () => {
   });
 });
 
+// ─── each + delay ────────────────────────────────────────────────────────────
+
+describe('each + delay', () => {
+  it('inserts delay between iterations but not after the last', async () => {
+    const workflow: Parameters<typeof runWorkflow>[0]['workflow'] = {
+      inputs: { items: { type: 'array', default: [1, 2, 3] } },
+      outputs: {},
+      steps: [
+        {
+          id: 'process',
+          type: 'tool',
+          tool: 'echo_tool',
+          each: '$inputs.items',
+          delay: '50ms',
+          inputs: {
+            item: { type: 'int', value: '$item' },
+          },
+          outputs: {
+            result: { type: 'int' },
+          },
+        },
+      ],
+    };
+    const tools = new MockToolAdapter();
+    tools.register('echo_tool', (args) => ({
+      output: { result: args.item },
+    }));
+    const llm = new MockLLMAdapter();
+
+    const start = performance.now();
+    const log = await runWorkflow({
+      workflow,
+      toolAdapter: tools,
+      llmAdapter: llm,
+      workflowName: 'delay-test',
+    });
+    const elapsed = performance.now() - start;
+
+    expect(log.status).toBe('success');
+    expect(log.steps[0]!.iterations).toBe(3);
+    // 3 items → 2 gaps of 50ms each = 100ms minimum
+    expect(elapsed).toBeGreaterThanOrEqual(90); // small tolerance
+  });
+});
+
 // ─── each + on_error: ignore per-iteration behavior (L8) ─────────────────────
 // Current behavior: a failed iteration halts the each loop and marks the whole step as failed.
 // With on_error: ignore, the workflow continues (step output = null).

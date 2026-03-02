@@ -223,6 +223,7 @@ A workflow should have a defined schema for inputs and outputs. Being able to ex
 | outputs | no | Named output schema. Required for tool, llm, and transform steps. Not used by exit or conditional steps. |
 | condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
 | each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
+| delay | no | Inter-iteration pause when combined with `each`. Duration string: integer followed by `ms` or `s` (e.g., `"1s"`, `"500ms"`). Only valid when `each` is present; rejected at validation time otherwise. The delay fires between iterations, not after the last one. |
 | on_error | no | Error handling strategy: `fail` (default) or `ignore` (log the error and continue with null output). |
 | retry | no | Retry policy: `{ max: int, delay: duration, backoff: float }`. Duration string: integer followed by `ms` (milliseconds) or `s` (seconds). Examples: `"500ms"`, `"2s"`. |
 
@@ -390,7 +391,7 @@ Execution proceeds in two phases.
 
 1. **Guard.** Evaluate the `condition` field if present. If false, skip the step, record it as skipped in the run log, and set its output to null.
 2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
-3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results.
+3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results. If `delay` is present, the runtime pauses for the specified duration between iterations (not after the last).
 4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
 5. **Map outputs.** If any declared output has a `value` field (or its `source` alias), resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `value` pass through by key name.
 6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.

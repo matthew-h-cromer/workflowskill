@@ -104,6 +104,7 @@ steps:
     # Optional common fields:
     condition: <expression>     # guard: skip if false
     each: <expression>          # iterate over array
+    delay: "<duration>"         # inter-iteration pause (requires each). e.g., "1s", "500ms"
     on_error: fail | ignore     # default: fail
     retry:
       max: <int>                # not "max_attempts"
@@ -390,7 +391,7 @@ inputs:
 
 When you need to call an API once per item in a list, use `each` on a tool step. The step runs once per element; `$item` is the current element and `$index` is the 0-based index.
 
-**Rate limiting:** The runtime executes iterations sequentially with no inter-request delay. If you iterate over 50 items with `http.request`, that's 50 back-to-back HTTP requests. Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add a preceding filter step to cap the count (see the `slice_ids` step in the Hacker News example below) and include `retry` with `backoff`.
+**Rate limiting:** The runtime executes iterations sequentially. Use `delay` to insert a pause between iterations and avoid hitting rate limits. For example, `delay: "1s"` waits 1 second between each iteration (but not after the last). Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add `delay` for rate limiting, a preceding filter step to cap the count (see the `slice_ids` step in the Hacker News example below), and include `retry` with `backoff`.
 
 **Output collection:** Each iteration's output is collected into an array. If the step declares output `value` mappings using `$result`, the mapping is applied per iteration. The step record's `output` is the array of per-iteration mapped results.
 
@@ -514,6 +515,7 @@ steps:
     type: llm
     model: haiku
     each: $steps.fetch_items.output           # iterate over the collected array
+    delay: "1s"                                # rate-limit: 1s pause between iterations
     on_error: ignore                           # skip items that fail
     description: Summarize each item individually
     prompt: |
@@ -655,7 +657,7 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
 16. **When JSON output is used, LLM prompts must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
 17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any LLM call. See *Patterns*.
-18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, cap iteration count and add `retry` with `backoff`. See *Iteration Patterns*.
+18. **Prefer bulk endpoints over per-item iteration.** When `each` + `http.request` is unavoidable, add `delay` for rate limiting (e.g., `delay: "1s"`), cap iteration count, and add `retry` with `backoff`. See *Iteration Patterns*.
 19. **Prefer plain text LLM output over JSON.** For single-value tasks (summarization, classification, scoring), use `value: $result` and instruct the model to return plain text. Reserve JSON (`value: $result.field`) for multi-field output where every field requires LLM reasoning. In `each` + LLM patterns, always use plain text + a `map` transform to zip LLM output with structural data from the source array. See *Iteration Patterns*.
 
 ## Output Format

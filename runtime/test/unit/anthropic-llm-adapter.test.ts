@@ -28,7 +28,7 @@ describe('AnthropicLLMAdapter', () => {
 
   it('constructs with an API key', () => {
     new AnthropicLLMAdapter('sk-test');
-    expect((Anthropic as unknown as { lastOpts: unknown }).lastOpts).toEqual({ apiKey: 'sk-test' });
+    expect((Anthropic as unknown as { lastOpts: unknown }).lastOpts).toEqual({ apiKey: 'sk-test', timeout: 120_000, maxRetries: 1 });
   });
 
   it('calls the API with default model (haiku) when no model specified', async () => {

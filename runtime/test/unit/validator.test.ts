@@ -202,6 +202,52 @@ describe('validateWorkflow - each constraints', () => {
   });
 });
 
+// ─── delay constraints ────────────────────────────────────────────────────────
+
+describe('validateWorkflow - delay constraints', () => {
+  it('rejects delay without each', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'bad_delay',
+          type: 'tool',
+          tool: 'some_tool',
+          delay: '1s',
+          inputs: {},
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['some_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('"delay" requires "each"'))).toBe(true);
+  });
+
+  it('accepts delay with each', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'ok_delay',
+          type: 'tool',
+          tool: 'some_tool',
+          each: '$inputs.items',
+          delay: '500ms',
+          inputs: {},
+          outputs: {},
+        },
+      ],
+    };
+    const adapter = new MockToolAdapter(['some_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+  });
+});
+
 // ─── Reference validation tests ───────────────────────────────────────────────
 
 describe('validateWorkflow - reference validation', () => {

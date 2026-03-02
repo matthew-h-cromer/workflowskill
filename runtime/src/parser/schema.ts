@@ -115,6 +115,7 @@ const stepBaseSchema = z.object({
   outputs: z.record(z.string(), stepOutputSchema).default({}),
   condition: z.string().optional(),
   each: z.string().optional(),
+  delay: z.string().optional(),
   on_error: z.enum(['fail', 'ignore']).optional(),
   retry: retryPolicySchema.optional(),
 });
