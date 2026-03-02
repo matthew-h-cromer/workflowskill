@@ -28,3 +28,4 @@ export { runWorkflow, WorkflowExecutionError, runWorkflowSkill, buildFailedRunLo
 export type { RunOptions, RunWorkflowSkillOptions } from './runtime/index.js';
 export { validateWorkflowSkill } from './validator/index.js';
 export type { ValidateWorkflowSkillOptions, ValidateWorkflowSkillResult } from './validator/index.js';
+export { AUTHORING_SKILL } from './skill/index.js';
