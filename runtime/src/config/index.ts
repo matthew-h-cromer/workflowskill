@@ -50,13 +50,12 @@ function parseDotenv(content: string): Record<string, string> {
  */
 function findPackageRoot(): string | undefined {
   let dir = dirname(fileURLToPath(import.meta.url));
-  const root = dirname(dir); // stop at filesystem root
-  while (dir !== root) {
+  while (true) {
     if (existsSync(join(dir, 'package.json'))) {
       return dir;
     }
     const parent = dirname(dir);
-    if (parent === dir) break; // filesystem root
+    if (parent === dir) break; // true filesystem root
     dir = parent;
   }
   return undefined;
