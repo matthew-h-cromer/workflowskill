@@ -197,7 +197,7 @@ steps:
     on_error: fail|ignore           # error strategy (default: fail)
     retry:                          # retry policy (optional)
       max: int
-      delay: string
+      delay: duration              # e.g. "2s", "500ms"
       backoff: float
 ```
 ````
@@ -219,12 +219,12 @@ A workflow should have a defined schema for inputs and outputs. Being able to ex
 | id | yes | Unique identifier within the workflow. Referenced by other steps via `$steps.<id>.output`. |
 | type | yes | One of: `tool`, `llm`, `transform`, `conditional`, `exit`. |
 | description | no | Human-readable explanation. Displayed in run logs. |
-| inputs | yes | Schema declaring what this step expects, with type and value for each field. |
-| outputs | yes | Schema declaring what this step produces. |
+| inputs | no | Named input schema. Required for tool, llm, and transform steps. Not used by exit or conditional steps. |
+| outputs | no | Named output schema. Required for tool, llm, and transform steps. Not used by exit or conditional steps. |
 | condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
 | each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
 | on_error | no | Error handling strategy: `fail` (default) or `ignore` (log the error and continue with null output). |
-| retry | no | Retry policy: `{ max: int, delay: string, backoff: float }`. |
+| retry | no | Retry policy: `{ max: int, delay: duration, backoff: float }`. Duration string: integer followed by `ms` (milliseconds) or `s` (seconds). Examples: `"500ms"`, `"2s"`. |
 
 ### Step Inputs and Outputs
 
