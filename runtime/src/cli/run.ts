@@ -7,7 +7,7 @@ import type { RunLog } from '../types/index.js';
 import { loadConfig } from '../config/index.js';
 import { AnthropicLLMAdapter } from '../adapters/anthropic-llm-adapter.js';
 import { DevToolAdapter } from '../dev-tools/dev-tool-adapter.js';
-import { MockLLMAdapter } from '../adapters/mock-llm-adapter.js';
+import type { LLMAdapter, LLMResult } from '../types/index.js';
 import { renderRuntimeEvent } from './format.js';
 
 /** Write a run log to stdout and persist it to disk. */
@@ -50,12 +50,20 @@ export async function runCommand(
   // Load config and create adapters
   const config = loadConfig();
   const toolAdapter = await DevToolAdapter.create(config);
-  let llmAdapter;
+  let llmAdapter: LLMAdapter;
   if (config.anthropicApiKey) {
     llmAdapter = new AnthropicLLMAdapter(config.anthropicApiKey);
   } else {
-    console.error('Warning: ANTHROPIC_API_KEY not set — using mock LLM adapter. LLM steps will return empty responses.');
-    llmAdapter = new MockLLMAdapter();
+    // No API key — create an adapter that fails with a clear error on first use.
+    // Workflows without LLM steps (e.g., hello-world.md) still work.
+    llmAdapter = {
+      call(): Promise<LLMResult> {
+        throw new Error(
+          'ANTHROPIC_API_KEY not set. This workflow has LLM steps that require it.\n' +
+          'Set it in runtime/.env or export it in your shell: export ANTHROPIC_API_KEY=sk-ant-...',
+        );
+      },
+    };
   }
 
   const log = await runWorkflowSkill({

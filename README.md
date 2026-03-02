@@ -288,7 +288,7 @@ GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...
 ```
 
-The runtime degrades gracefully: missing `ANTHROPIC_API_KEY` → mock LLM adapter with a warning. Missing Google credentials → Google tools not registered (warning if a workflow references them).
+The CLI finds `runtime/.env` automatically regardless of your working directory. You can also export env vars directly in your shell. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback). Missing Google credentials → Google tools not registered (warning if a workflow references them).
 
 ### Getting Google OAuth2 credentials
 

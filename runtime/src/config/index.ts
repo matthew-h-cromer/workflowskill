@@ -1,8 +1,9 @@
 // Configuration loader — reads env vars with .env fallback.
 // No external dependencies (simple KEY=VALUE parser).
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Google OAuth2 credentials for Gmail/Sheets tools. */
 export interface GoogleCredentials {
@@ -44,18 +45,48 @@ function parseDotenv(content: string): Record<string, string> {
 }
 
 /**
+ * Find the package root by walking up from this module's directory
+ * until we find a directory containing package.json.
+ */
+function findPackageRoot(): string | undefined {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const root = dirname(dir); // stop at filesystem root
+  while (dir !== root) {
+    if (existsSync(join(dir, 'package.json'))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+  return undefined;
+}
+
+/**
  * Load configuration from environment variables, with .env fallback.
  * Environment variables take precedence over .env file values.
+ *
+ * .env search order:
+ * 1. Explicit `cwd` parameter (for tests)
+ * 2. Package root (found by walking up from this module)
+ * 3. process.cwd()
  */
 export function loadConfig(cwd?: string): WorkflowSkillConfig {
   // Try to read .env file
   let dotenvVars: Record<string, string> = {};
-  try {
-    const envPath = join(cwd ?? process.cwd(), '.env');
-    const content = readFileSync(envPath, 'utf-8');
-    dotenvVars = parseDotenv(content);
-  } catch {
-    // No .env file — that's fine
+  const searchDirs = cwd
+    ? [cwd]
+    : [findPackageRoot(), process.cwd()].filter((d): d is string => d !== undefined);
+
+  for (const dir of searchDirs) {
+    try {
+      const envPath = join(dir, '.env');
+      const content = readFileSync(envPath, 'utf-8');
+      dotenvVars = parseDotenv(content);
+      break; // use the first .env found
+    } catch {
+      // No .env file in this directory — try next
+    }
   }
 
   // Env vars take precedence
