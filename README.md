@@ -10,7 +10,7 @@
 A declarative workflow language for AI agents.
 
 1. You prompt what you need: "I want to check this website daily"
-2. Your agent writes a [WorkflowSkill](https://agentskills.io/home) that can be executed deterministically by any compatible runtime.
+2. Your agent writes a WorkflowSkill — an extension to [Agent Skills](https://agentskills.io/home) — that can be executed deterministically by any compatible runtime.
 3. The WorkflowSkill runs reliably and cheaply for repetitive tasks — no agent needed.
 
 ```yaml
@@ -92,7 +92,7 @@ workflowskill run ../examples/hello-world-gmail.md \
 
 ### Authoring WorkflowSkills
 
-A WorkflowSkill is authored via natural conversation with any agent system that adopts the [agent skills standard](https://agentskills.io/home).
+A WorkflowSkill is authored via natural conversation with any agent system that supports the [Agent Skills](https://agentskills.io/home) format.
 
 Steps to author a WorkflowSkill:
 
