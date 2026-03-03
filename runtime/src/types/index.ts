@@ -261,9 +261,9 @@ export interface RunLog {
 /** Discriminated union of events emitted by the runtime during workflow execution. */
 export type RuntimeEvent =
   | { type: 'workflow_start'; workflow: string; totalSteps: number }
-  | { type: 'step_start'; stepId: string; stepType: StepType; tool?: string }
+  | { type: 'step_start'; stepId: string; stepType: StepType; tool?: string; description?: string }
   | { type: 'step_complete'; stepId: string; status: StepRunStatus; duration_ms: number; iterations?: number }
-  | { type: 'step_skip'; stepId: string; reason: string }
+  | { type: 'step_skip'; stepId: string; reason: string; description?: string }
   | { type: 'step_retry'; stepId: string; attempt: number; error: string }
   | { type: 'step_error'; stepId: string; error: string; onError: OnError }
   | { type: 'each_progress'; stepId: string; current: number; total: number }

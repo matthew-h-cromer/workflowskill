@@ -175,7 +175,7 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   for (const step of options.workflow.steps) {
     if (!recordedIds.has(step.id)) {
       const reason = branchStepIds.has(step.id) ? 'Branch not selected' : 'Workflow halted';
-      emit(onEvent, { type: 'step_skip', stepId: step.id, reason });
+      emit(onEvent, { type: 'step_skip', stepId: step.id, reason, description: step.description });
       stepRecords.push({
         id: step.id,
         executor: step.type,
@@ -302,7 +302,7 @@ async function executeStepLifecycle(
     const guardResult = resolveExpression(step.condition, context);
     if (!guardResult) {
       context.steps[step.id] = { output: null };
-      emit(onEvent, { type: 'step_skip', stepId: step.id, reason: 'Guard condition evaluated to false' });
+      emit(onEvent, { type: 'step_skip', stepId: step.id, reason: 'Guard condition evaluated to false', description: step.description });
       records.push({
         id: step.id,
         executor: step.type,
@@ -320,6 +320,7 @@ async function executeStepLifecycle(
     stepId: step.id,
     stepType: step.type,
     tool: step.type === 'tool' ? step.tool : undefined,
+    description: step.description,
   });
 
   // 3. Iterate (each) — if present, execute once per element; each handles its own input resolution

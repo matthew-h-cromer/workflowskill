@@ -28,13 +28,43 @@ A declarative workflow language for AI agents.
 | [SPEC.md](SPEC.md)         | Full language specification — the source of truth for all behavior |
 | [examples/](examples/)     | Runnable workflow examples                                         |
 | [runtime/](runtime/)       | Reference TypeScript implementation                                |
+| [cli/](cli/)               | CLI tool — run workflow files from the command line                |
 
 ## Quick start
 
 ```bash
-cd runtime
+cd cli
 npm install
 npm run build
+npm link            # makes `workflowskill` available globally
+
+workflowskill run examples/hello-world.md
+```
+
+## CLI
+
+```
+Usage: workflowskill run <file> [options]
+
+Options:
+  -i, --input key=value   Set a workflow input (repeatable)
+  --json-input '{...}'    Set all inputs as a JSON object
+  --output-json           Print the full RunLog as JSON to stdout
+  -h, --help              Show this help message
+```
+
+The CLI ships two built-in tools:
+
+| Tool | Description | Requires |
+| --- | --- | --- |
+| `web_fetch` | Fetch a URL, return readable content as markdown or plain text | — |
+| `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
+
+Dev mode (no build step):
+
+```bash
+cd cli
+npx tsx src/cli.ts run <file>
 ```
 
 ### Authoring WorkflowSkills
@@ -174,7 +204,7 @@ interface RunLog {
 
 ## Development
 
-All commands run from `runtime/`:
+Runtime library (`runtime/`):
 
 ```bash
 npm run typecheck          # tsc --noEmit
@@ -182,6 +212,16 @@ npm run test               # Run all tests (vitest)
 npm run test:coverage      # With coverage report
 npm run lint               # ESLint
 npm run build              # tsdown
+```
+
+CLI (`cli/`):
+
+```bash
+npm install                # installs deps + symlinks runtime
+npm run build              # tsdown → dist/cli.mjs
+npm run typecheck
+npm run test
+npm link                   # makes `workflowskill` available globally
 ```
 
 ## License

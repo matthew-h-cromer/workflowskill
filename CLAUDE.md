@@ -26,6 +26,17 @@ runtime/                         # TypeScript reference implementation (npm pack
     unit/                        # One file per module
     integration/                 # End-to-end + graduation tests
   skill/SKILL.md                 # Workflow-author skill (single source of truth)
+cli/                             # CLI package (workflowskill command)
+  src/
+    cli.ts                       # Entry point: arg parsing, file loading, run
+    display.ts                   # Colored onEvent handler (picocolors)
+    adapter.ts                   # CliToolAdapter: web_fetch + llm
+    tools/
+      web-fetch.ts               # web_fetch tool
+      llm.ts                     # llm tool (Anthropic SDK)
+  test/
+    unit/                        # Unit tests for each module
+    integration/                 # Runs hello-world.md via child process
 .claude/
   skills/workflow-author/SKILL.md  # Pointer to runtime/skill/SKILL.md + local context
   rules/                           # Auto-loaded coding rules
@@ -33,7 +44,7 @@ runtime/                         # TypeScript reference implementation (npm pack
 
 ## Development
 
-All commands run from `runtime/`:
+Runtime library (`runtime/`):
 
 ```sh
 npm run typecheck   # tsc --noEmit
@@ -44,9 +55,39 @@ npm run build       # tsdown — produces dist/
 
 Pre-publish gate: `npm run prepublishOnly` runs typecheck + test + lint + build in sequence.
 
+CLI (`cli/`):
+
+```sh
+npm install         # installs deps and symlinks runtime via file:../runtime
+npm run build       # tsdown — produces dist/cli.mjs
+npm run typecheck   # tsc --noEmit
+npm run test        # vitest run (unit + integration)
+npm run lint        # eslint src/ test/
+npm link            # makes `workflowskill` available globally
+
+# Dev without building:
+npx tsx src/cli.ts run <file>
+```
+
+## CLI Usage
+
+```sh
+workflowskill run <file>                          # run a workflow file
+workflowskill run <file> -i key=value             # pass an input (repeatable)
+workflowskill run <file> --json-input '{...}'     # pass all inputs as JSON
+workflowskill run <file> --output-json            # print full RunLog as JSON
+```
+
+Built-in tools provided by the CLI:
+
+| Tool | Description | Required env |
+| --- | --- | --- |
+| `web_fetch` | Fetch a URL, return markdown or plain text | — |
+| `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
+
 ## Architecture
 
-- **Library-only** — no CLI, no built-in tools. Consumers provide a `ToolAdapter` for all external calls (LLM, HTTP, etc.).
+- **Library + CLI** — `runtime/` is a pure orchestration library; `cli/` wraps it with `web_fetch` and `llm` tools for command-line use.
 - **4 step types:** `tool`, `transform`, `conditional`, `exit`
 - **9-step execution lifecycle** per step (see SPEC.md § Runtime > Execution Model)
 - **`ToolAdapter` interface** is the only runtime boundary; adapters live in `src/adapters/`
