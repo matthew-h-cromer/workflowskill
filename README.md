@@ -13,6 +13,16 @@ A declarative workflow language for AI agents.
 2. Your agent writes a WorkflowSkill — an extension to [Agent Skills](https://agentskills.io/home) — that can be executed deterministically by any compatible runtime.
 3. The WorkflowSkill runs reliably and cheaply for repetitive tasks — no agent needed.
 
+## What it looks like
+
+> **You:** I want to check Hacker News for AI stories every morning and email me a summary.
+>
+> **Agent:** I'll author a WorkflowSkill for that. _(invokes `/workflowskill-author`, writes a SKILL.md, runs `workflowskill_validate`)_
+>
+> Validated — 3 steps: `fetch`, `filter`, `email`. Running a test now... _(invokes `workflowskill_run`)_
+>
+> Run complete: 4 AI stories found, summary drafted. Ready to schedule — want me to set up a daily cron at 8 AM?
+
 ## Repositories
 
 | Repo                                                                                 | Description                                                          |
@@ -55,10 +65,10 @@ Options:
 
 The CLI ships two built-in tools:
 
-| Tool | Description | Requires |
-| --- | --- | --- |
-| `web_fetch` | Fetch a URL, return readable content as markdown or plain text | — |
-| `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
+| Tool        | Description                                                    | Requires            |
+| ----------- | -------------------------------------------------------------- | ------------------- |
+| `web_fetch` | Fetch a URL, return readable content as markdown or plain text | —                   |
+| `llm`       | Call Claude, return a parsed JSON object                       | `ANTHROPIC_API_KEY` |
 
 Dev mode (no build step):
 
