@@ -4,7 +4,7 @@ Declarative workflow language + TypeScript runtime for orchestrating tool-callin
 
 ## Spec
 
-`SPEC.md` is the authoritative source of truth. Read the relevant section before modifying any runtime module. See `.claude/rules/spec-map.md` for the section→module mapping.
+`SPEC.md` is the authoritative source of truth. Read the relevant section before modifying any runtime module.
 
 ## Repo Structure
 
@@ -25,9 +25,9 @@ runtime/                         # TypeScript reference implementation (npm pack
   test/
     unit/                        # One file per module
     integration/                 # End-to-end + graduation tests
-  skill/SKILL.md                 # Copy of .claude/skills/workflow-author/SKILL.md
+  skill/SKILL.md                 # Workflow-author skill (single source of truth)
 .claude/
-  skills/workflow-author/SKILL.md  # Workflow-author skill (source)
+  skills/workflow-author/SKILL.md  # Pointer to runtime/skill/SKILL.md + local context
   rules/                           # Auto-loaded coding rules
 ```
 
@@ -61,11 +61,10 @@ Pre-publish gate: `npm run prepublishOnly` runs typecheck + test + lint + build 
 | ESM imports | `.js` extension on all local imports |
 | `noUncheckedIndexedAccess` | Guard array access; use `!` after bounds check |
 
-## SKILL.md Sync
+## SKILL.md
 
-`.claude/skills/workflow-author/SKILL.md` and `runtime/skill/SKILL.md` must be **identical**.
-After editing either copy, update the other. SKILL.md must be **platform-agnostic** — no repo paths, `npm run` commands, or dev-only instructions.
+`runtime/skill/SKILL.md` is the single source of truth for the workflow-author skill. Edit it directly. `.claude/skills/workflow-author/SKILL.md` is a thin pointer that references the canonical file and adds local Claude Code context (available tools, dev workflow). Do not duplicate authoring content into the pointer file.
 
 ## Public API
 
-Everything consumed by library users is re-exported from `runtime/src/index.ts`. See `.claude/rules/public-api.md` for the current export list. Update `index.ts` whenever a public symbol is added or removed.
+Everything consumed by library users is re-exported from `runtime/src/index.ts`. Update `index.ts` whenever a public symbol is added or removed.
