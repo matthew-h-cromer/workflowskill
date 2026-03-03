@@ -7,10 +7,6 @@ description: Fetches the Hacker News homepage and returns a concise, readable su
 
 Fetches https://news.ycombinator.com and uses Claude Haiku to produce a concise, readable summary of the top stories.
 
-```sh
-workflowskill run examples/web-fetch-hacker-news.md
-```
-
 ```workflow
 outputs:
   summary:

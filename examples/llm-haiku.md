@@ -7,11 +7,6 @@ description: Generates a haiku on any subject using Claude Haiku. Requires ANTHR
 
 Generates a traditional 5-7-5 haiku on a given subject using the Claude Haiku model.
 
-```sh
-workflowskill run examples/llm-haiku.md
-workflowskill run examples/llm-haiku.md -i subject="autumn rain"
-```
-
 ```workflow
 inputs:
   subject:
