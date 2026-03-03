@@ -218,9 +218,9 @@ describe('resolveExpression', () => {
     expect(resolveExpression('$item.title contains "Product Manager"', c)).toBe(false);
   });
 
-  it('contains: string substring is case-sensitive', () => {
+  it('contains: string substring is case-insensitive', () => {
     const c: RuntimeContext = { inputs: {}, steps: {}, item: { title: 'Senior Product Manager' } };
-    expect(resolveExpression('$item.title contains "product manager"', c)).toBe(false);
+    expect(resolveExpression('$item.title contains "product manager"', c)).toBe(true);
   });
 
   it('contains: empty string is always contained', () => {

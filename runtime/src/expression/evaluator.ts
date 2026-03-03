@@ -131,7 +131,7 @@ function evaluateBinary(
       return isTruthy(lval) || isTruthy(rval);
     case 'contains':
       if (Array.isArray(lval)) return lval.includes(rval);
-      return String(lval ?? '').includes(String(rval ?? ''));
+      return String(lval ?? '').toLowerCase().includes(String(rval ?? '').toLowerCase());
     default:
       throw new EvalError(`Unknown operator: ${op}`);
   }

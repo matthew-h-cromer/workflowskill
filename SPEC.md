@@ -282,7 +282,7 @@ Expressions appear in `condition` guards, `each` fields, input `value` reference
 | Logical | `&&`, `\|\|`, `!` |
 | String / Array | `contains` |
 
-`contains` is a binary infix operator. For strings, it tests substring inclusion (case-sensitive). For arrays, it tests whether the array includes the right-hand value (primitive equality). Returns `true` or `false`.
+`contains` is a binary infix operator. For strings, it tests substring inclusion (case-insensitive). For arrays, it tests whether the array includes the right-hand value (primitive equality). Returns `true` or `false`.
 
 **Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), comparisons, and `contains` tests. No function calls, no ternary expressions, no regex. Use `contains` for substring and array membership tests.
 
