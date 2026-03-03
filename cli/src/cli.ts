@@ -1,11 +1,25 @@
 #!/usr/bin/env node
 // WorkflowSkill CLI — run workflow files from the command line.
 
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join, basename, extname } from 'node:path';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, join, basename, extname, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runWorkflowSkill } from 'workflowskill';
 import { CliToolAdapter } from './adapter.js';
 import { createEventHandler } from './display.js';
+import type { RunLog } from 'workflowskill';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const RUNS_DIR = join(__dirname, '..', 'runs');
+
+function writeRunLog(runLog: RunLog): void {
+  mkdirSync(RUNS_DIR, { recursive: true });
+  const ts = new Date().toISOString().replace(/:/g, '-');
+  const filename = `${runLog.workflow}-${ts}.json`;
+  const filePath = join(RUNS_DIR, filename);
+  writeFileSync(filePath, JSON.stringify(runLog, null, 2) + '\n');
+  console.error(`Run log → ${filePath}`);
+}
 
 /**
  * Load a .env file from the given directory and merge into process.env.
@@ -166,6 +180,8 @@ async function main(): Promise<void> {
     workflowName: basename(file, extname(file)),
     onEvent,
   });
+
+  writeRunLog(runLog);
 
   if (outputJson) {
     console.log(JSON.stringify(runLog, null, 2));
