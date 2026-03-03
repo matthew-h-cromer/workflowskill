@@ -5,10 +5,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** WorkflowSkill configuration. */
-export interface WorkflowSkillConfig {
-  anthropicApiKey?: string;
-}
+/** WorkflowSkill configuration. Reserved for future host-level configuration. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface WorkflowSkillConfig {}
 
 /**
  * Parse a .env file into key-value pairs.
@@ -63,7 +62,7 @@ function findPackageRoot(): string | undefined {
  * 3. process.cwd()
  */
 export function loadConfig(cwd?: string): WorkflowSkillConfig {
-  // Try to read .env file
+  // Try to read .env file (kept for future host-level config)
   let dotenvVars: Record<string, string> = {};
   const searchDirs = cwd
     ? [cwd]
@@ -80,16 +79,8 @@ export function loadConfig(cwd?: string): WorkflowSkillConfig {
     }
   }
 
-  // Env vars take precedence
-  const get = (key: string): string | undefined =>
-    process.env[key] ?? dotenvVars[key];
+  // Suppress unused variable warning — dotenvVars kept for future use
+  void dotenvVars;
 
-  const config: WorkflowSkillConfig = {};
-
-  const anthropicKey = get('ANTHROPIC_API_KEY');
-  if (anthropicKey) {
-    config.anthropicApiKey = anthropicKey;
-  }
-
-  return config;
+  return {};
 }

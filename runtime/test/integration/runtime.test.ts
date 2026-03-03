@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseWorkflowFromMd } from '../../src/parser/index.js';
-import { runWorkflow, buildFailedRunLog } from '../../src/runtime/index.js';
+import { runWorkflow, runWorkflowSkill, buildFailedRunLog } from '../../src/runtime/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
-import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
-import type { RuntimeEvent } from '../../src/types/index.js';
+import type { RuntimeEvent, ToolAdapter } from '../../src/types/index.js';
+import { readFixture } from '../helpers.js';
 
 const FIXTURES = join(import.meta.dirname, '../fixtures');
 
@@ -20,13 +20,11 @@ describe('echo workflow', () => {
   it('passes input through a single transform step', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { message: 'hello' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
     });
 
@@ -41,18 +39,15 @@ describe('echo workflow', () => {
     expect(log.steps[0]!.output).toEqual({ mapped: [{ value: 'hello' }] });
     expect(log.summary.steps_executed).toBe(1);
     expect(log.summary.steps_skipped).toBe(0);
-    expect(log.summary.total_tokens).toBe(0);
   });
 
   it('uses default input when none provided', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
     });
 
@@ -75,13 +70,11 @@ describe('two-step-pipe workflow', () => {
         ],
       },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { query: 'test' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'two-step-pipe',
     });
 
@@ -100,10 +93,10 @@ describe('two-step-pipe workflow', () => {
   });
 });
 
-// ─── 3. llm-judgment ────────────────────────────────────────────────────────
+// ─── 3. llm-judgment (now uses tool steps) ──────────────────────────────────
 
 describe('llm-judgment workflow', () => {
-  it('invokes tool then LLM with prompt interpolation', async () => {
+  it('invokes tool steps and produces output', async () => {
     const workflow = loadWorkflow('llm-judgment');
     const tools = new MockToolAdapter();
     tools.register('gmail_fetch', () => ({
@@ -113,21 +106,14 @@ describe('llm-judgment workflow', () => {
         ],
       },
     }));
-
-    let capturedPrompt = '';
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      capturedPrompt = prompt;
-      return {
-        text: JSON.stringify([{ score: 8, summary: 'Urgent email' }]),
-        tokens: { input: 25, output: 15 },
-      };
-    });
+    tools.register('score_email', (args) => ({
+      output: [{ score: 8, summary: 'Urgent email', messages: args.messages }],
+    }));
 
     const log = await runWorkflow({
       workflow,
       inputs: { account: 'test@example.com' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'llm-judgment',
     });
 
@@ -135,11 +121,7 @@ describe('llm-judgment workflow', () => {
     expect(log.steps).toHaveLength(2);
     expect(log.steps[0]!.id).toBe('fetch_emails');
     expect(log.steps[1]!.id).toBe('score');
-    expect(log.steps[1]!.executor).toBe('llm');
-    expect(log.steps[1]!.tokens).toEqual({ input: 25, output: 15 });
-    expect(log.summary.total_tokens).toBe(40);
-    // Prompt should have been interpolated with the messages
-    expect(capturedPrompt).toContain('alice@example.com');
+    expect(log.steps[1]!.executor).toBe('tool');
   });
 });
 
@@ -152,13 +134,11 @@ describe('filter-exit workflow', () => {
     tools.register('get_items', () => ({
       output: { items: [{ score: 1 }, { score: 3 }] },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { threshold: 7 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'filter-exit',
     });
 
@@ -177,13 +157,11 @@ describe('filter-exit workflow', () => {
     tools.register('get_items', () => ({
       output: { items: [{ score: 8 }, { score: 9 }, { score: 2 }] },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { threshold: 7 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'filter-exit',
     });
 
@@ -205,13 +183,11 @@ describe('branch workflow', () => {
     tools.register('validate', () => ({
       output: { valid: true },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { value: 42 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'branch',
     });
 
@@ -230,13 +206,11 @@ describe('branch workflow', () => {
     tools.register('validate', () => ({
       output: { valid: false },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { value: -1 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'branch',
     });
 
@@ -248,10 +222,10 @@ describe('branch workflow', () => {
   });
 });
 
-// ─── 6. each-loop ────────────────────────────────────────────────────────────
+// ─── 6. each-loop (now uses tool step) ───────────────────────────────────────
 
 describe('each-loop workflow', () => {
-  it('iterates LLM step over each document', async () => {
+  it('iterates tool step over each document', async () => {
     const workflow = loadWorkflow('each-loop');
     const tools = new MockToolAdapter();
     tools.register('get_documents', () => ({
@@ -263,21 +237,14 @@ describe('each-loop workflow', () => {
         ],
       },
     }));
-
-    const prompts: string[] = [];
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      prompts.push(prompt);
-      return {
-        text: `Summary of: ${prompt.slice(0, 30)}`,
-        tokens: { input: 15, output: 10 },
-      };
-    });
+    tools.register('summarize_document', (args) => ({
+      output: `Summary of document ${(args.document as Record<string, unknown>).id}`,
+    }));
 
     const log = await runWorkflow({
       workflow,
       inputs: { items: ['doc1', 'doc2', 'doc3'] },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'each-loop',
     });
 
@@ -287,16 +254,8 @@ describe('each-loop workflow', () => {
     // Summarize step has iterations
     const summarizeRecord = log.steps.find((s) => s.id === 'summarize')!;
     expect(summarizeRecord.iterations).toBe(3);
-    expect(summarizeRecord.tokens).toEqual({ input: 45, output: 30 });
     expect(Array.isArray(summarizeRecord.output)).toBe(true);
     expect((summarizeRecord.output as unknown[]).length).toBe(3);
-    expect(log.summary.total_tokens).toBe(75);
-
-    // Each prompt should contain the document content
-    expect(prompts).toHaveLength(3);
-    expect(prompts[0]).toContain('First document content');
-    expect(prompts[1]).toContain('Second document content');
-    expect(prompts[2]).toContain('Third document content');
   });
 });
 
@@ -310,12 +269,10 @@ describe('error-fail workflow', () => {
       output: null,
       error: 'Connection refused',
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'error-fail',
     });
 
@@ -344,12 +301,10 @@ describe('error-ignore workflow', () => {
       output: null,
       error: 'Service unavailable',
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'error-ignore',
     });
 
@@ -386,12 +341,10 @@ describe('retry-backoff workflow', () => {
       }
       return { output: { data: { success: true, attempt: callCount } } };
     });
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'retry-backoff',
     });
 
@@ -417,12 +370,10 @@ describe('retry-backoff workflow', () => {
       output: null,
       error: 'Permanent failure',
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'retry-backoff',
     });
 
@@ -454,12 +405,10 @@ describe('sort-pipeline workflow', () => {
         ],
       },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'sort-pipeline',
     });
 
@@ -493,13 +442,11 @@ describe('run log structure', () => {
   it('has all required fields per spec', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { message: 'test' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
     });
 
@@ -515,7 +462,6 @@ describe('run log structure', () => {
     expect(log.summary).toBeDefined();
     expect(typeof log.summary.steps_executed).toBe('number');
     expect(typeof log.summary.steps_skipped).toBe('number');
-    expect(typeof log.summary.total_tokens).toBe('number');
     expect(typeof log.summary.total_duration_ms).toBe('number');
   });
 
@@ -534,12 +480,10 @@ describe('run log structure', () => {
       ],
     };
     const tools = new MockToolAdapter(); // missing_tool not registered
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'bad-workflow',
     });
 
@@ -558,92 +502,27 @@ describe('output-source workflow', () => {
   it('maps step output via $result and workflow output via $steps', async () => {
     const workflow = loadWorkflow('output-source');
     const tools = new MockToolAdapter();
-    tools.register('http.request', () => ({
+    tools.register('web.scrape', () => ({
       output: {
-        status: 200,
-        body: { userId: 1, id: 1, title: 'delectus aut autem', completed: false },
+        results: [{ title: 'Hello World', author: 'Jane Doe' }],
       },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'output-source',
     });
 
     expect(log.status).toBe('success');
     expect(log.steps).toHaveLength(1);
 
-    // Step output should be mapped via $result.body.title and $result.body.userId
+    // Step output should be mapped via $result.results[0].title and $result.results[0].author
     const fetchRecord = log.steps[0]!;
-    expect(fetchRecord.output).toEqual({ title: 'delectus aut autem', user_id: 1 });
+    expect(fetchRecord.output).toEqual({ title: 'Hello World', author: 'Jane Doe' });
 
     // Workflow outputs resolved via $steps
-    expect(log.outputs).toEqual({ title: 'delectus aut autem', user_id: 1 });
-  });
-});
-
-// ─── 12. output-source-with-exit ─────────────────────────────────────────────
-
-describe('output-source-with-exit workflow', () => {
-  it('resolves workflow output source when exit does not fire', async () => {
-    const workflow = loadWorkflow('output-source-with-exit');
-    const tools = new MockToolAdapter();
-    tools.register('http.request', () => ({
-      output: {
-        status: 200,
-        body: { title: 'Test Data', items: [1, 2, 3] },
-      },
-    }));
-    const llm = new MockLLMAdapter();
-
-    const log = await runWorkflow({
-      workflow,
-      inputs: { should_exit: false },
-      toolAdapter: tools,
-      llmAdapter: llm,
-      workflowName: 'output-source-with-exit',
-    });
-
-    expect(log.status).toBe('success');
-
-    // exit was skipped
-    const exitRecord = log.steps.find((s) => s.id === 'early_exit')!;
-    expect(exitRecord.status).toBe('skipped');
-
-    // Workflow outputs resolved via source expressions
-    expect(log.outputs).toEqual({ message: 'Test Data', count: 3 });
-  });
-
-  it('exit output takes precedence over workflow output source', async () => {
-    const workflow = loadWorkflow('output-source-with-exit');
-    const tools = new MockToolAdapter();
-    tools.register('http.request', () => ({
-      output: {
-        status: 200,
-        body: { title: 'Test Data', items: [1, 2, 3] },
-      },
-    }));
-    const llm = new MockLLMAdapter();
-
-    const log = await runWorkflow({
-      workflow,
-      inputs: { should_exit: true },
-      toolAdapter: tools,
-      llmAdapter: llm,
-      workflowName: 'output-source-with-exit',
-    });
-
-    expect(log.status).toBe('success');
-
-    // exit fired
-    const exitRecord = log.steps.find((s) => s.id === 'early_exit')!;
-    expect(exitRecord.status).toBe('success');
-
-    // Exit output takes precedence
-    expect(log.outputs).toEqual({ message: 'exited early', count: 0 });
+    expect(log.outputs).toEqual({ title: 'Hello World', author: 'Jane Doe' });
   });
 });
 
@@ -653,13 +532,11 @@ describe('step record inputs', () => {
   it('records resolved inputs on successful steps', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { message: 'hello' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
     });
 
@@ -673,13 +550,11 @@ describe('step record inputs', () => {
     tools.register('search', (args) => ({
       output: { results: [{ title: `Result for ${args.query}`, url: 'https://example.com' }] },
     }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { query: 'test' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'two-step-pipe',
     });
 
@@ -691,13 +566,11 @@ describe('step record inputs', () => {
     const workflow = loadWorkflow('branch');
     const tools = new MockToolAdapter();
     tools.register('validate', () => ({ output: { valid: true } }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { value: 42 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'branch',
     });
 
@@ -708,7 +581,7 @@ describe('step record inputs', () => {
   });
 });
 
-// ─── 13. each-tool-dynamic-url ───────────────────────────────────────────────
+// ─── 12. each-tool-dynamic-url ───────────────────────────────────────────────
 
 describe('each-tool-dynamic-url workflow', () => {
   it('constructs dynamic URLs per-iteration using template interpolation and maps $result output', async () => {
@@ -719,24 +592,21 @@ describe('each-tool-dynamic-url workflow', () => {
     tools.register('get_ids', () => ({
       output: { ids: [101, 202, 303] },
     }));
-    tools.register('http.request', (args) => {
+    tools.register('web.scrape', (args) => {
       capturedUrls.push(args.url as string);
       const id = args.url as string;
       const itemId = parseInt((id as string).replace(/.*\/(\d+)\.json$/, '$1'), 10);
       return {
         output: {
-          status: 200,
-          body: { id: itemId, title: `Item ${itemId}` },
+          results: [{ id: itemId, title: `Item ${itemId}` }],
         },
       };
     });
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { base_url: 'https://api.example.com/item/' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'each-tool-dynamic-url',
     });
 
@@ -790,7 +660,6 @@ describe('buildFailedRunLog', () => {
     expect(log.inputs).toEqual({});
     expect(log.summary.steps_executed).toBe(0);
     expect(log.summary.steps_skipped).toBe(0);
-    expect(log.summary.total_tokens).toBe(0);
     expect(log.error).toBeDefined();
     expect(log.error!.phase).toBe('parse');
     expect(log.error!.message).toBe('YAML syntax error on line 3');
@@ -825,14 +694,12 @@ describe('runtime events', () => {
   it('emits workflow_start and workflow_complete for basic workflow', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       inputs: { message: 'hello' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
       onEvent: (e) => events.push(e),
     });
@@ -857,14 +724,12 @@ describe('runtime events', () => {
     tools.register('search', (args) => ({
       output: { results: [{ title: `Result for ${args.query}`, url: 'https://example.com' }] },
     }));
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       inputs: { query: 'test' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'two-step-pipe',
       onEvent: (e) => events.push(e),
     });
@@ -897,14 +762,12 @@ describe('runtime events', () => {
     const workflow = loadWorkflow('branch');
     const tools = new MockToolAdapter();
     tools.register('validate', () => ({ output: { valid: true } }));
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       inputs: { value: 42 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'branch',
       onEvent: (e) => events.push(e),
     });
@@ -929,13 +792,11 @@ describe('runtime events', () => {
       if (callCount < 3) return { output: null, error: 'Temporary failure' };
       return { output: { data: { success: true, attempt: callCount } } };
     });
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'retry-backoff',
       onEvent: (e) => events.push(e),
     });
@@ -955,13 +816,11 @@ describe('runtime events', () => {
     const workflow = loadWorkflow('error-fail');
     const tools = new MockToolAdapter();
     tools.register('unreliable_api', () => ({ output: null, error: 'Connection refused' }));
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'error-fail',
       onEvent: (e) => events.push(e),
     });
@@ -988,13 +847,11 @@ describe('runtime events', () => {
     const workflow = loadWorkflow('error-ignore');
     const tools = new MockToolAdapter();
     tools.register('unreliable_api', () => ({ output: null, error: 'Service unavailable' }));
-    const llm = new MockLLMAdapter();
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'error-ignore',
       onEvent: (e) => events.push(e),
     });
@@ -1022,9 +879,8 @@ describe('runtime events', () => {
         ],
       },
     }));
-    const llm = new MockLLMAdapter((_model, prompt) => ({
-      text: `Summary of: ${prompt.slice(0, 20)}`,
-      tokens: { input: 10, output: 5 },
+    tools.register('summarize_document', (args) => ({
+      output: `Summary of ${(args.document as Record<string, unknown>).id}`,
     }));
     const events: RuntimeEvent[] = [];
 
@@ -1032,7 +888,6 @@ describe('runtime events', () => {
       workflow,
       inputs: { items: ['doc1', 'doc2', 'doc3'] },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'each-loop',
       onEvent: (e) => events.push(e),
     });
@@ -1047,48 +902,16 @@ describe('runtime events', () => {
   it('does not crash when onEvent is not provided (backwards compat)', async () => {
     const workflow = loadWorkflow('echo');
     const tools = new MockToolAdapter();
-    const llm = new MockLLMAdapter();
 
     // No onEvent — should run normally without throwing
     const log = await runWorkflow({
       workflow,
       inputs: { message: 'hello' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'echo',
     });
 
     expect(log.status).toBe('success');
-  });
-
-  it('includes tokens in step_complete for LLM steps', async () => {
-    const workflow = loadWorkflow('llm-judgment');
-    const tools = new MockToolAdapter();
-    tools.register('gmail_fetch', () => ({
-      output: { messages: [{ from: 'alice@example.com', subject: 'Hi', body: 'Hello' }] },
-    }));
-    const llm = new MockLLMAdapter((_model, _prompt) => ({
-      text: JSON.stringify([{ score: 5, summary: 'Normal email' }]),
-      tokens: { input: 20, output: 10 },
-    }));
-    const events: RuntimeEvent[] = [];
-
-    await runWorkflow({
-      workflow,
-      inputs: { account: 'test@example.com' },
-      toolAdapter: tools,
-      llmAdapter: llm,
-      workflowName: 'llm-judgment',
-      onEvent: (e) => events.push(e),
-    });
-
-    const llmComplete = events.find(
-      (e) => e.type === 'step_complete' && e.stepId === 'score',
-    );
-    expect(llmComplete).toBeDefined();
-    if (llmComplete?.type === 'step_complete') {
-      expect(llmComplete.tokens).toEqual({ input: 20, output: 10 });
-    }
   });
 
   it('includes iterations in step_complete for each steps', async () => {
@@ -1102,17 +925,13 @@ describe('runtime events', () => {
         ],
       },
     }));
-    const llm = new MockLLMAdapter((_model, _prompt) => ({
-      text: 'summary',
-      tokens: { input: 5, output: 3 },
-    }));
+    tools.register('summarize_document', () => ({ output: 'summary' }));
     const events: RuntimeEvent[] = [];
 
     await runWorkflow({
       workflow,
       inputs: { items: ['doc1', 'doc2'] },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'each-loop',
       onEvent: (e) => events.push(e),
     });
@@ -1154,13 +973,11 @@ describe('each + delay', () => {
     tools.register('echo_tool', (args) => ({
       output: { result: args.item },
     }));
-    const llm = new MockLLMAdapter();
 
     const start = performance.now();
     const log = await runWorkflow({
       workflow,
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'delay-test',
     });
     const elapsed = performance.now() - start;
@@ -1189,13 +1006,11 @@ describe('each + on_error: ignore', () => {
       }
       return { output: { result: `ok-${callCount}` } };
     });
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { items: ['a', 'b', 'c'] },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'each-ignore',
     });
 
@@ -1210,5 +1025,40 @@ describe('each + on_error: ignore', () => {
 
     // Step output is null when on_error: ignore absorbs the failure
     expect(log.outputs['results']).toBeNull();
+  });
+});
+
+// ─── runWorkflowSkill ────────────────────────────────────────────────────────
+
+describe('runWorkflowSkill', () => {
+  it('uses frontmatter name as workflow name', async () => {
+    const log = await runWorkflowSkill({
+      content: readFixture('echo.md'),
+      toolAdapter: new MockToolAdapter(),
+      workflowName: 'fallback',
+    });
+    // Frontmatter name wins over fallback
+    expect(log.workflow).toBe('echo');
+  });
+
+  it("defaults workflowName to 'inline' when not provided and no frontmatter", async () => {
+    const log = await runWorkflowSkill({
+      content: readFixture('malformed-no-frontmatter.md'),
+      toolAdapter: new MockToolAdapter(),
+    });
+    expect(log.workflow).toBe('inline');
+  });
+
+  it('never throws — returns RunLog even for unexpected errors', async () => {
+    const throwingAdapter: ToolAdapter = {
+      has: () => { throw new Error('Unexpected adapter error'); },
+      invoke: async () => ({ output: null }),
+    };
+    const log = await runWorkflowSkill({
+      content: readFixture('two-step-pipe.md'),
+      toolAdapter: throwingAdapter,
+    });
+    expect(log).toBeDefined();
+    expect(log.status).toBe('failed');
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: each-loop
-description: LLM step with each iteration over array items.
+description: Tool step with each iteration over array items.
 ---
 
 # Each Loop
@@ -26,13 +26,10 @@ steps:
         type: array
 
   - id: summarize
-    type: llm
-    model: haiku
+    type: tool
+    tool: summarize_document
     description: Summarize each document
     each: $steps.fetch.output.documents
-    prompt: |
-      Summarize this document in one sentence:
-      $item.content
     inputs:
       document:
         type: object

@@ -1,5 +1,5 @@
 // Runtime orchestrator.
-// Validates the workflow, executes steps through the 8-step lifecycle, and produces a run log.
+// Validates the workflow, executes steps through the 9-step lifecycle, and produces a run log.
 
 import type {
   WorkflowDefinition,
@@ -9,13 +9,11 @@ import type {
   StepOutput,
   RuntimeContext,
   ToolAdapter,
-  LLMAdapter,
   RunLog,
   RunLogError,
   RunStatus,
   StepRecord,
   RetryRecord,
-  TokenUsage,
   ExitStatus,
   ValidationError,
   RuntimeEvent,
@@ -76,7 +74,6 @@ export function buildFailedRunLog(
     summary: {
       steps_executed: 0,
       steps_skipped: 0,
-      total_tokens: 0,
       total_duration_ms: durationMs,
     },
     started_at: start.toISOString(),
@@ -93,7 +90,6 @@ export interface RunOptions {
   workflow: WorkflowDefinition;
   inputs?: Record<string, unknown>;
   toolAdapter: ToolAdapter;
-  llmAdapter: LLMAdapter;
   workflowName?: string;
   /** Optional callback for live progress events during execution. */
   onEvent?: (event: RuntimeEvent) => void;
@@ -102,7 +98,7 @@ export interface RunOptions {
 /**
  * Execute a workflow and produce a run log.
  * Phase 1: Validate the workflow definition.
- * Phase 2: Execute steps in declaration order following the 8-step lifecycle.
+ * Phase 2: Execute steps in declaration order following the 9-step lifecycle.
  */
 export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   const { onEvent } = options;
@@ -157,7 +153,6 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
       stepMap,
       branchStepIds,
       options.toolAdapter,
-      options.llmAdapter,
       onEvent,
     );
     stepRecords.push(...result.records);
@@ -200,17 +195,14 @@ export async function runWorkflow(options: RunOptions): Promise<RunLog> {
   // Build summary
   let stepsExecuted = 0;
   let stepsSkipped = 0;
-  let totalTokens = 0;
   for (const rec of stepRecords) {
     if (rec.status === 'skipped') stepsSkipped++;
     else stepsExecuted++;
-    if (rec.tokens) totalTokens += rec.tokens.input + rec.tokens.output;
   }
 
   const summary = {
     steps_executed: stepsExecuted,
     steps_skipped: stepsSkipped,
-    total_tokens: totalTokens,
     total_duration_ms: durationMs,
   };
 
@@ -242,7 +234,6 @@ export interface RunWorkflowSkillOptions {
   content: string;
   inputs?: Record<string, unknown>;
   toolAdapter: ToolAdapter;
-  llmAdapter: LLMAdapter;
   /** Fallback name used when content has no frontmatter. Defaults to 'inline'. */
   workflowName?: string;
   onEvent?: (event: RuntimeEvent) => void;
@@ -255,7 +246,7 @@ export interface RunWorkflowSkillOptions {
  * Validation failures are handled internally by runWorkflow.
  */
 export async function runWorkflowSkill(options: RunWorkflowSkillOptions): Promise<RunLog> {
-  const { content, inputs, toolAdapter, llmAdapter, workflowName = 'inline', onEvent } = options;
+  const { content, inputs, toolAdapter, workflowName = 'inline', onEvent } = options;
   const startedAt = new Date();
 
   const parsed = parseContent(content);
@@ -273,7 +264,6 @@ export async function runWorkflowSkill(options: RunWorkflowSkillOptions): Promis
       workflow: parsed.workflow,
       inputs,
       toolAdapter,
-      llmAdapter,
       workflowName: resolvedName,
       onEvent,
     });
@@ -302,7 +292,6 @@ async function executeStepLifecycle(
   stepMap: Map<string, Step>,
   branchStepIds: Set<string>,
   toolAdapter: ToolAdapter,
-  llmAdapter: LLMAdapter,
   onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
   const startTime = performance.now();
@@ -338,10 +327,7 @@ async function executeStepLifecycle(
     return executeWithEach(
       step,
       context,
-      stepMap,
-      branchStepIds,
       toolAdapter,
-      llmAdapter,
       startTime,
       onEvent,
     );
@@ -357,7 +343,6 @@ async function executeStepLifecycle(
       resolvedInputs,
       context,
       toolAdapter,
-      llmAdapter,
       onEvent,
     );
 
@@ -386,7 +371,6 @@ async function executeStepLifecycle(
         stepMap,
         branchStepIds,
         toolAdapter,
-        llmAdapter,
         onEvent,
       );
 
@@ -428,7 +412,6 @@ async function executeStepLifecycle(
       stepId: step.id,
       status: 'success',
       duration_ms: durationMs,
-      tokens: result.tokens,
     });
     records.push({
       id: step.id,
@@ -437,7 +420,6 @@ async function executeStepLifecycle(
       duration_ms: durationMs,
       inputs: resolvedInputs,
       output: mappedOutput,
-      tokens: result.tokens,
       retries,
     });
     return { records };
@@ -452,10 +434,7 @@ async function executeStepLifecycle(
 async function executeWithEach(
   step: Step,
   context: RuntimeContext,
-  _stepMap: Map<string, Step>,
-  _branchStepIds: Set<string>,
   toolAdapter: ToolAdapter,
-  llmAdapter: LLMAdapter,
   startTime: number,
   onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
@@ -477,7 +456,6 @@ async function executeWithEach(
   // Resolve inputs with the base context (before iteration) for the record
   const baseResolvedInputs = resolveInputs(step.inputs, context, step.id);
   const results: unknown[] = [];
-  let totalTokens: TokenUsage | undefined;
   let totalRetries: RetryRecord | undefined;
 
   try {
@@ -493,7 +471,6 @@ async function executeWithEach(
         iterInputs,
         itemContext,
         toolAdapter,
-        llmAdapter,
         onEvent,
       );
 
@@ -507,11 +484,6 @@ async function executeWithEach(
         // Apply per-element step output mapping
         const mappedIterOutput = applyStepOutputMapping(step.outputs, result.output, itemContext);
         results.push(mappedIterOutput);
-        if (result.tokens) {
-          totalTokens = totalTokens ?? { input: 0, output: 0 };
-          totalTokens.input += result.tokens.input;
-          totalTokens.output += result.tokens.output;
-        }
       }
 
       emit(onEvent, { type: 'each_progress', stepId: step.id, current: i + 1, total: eachArray.length });
@@ -532,7 +504,6 @@ async function executeWithEach(
     stepId: step.id,
     status: 'success',
     duration_ms: durationMs,
-    tokens: totalTokens,
     iterations: eachArray.length,
   });
   records.push({
@@ -542,7 +513,6 @@ async function executeWithEach(
     duration_ms: durationMs,
     inputs: baseResolvedInputs,
     iterations: eachArray.length,
-    tokens: totalTokens,
     output: results,
     retries: totalRetries,
   });
@@ -558,7 +528,6 @@ async function executeBranch(
   stepMap: Map<string, Step>,
   branchStepIds: Set<string>,
   toolAdapter: ToolAdapter,
-  llmAdapter: LLMAdapter,
   onEvent?: (event: RuntimeEvent) => void,
 ): Promise<LifecycleResult> {
   const records: StepRecord[] = [];
@@ -573,7 +542,6 @@ async function executeBranch(
       stepMap,
       branchStepIds,
       toolAdapter,
-      llmAdapter,
       onEvent,
     );
     records.push(...result.records);
@@ -602,7 +570,6 @@ async function dispatchWithRetry(
   resolvedInputs: Record<string, unknown>,
   context: RuntimeContext,
   toolAdapter: ToolAdapter,
-  llmAdapter: LLMAdapter,
   onEvent?: (event: RuntimeEvent) => void,
 ): Promise<RetryDispatchResult> {
   const retryPolicy = 'retry' in step ? step.retry : undefined;
@@ -615,7 +582,7 @@ async function dispatchWithRetry(
 
   for (;;) {
     try {
-      const result = await dispatch(step, resolvedInputs, context, toolAdapter, llmAdapter);
+      const result = await dispatch(step, resolvedInputs, context, toolAdapter);
       const retries = attempts > 0 ? { attempts, errors: retryErrors } : undefined;
       return { result, retries };
     } catch (err) {
@@ -747,7 +714,7 @@ function collectBranchStepIds(steps: Step[]): Set<string> {
 /**
  * Apply step output value mapping.
  * For each declared output with a `value` expression, resolve against the raw executor result.
- * Outputs without `value` pass through from raw output by key name (backwards compatible).
+ * Outputs without `value` pass through from raw output by key name.
  */
 function applyStepOutputMapping(
   stepOutputs: Record<string, StepOutput>,
@@ -817,7 +784,7 @@ function buildWorkflowOutputs(
     return result;
   }
 
-  // No value fields — legacy behavior: match by key name against final output
+  // No value fields — pass through by key name from final output
   if (finalOutput !== null && typeof finalOutput === 'object' && !Array.isArray(finalOutput)) {
     const outputObj = finalOutput as Record<string, unknown>;
     const result: Record<string, unknown> = {};

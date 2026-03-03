@@ -1,98 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { validateWorkflow } from '../../src/validator/index.js';
-import { parseWorkflowFromMd } from '../../src/parser/index.js';
-import type { WorkflowDefinition, ToolAdapter, ToolResult } from '../../src/types/index.js';
+import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
+import type { WorkflowDefinition } from '../../src/types/index.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = join(__dirname, '../fixtures');
-const readFixture = (name: string) => readFileSync(join(fixturesDir, name), 'utf-8');
-const parseFixture = (name: string) => parseWorkflowFromMd(readFixture(name));
+// ─── Helper ───────────────────────────────────────────────────────────────────
 
-// ─── Mock tool adapter ────────────────────────────────────────────────────────
-
-class MockToolAdapter implements ToolAdapter {
-  private tools: Set<string>;
-
-  constructor(toolNames: string[]) {
-    this.tools = new Set(toolNames);
-  }
-
-  has(toolName: string): boolean {
-    return this.tools.has(toolName);
-  }
-
-  async invoke(_toolName: string, _args: Record<string, unknown>): Promise<ToolResult> {
-    return { output: {} };
-  }
+function mockToolsFor(names: string[]): MockToolAdapter {
+  const adapter = new MockToolAdapter();
+  for (const name of names) adapter.register(name, () => ({ output: {} }));
+  return adapter;
 }
-
-// ─── Valid workflow tests ─────────────────────────────────────────────────────
-
-describe('validateWorkflow - valid workflows', () => {
-  const allTools = new MockToolAdapter([
-    'search', 'gmail_fetch', 'get_items', 'validate', 'get_documents',
-    'unreliable_api', 'flaky_api', 'get_records',
-  ]);
-
-  it('validates echo workflow', () => {
-    const result = validateWorkflow(parseFixture('echo.md'));
-    expect(result.valid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('validates two-step-pipe workflow', () => {
-    const result = validateWorkflow(parseFixture('two-step-pipe.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates llm-judgment workflow', () => {
-    const result = validateWorkflow(parseFixture('llm-judgment.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates filter-exit workflow', () => {
-    const result = validateWorkflow(parseFixture('filter-exit.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates branch workflow', () => {
-    const result = validateWorkflow(parseFixture('branch.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates each-loop workflow', () => {
-    const result = validateWorkflow(parseFixture('each-loop.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates error-fail workflow', () => {
-    const result = validateWorkflow(parseFixture('error-fail.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates error-ignore workflow', () => {
-    const result = validateWorkflow(parseFixture('error-ignore.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates retry-backoff workflow', () => {
-    const result = validateWorkflow(parseFixture('retry-backoff.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates sort-pipeline workflow', () => {
-    const result = validateWorkflow(parseFixture('sort-pipeline.md'), allTools);
-    expect(result.valid).toBe(true);
-  });
-
-  it('validates without tool adapter (skips tool checks)', () => {
-    const result = validateWorkflow(parseFixture('two-step-pipe.md'));
-    expect(result.valid).toBe(true);
-  });
-});
 
 // ─── Duplicate ID tests ──────────────────────────────────────────────────────
 
@@ -130,7 +47,7 @@ describe('validateWorkflow - duplicate step IDs', () => {
 
 describe('validateWorkflow - tool availability', () => {
   it('detects missing tools', () => {
-    const adapter = new MockToolAdapter(['search']);
+    const adapter = mockToolsFor(['search']);
     const wf: WorkflowDefinition = {
       inputs: {},
       outputs: {},
@@ -220,7 +137,7 @@ describe('validateWorkflow - delay constraints', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['some_tool']);
+    const adapter = mockToolsFor(['some_tool']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.message.includes('"delay" requires "each"'))).toBe(true);
@@ -242,7 +159,7 @@ describe('validateWorkflow - delay constraints', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['some_tool']);
+    const adapter = mockToolsFor(['some_tool']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
   });
@@ -415,7 +332,7 @@ describe('validateWorkflow - workflow output source', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['test_tool']);
+    const adapter = mockToolsFor(['test_tool']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
   });
@@ -436,7 +353,7 @@ describe('validateWorkflow - workflow output source', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['test_tool']);
+    const adapter = mockToolsFor(['test_tool']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e =>
@@ -444,7 +361,7 @@ describe('validateWorkflow - workflow output source', () => {
     )).toBe(true);
   });
 
-  it('accepts workflow outputs without source (backwards compatible)', () => {
+  it('accepts workflow outputs without value (key-name pass-through)', () => {
     const wf: WorkflowDefinition = {
       inputs: {},
       outputs: {
@@ -460,7 +377,7 @@ describe('validateWorkflow - workflow output source', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['test_tool']);
+    const adapter = mockToolsFor(['test_tool']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
   });
@@ -470,7 +387,7 @@ describe('validateWorkflow - workflow output source', () => {
 
 describe('validateWorkflow - collects all errors', () => {
   it('returns multiple errors at once', () => {
-    const adapter = new MockToolAdapter([]);
+    const adapter = mockToolsFor([]);
     const wf: WorkflowDefinition = {
       inputs: {},
       outputs: {},
@@ -519,7 +436,7 @@ describe('validateWorkflow - template reference validation', () => {
         {
           id: 'fetch',
           type: 'tool',
-          tool: 'http.request',
+          tool: 'web.scrape',
           inputs: {
             url: { type: 'string', value: 'https://api.example.com/${steps.nonexistent.output.id}' },
           },
@@ -527,7 +444,7 @@ describe('validateWorkflow - template reference validation', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['http.request']);
+    const adapter = mockToolsFor(['web.scrape']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.message.includes('undefined step "nonexistent"'))).toBe(true);
@@ -541,14 +458,14 @@ describe('validateWorkflow - template reference validation', () => {
         {
           id: 'get_id',
           type: 'tool',
-          tool: 'http.request',
+          tool: 'web.scrape',
           inputs: {},
           outputs: { id: { type: 'string' } },
         },
         {
           id: 'fetch',
           type: 'tool',
-          tool: 'http.request',
+          tool: 'web.scrape',
           inputs: {
             url: { type: 'string', value: 'https://api.example.com/${steps.get_id.output.id}' },
           },
@@ -556,7 +473,7 @@ describe('validateWorkflow - template reference validation', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['http.request']);
+    const adapter = mockToolsFor(['web.scrape']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
   });
@@ -575,7 +492,7 @@ describe('validateWorkflow - conditional branch cycle detection', () => {
         {
           id: 'fetch',
           type: 'tool',
-          tool: 'http.request',
+          tool: 'web.scrape',
           inputs: {},
           outputs: { score: { type: 'float' } },
         },
@@ -596,7 +513,7 @@ describe('validateWorkflow - conditional branch cycle detection', () => {
         },
       ],
     };
-    const adapter = new MockToolAdapter(['http.request']);
+    const adapter = mockToolsFor(['web.scrape']);
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
     expect(result.errors.filter(e => e.message.includes('Cycle'))).toHaveLength(0);

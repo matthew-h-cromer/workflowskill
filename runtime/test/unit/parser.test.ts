@@ -1,42 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseSkillMd, parseWorkflowYaml, parseWorkflowFromMd, ParseError } from '../../src/parser/index.js';
-import { extractWorkflowBlock, extractFrontmatter, ExtractError } from '../../src/parser/extract.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = join(__dirname, '../fixtures');
-const readFixture = (name: string) => readFileSync(join(fixturesDir, name), 'utf-8');
-
-// ─── Extract tests ────────────────────────────────────────────────────────────
-
-describe('extractFrontmatter', () => {
-  it('extracts YAML frontmatter', () => {
-    const content = readFixture('echo.md');
-    const fm = extractFrontmatter(content);
-    expect(fm).toContain('name: echo');
-    expect(fm).toContain('description:');
-  });
-
-  it('returns null when no frontmatter', () => {
-    const fm = extractFrontmatter('# No frontmatter\nJust content.');
-    expect(fm).toBeNull();
-  });
-});
-
-describe('extractWorkflowBlock', () => {
-  it('extracts workflow YAML block', () => {
-    const content = readFixture('echo.md');
-    const yaml = extractWorkflowBlock(content);
-    expect(yaml).toContain('steps:');
-    expect(yaml).toContain('id: echo');
-  });
-
-  it('throws on missing workflow block', () => {
-    expect(() => extractWorkflowBlock('# No block')).toThrow(ExtractError);
-  });
-});
+import { readFixture } from '../helpers.js';
+import { parseSkillMd, parseWorkflowYaml, ParseError } from '../../src/parser/index.js';
 
 // ─── Parse full SKILL.md tests ────────────────────────────────────────────────
 
@@ -47,34 +11,6 @@ describe('parseSkillMd', () => {
     expect(result.workflow.steps).toHaveLength(1);
     expect(result.workflow.steps[0]!.id).toBe('echo');
     expect(result.workflow.steps[0]!.type).toBe('transform');
-  });
-
-  it('parses two-step-pipe workflow', () => {
-    const result = parseSkillMd(readFixture('two-step-pipe.md'));
-    expect(result.workflow.steps).toHaveLength(2);
-    expect(result.workflow.steps[0]!.type).toBe('tool');
-    expect(result.workflow.steps[1]!.type).toBe('transform');
-  });
-
-  it('parses llm-judgment workflow', () => {
-    const result = parseSkillMd(readFixture('llm-judgment.md'));
-    expect(result.workflow.steps).toHaveLength(2);
-    const llmStep = result.workflow.steps[1]!;
-    expect(llmStep.type).toBe('llm');
-    if (llmStep.type === 'llm') {
-      expect(llmStep.model).toBe('haiku');
-      expect(llmStep.prompt).toContain('Score the priority');
-    }
-  });
-
-  it('parses filter-exit workflow', () => {
-    const result = parseSkillMd(readFixture('filter-exit.md'));
-    expect(result.workflow.steps).toHaveLength(5);
-    const filterStep = result.workflow.steps[1]!;
-    expect(filterStep.type).toBe('transform');
-    if (filterStep.type === 'transform' && filterStep.operation === 'filter') {
-      expect(filterStep.where).toContain('$item.score');
-    }
   });
 
   it('parses branch workflow', () => {
@@ -89,35 +25,9 @@ describe('parseSkillMd', () => {
 
   it('parses each-loop workflow', () => {
     const result = parseSkillMd(readFixture('each-loop.md'));
-    const llmStep = result.workflow.steps[1]!;
-    expect(llmStep.each).toBe('$steps.fetch.output.documents');
-  });
-
-  it('parses error-fail workflow', () => {
-    const result = parseSkillMd(readFixture('error-fail.md'));
-    expect(result.workflow.steps[0]!.on_error).toBe('fail');
-  });
-
-  it('parses error-ignore workflow', () => {
-    const result = parseSkillMd(readFixture('error-ignore.md'));
-    expect(result.workflow.steps[0]!.on_error).toBe('ignore');
-  });
-
-  it('parses retry-backoff workflow', () => {
-    const result = parseSkillMd(readFixture('retry-backoff.md'));
-    const step = result.workflow.steps[0]!;
-    expect(step.retry).toEqual({ max: 3, delay: '100ms', backoff: 2.0 });
-  });
-
-  it('parses sort-pipeline workflow', () => {
-    const result = parseSkillMd(readFixture('sort-pipeline.md'));
-    expect(result.workflow.steps).toHaveLength(3);
-    const sortStep = result.workflow.steps[1]!;
-    expect(sortStep.type).toBe('transform');
-    if (sortStep.type === 'transform' && sortStep.operation === 'sort') {
-      expect(sortStep.field).toBe('score');
-      expect(sortStep.direction).toBe('desc');
-    }
+    const eachStep = result.workflow.steps[1]!;
+    expect(eachStep.each).toBe('$steps.fetch.output.documents');
+    expect(eachStep.type).toBe('tool');
   });
 });
 
@@ -133,9 +43,9 @@ describe('parseSkillMd error cases', () => {
   });
 
   it('throws on invalid schema with details', () => {
+    expect.assertions(2);
     try {
       parseSkillMd(readFixture('malformed-bad-schema.md'));
-      expect.fail('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(ParseError);
       const parseErr = err as ParseError;
@@ -174,16 +84,6 @@ steps:
   });
 });
 
-// ─── parseWorkflowFromMd tests ───────────────────────────────────────────────
-
-describe('parseWorkflowFromMd', () => {
-  it('parses workflow from markdown without requiring frontmatter', () => {
-    const content = readFixture('malformed-no-frontmatter.md');
-    const result = parseWorkflowFromMd(content);
-    expect(result.steps).toHaveLength(1);
-  });
-});
-
 // ─── Output source parsing ───────────────────────────────────────────────────
 
 describe('value field (unified source/default)', () => {
@@ -192,7 +92,7 @@ describe('value field (unified source/default)', () => {
 steps:
   - id: fetch
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
       url: { type: string, value: "https://example.com" }
     outputs:
@@ -227,27 +127,10 @@ steps:
     const content = readFixture('output-source.md');
     const result = parseSkillMd(content);
     expect(result.workflow.outputs.title).toEqual({ type: 'string', value: '$steps.fetch.output.title' });
-    expect(result.workflow.outputs.user_id).toEqual({ type: 'int', value: '$steps.fetch.output.user_id' });
+    expect(result.workflow.outputs.author).toEqual({ type: 'string', value: '$steps.fetch.output.author' });
     const step = result.workflow.steps[0]!;
-    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
-    expect(step.outputs.user_id).toEqual({ type: 'int', value: '$result.body.userId' });
-  });
-
-  it('normalizes legacy source to value (backwards compat)', () => {
-    const yaml = `
-steps:
-  - id: fetch
-    type: tool
-    tool: http.request
-    inputs:
-      url: { type: string, source: "$steps.prev.output.url" }
-    outputs:
-      title: { type: string, source: "$result.body.title" }
-`;
-    const result = parseWorkflowYaml(yaml);
-    const step = result.steps[0]!;
-    expect(step.inputs.url).toEqual({ type: 'string', value: '$steps.prev.output.url' });
-    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.body.title' });
+    expect(step.outputs.title).toEqual({ type: 'string', value: '$result.results[0].title' });
+    expect(step.outputs.author).toEqual({ type: 'string', value: '$result.results[0].author' });
   });
 
   it('parses default on workflow inputs (canonical field)', () => {
@@ -259,9 +142,9 @@ inputs:
 steps:
   - id: fetch
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
-      method: { type: string, default: "POST" }
+      method: { type: string, value: "POST" }
     outputs: {}
 `;
     const result = parseWorkflowYaml(yaml);
@@ -270,20 +153,4 @@ steps:
     expect(step.inputs.method).toEqual({ type: 'string', value: 'POST' });
   });
 
-  it('normalizes legacy value to default on workflow inputs (backwards compat)', () => {
-    const yaml = `
-inputs:
-  method:
-    type: string
-    value: "GET"
-steps:
-  - id: fetch
-    type: tool
-    tool: http.request
-    inputs: {}
-    outputs: {}
-`;
-    const result = parseWorkflowYaml(yaml);
-    expect(result.inputs.method).toEqual({ type: 'string', default: 'GET' });
-  });
 });

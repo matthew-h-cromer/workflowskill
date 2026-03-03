@@ -13,41 +13,6 @@ A declarative workflow language for AI agents.
 2. Your agent writes a WorkflowSkill — an extension to [Agent Skills](https://agentskills.io/home) — that can be executed deterministically by any compatible runtime.
 3. The WorkflowSkill runs reliably and cheaply for repetitive tasks — no agent needed.
 
-```yaml
-inputs:
-  url:
-    type: string
-
-outputs:
-  summary:
-    type: string
-    value: $steps.summarize.output.summary
-
-steps:
-  - id: scrape
-    type: tool
-    tool: web.scrape
-    inputs:
-      url:
-        type: string
-        value: $inputs.url
-      selector:
-        type: string
-        value: "p"
-    outputs:
-      text:
-        type: array
-        value: $result.results
-
-  - id: summarize
-    type: llm
-    prompt: "Summarize this content: $steps.scrape.output.text"
-    outputs:
-      summary:
-        type: string
-        value: $result
-```
-
 ## Repositories
 
 | Repo                                                                                 | Description                                                          |
@@ -72,68 +37,29 @@ npm install
 npm run build
 ```
 
-### Example WorkflowSkills to test
-
-**hello-world** — no API keys needed:
-
-```bash
-workflowskill run ../examples/hello-world.md
-```
-
-**fetch-job-postings** — scrapes LinkedIn job listings, no API keys needed:
-
-```bash
-workflowskill run ../examples/fetch-job-postings.md \
-  --input '{"keywords": "software engineer", "location": "United States"}'
-```
-
 ### Authoring WorkflowSkills
 
 A WorkflowSkill is authored via natural conversation with any agent system that supports the [Agent Skills](https://agentskills.io/home) format.
 
-Steps to author a WorkflowSkill:
-
-1. Prompt your agent to create a workflow, "I want to check this website daily"
-   - This repo is configured to work with Claude Code via .claude/ — for other agent tools, provide the contents of runtime/skill/SKILL.md as context.
+1. Prompt your agent to create a workflow: "I want to check this website daily"
+   - This repo is configured to work with Claude Code via `.claude/` — for other agent tools, provide the contents of `runtime/skill/SKILL.md` as context.
 2. Your agent writes a WorkflowSkill.
-3. The WorkflowSkill can then be executed deterministically via `workflowskill run <workflow.md>`
-
-Your agent will research the task, write the workflow file, and validate it with the CLI. The bundled tools available to generated workflows are:
-
-| Tool          | What it does                                     |
-| ------------- | ------------------------------------------------ |
-| `web.scrape`  | Fetch a URL and extract data via CSS selectors   |
-
-Works with no setup or credentials.
-
-**Run the generated workflow:**
-
-```bash
-# Validate (no API keys needed)
-workflowskill validate path/to/workflow.md
-
-# Run it (requires ANTHROPIC_API_KEY for LLM steps)
-workflowskill run path/to/workflow.md
-
-# Pass inputs as JSON
-workflowskill run path/to/workflow.md --input '{"keywords": "rust developer"}'
-```
-
-The CLI shows live progress on stderr and writes a structured [run log](#run-log) as JSON to stdout and to `runs/<name>-<timestamp>.json`.
+3. Integrate it with your host using the [Integration](#integration) section.
 
 **Evaluate the output:** Check `status` for overall success. If a step failed, its `error` field explains why. For `each` steps, `iterations` shows per-item results. Compare per-step `inputs` and `output` values against your expectations to find where the data flow broke down.
 
 ## Language overview
 
-WorkflowSkill workflows are YAML documents with five step types:
+WorkflowSkill workflows are YAML documents with four step types:
 
-| Step type     | Description                                                                         |
-| ------------- | ----------------------------------------------------------------------------------- |
-| `tool`        | Invoke an MCP server endpoint, builtin tool (HTTP, HTML), or any registered adapter |
-| `llm`         | Call a language model with a templated prompt                                        |
-| `transform`   | Filter, map, or sort data without side effects                                       |
-| `conditional` | Branch execution based on an expression                                              |
-| `exit`        | Terminate early with a status and output                                             |
+| Step type     | Description                                                                     |
+| ------------- | ------------------------------------------------------------------------------- |
+| `tool`        | Invoke any tool via the host's `ToolAdapter` (APIs, functions, LLM calls, etc.) |
+| `transform`   | Filter, map, or sort data without side effects                                  |
+| `conditional` | Branch execution based on an expression                                         |
+| `exit`        | Terminate early with a status and output                                        |
+
+All external calls — including LLM inference — go through `tool` steps. The runtime itself has no LLM dependency. The host registers whatever tools are available in the deployment context.
 
 Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
 
@@ -141,17 +67,17 @@ See [SPEC.md](SPEC.md) for the full language reference.
 
 ## Runtime
 
-The reference implementation is a standalone TypeScript library and CLI in [`runtime/`](runtime/). It includes:
+The reference implementation is a standalone TypeScript library in [`runtime/`](runtime/). It includes:
 
 - **Parser** — extracts and validates workflow YAML from Markdown
 - **Expression engine** — `$`-reference language with `${...}` template interpolation
 - **Validator** — pre-execution DAG and type checking
-- **Executor** — five step type executors
-- **Builtin tools** — `web.scrape` (wire your own `ToolAdapter` for additional tools)
-- **CLI** — `validate` and `run` commands
+- **Executor** — four step type executors
 - **Run log** — structured observability output for every run
 
-## Library API
+The runtime is a pure orchestration library — no CLI, no built-in tools, no LLM dependencies. Wire in your tools and run.
+
+## Integration
 
 Two entry points collapse parse → validate → run into single calls that accept raw content and never throw.
 
@@ -176,7 +102,6 @@ const log = await runWorkflowSkill({
   content,          // SKILL.md with frontmatter or bare workflow YAML
   inputs: { ... },
   toolAdapter,      // implements ToolAdapter
-  llmAdapter,       // implements LLMAdapter
 });
 
 if (log.status === "success") {
@@ -192,7 +117,7 @@ Key ergonomic properties:
 
 ## Adapters
 
-`ToolAdapter` and `LLMAdapter` are the integration boundaries:
+`ToolAdapter` is the integration boundary between the runtime and the host:
 
 ```typescript
 interface ToolAdapter {
@@ -200,22 +125,18 @@ interface ToolAdapter {
   has(toolName: string): boolean;
   list?(): ToolDescriptor[];
 }
-
-interface LLMAdapter {
-  call(
-    model: string | undefined,
-    prompt: string,
-    responseFormat?: Record<string, unknown>,
-  ): Promise<LLMResult>;
-}
 ```
 
-Built-in implementations:
+Implement `ToolAdapter` to expose your tools (MCP servers, functions, LLM calls, etc.) to the workflow runtime.
 
-- **`BuiltinToolAdapter`** — provides `web.scrape` for standalone use
-- **`AnthropicLLMAdapter`** — wraps the Anthropic SDK; reads `ANTHROPIC_API_KEY` from the environment
+For testing, **`MockToolAdapter`** lets you supply handler functions without any external dependencies:
 
-For testing, **`MockToolAdapter`** and **`MockLLMAdapter`** let you supply handler functions without any external dependencies.
+```typescript
+import { MockToolAdapter } from "workflowskill";
+
+const adapter = new MockToolAdapter();
+adapter.register("my_tool", async (args) => ({ output: "result" }));
+```
 
 ## Run log
 
@@ -229,7 +150,6 @@ interface RunLog {
   summary: {
     steps_executed: number;
     steps_skipped: number;
-    total_tokens: number;
     total_duration_ms: number;
   };
   started_at: string; // ISO 8601
@@ -248,9 +168,9 @@ interface RunLog {
 
 `error` is present only when the run failed. `outputs` is populated on success (and on `exit` steps with `status: failed`).
 
-## Low-level API
+## Low-level integration
 
-`parseWorkflowFromMd`, `validateWorkflow`, and `runWorkflow` are still exported for consumers who need fine-grained control over each phase.
+`parseWorkflowFromMd`, `validateWorkflow`, and `runWorkflow` are also exported for consumers who need fine-grained control over each phase.
 
 ## Development
 
@@ -262,20 +182,7 @@ npm run test               # Run all tests (vitest)
 npm run test:coverage      # With coverage report
 npm run lint               # ESLint
 npm run build              # tsdown
-npm run validate:examples  # Validate all fixtures
 ```
-
-The test suite includes a workflow-authoring evaluation (`test/workflow-authoring/`) that scores the workflow-author skill against 12 test cases. The fixtures are committed snapshots — they validate deterministically without LLM calls. **If you make a meaningful change to `.claude/skills/workflow-author/SKILL.md`, identify which fixtures exercise the changed rule and regenerate them** (delete the fixture, re-run `/workflow-author` with the original prompt, save the output). Passing tests after a skill edit only confirms the old fixtures still meet the quality bar — not that the skill itself improved.
-
-## Configuration
-
-Create a `.env` file in `runtime/`:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...       # Required for LLM steps in workflows
-```
-
-The CLI finds `runtime/.env` automatically regardless of your working directory. You can also export env vars directly in your shell. Missing `ANTHROPIC_API_KEY` causes LLM steps to fail with a clear error (no silent fallback).
 
 ## License
 

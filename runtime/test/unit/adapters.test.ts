@@ -16,36 +16,6 @@ describe('MockToolAdapter', () => {
     expect(descriptors[0]).toEqual({ name: 'my.tool', description: '' });
   });
 
-  it('register() with descriptor stores full metadata', () => {
-    const adapter = new MockToolAdapter();
-    adapter.register('gmail.search', () => ({ output: [] }), {
-      description: 'Search Gmail messages by query.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The search query' },
-          max_results: { type: 'integer', description: 'Maximum results to return' },
-        },
-        required: ['query'],
-      },
-      outputSchema: {
-        type: 'array',
-        items: { type: 'object' },
-      },
-    });
-
-    const descriptors = adapter.list();
-    expect(descriptors).toHaveLength(1);
-    const d = descriptors[0]!;
-    expect(d.name).toBe('gmail.search');
-    expect(d.description).toBe('Search Gmail messages by query.');
-    expect(d.inputSchema?.properties?.query).toEqual({
-      type: 'string',
-      description: 'The search query',
-    });
-    expect(d.outputSchema).toBeDefined();
-  });
-
   it('list() returns all registered descriptors', () => {
     const adapter = new MockToolAdapter();
     adapter.register('tool_a', () => ({ output: 'a' }), {
@@ -60,9 +30,14 @@ describe('MockToolAdapter', () => {
     const descriptors = adapter.list();
     expect(descriptors).toHaveLength(3);
     expect(descriptors.map((d) => d.name)).toEqual(['tool_a', 'tool_b', 'tool_c']);
+
+    // tool_b has inputSchema stored
+    const b = descriptors.find((d) => d.name === 'tool_b')!;
+    expect(b.description).toBe('Tool B');
+    expect(b.inputSchema).toEqual({ type: 'object' });
   });
 
-  it('has() works after refactor', () => {
+  it('has() returns true for registered and false for unregistered', () => {
     const adapter = new MockToolAdapter();
     adapter.register('exists', () => ({ output: true }));
 
@@ -70,7 +45,7 @@ describe('MockToolAdapter', () => {
     expect(adapter.has('missing')).toBe(false);
   });
 
-  it('invoke() works after refactor', async () => {
+  it('invoke() calls registered handler and returns result', async () => {
     const adapter = new MockToolAdapter();
     adapter.register('echo', (args) => ({ output: args }), {
       description: 'Echoes input',

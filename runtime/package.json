@@ -1,6 +1,6 @@
 {
   "name": "workflowskill",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WorkflowSkill runtime - execute declarative agent workflows",
   "author": "Matthew Cromer",
   "repository": {
@@ -27,17 +27,13 @@
     "dist",
     "skill"
   ],
-  "bin": {
-    "workflowskill": "dist/cli/index.mjs"
-  },
   "scripts": {
-    "build": "tsdown src/index.ts src/cli/index.ts --format esm --dts",
+    "build": "tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
-    "validate:examples": "tsx src/cli/index.ts validate test/fixtures/echo.md test/fixtures/two-step-pipe.md test/fixtures/llm-judgment.md test/fixtures/filter-exit.md test/fixtures/branch.md test/fixtures/each-loop.md test/fixtures/error-fail.md test/fixtures/error-ignore.md test/fixtures/retry-backoff.md test/fixtures/sort-pipeline.md test/fixtures/graduation-*.md",
     "prepublishOnly": "npm run typecheck && npm run test && npm run lint && npm run build"
   },
   "engines": {
@@ -52,10 +48,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "cheerio": "^1.0.0",
-    "commander": "^14.0.3",
-    "picocolors": "^1.1.1",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },

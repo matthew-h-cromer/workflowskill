@@ -60,7 +60,7 @@ export type OnError = 'fail' | 'ignore';
 
 // ─── Step types ───────────────────────────────────────────────────────────────
 
-export type StepType = 'tool' | 'llm' | 'transform' | 'conditional' | 'exit';
+export type StepType = 'tool' | 'transform' | 'conditional' | 'exit';
 
 /** Transform operation kinds. */
 export type TransformOperation = 'filter' | 'map' | 'sort';
@@ -100,17 +100,6 @@ export interface ToolStep extends StepBase {
   type: 'tool';
   /** Registered tool name. */
   tool: string;
-}
-
-/** LLM step: calls a language model. */
-export interface LLMStep extends StepBase {
-  type: 'llm';
-  /** Model identifier (optional, falls back to platform default). */
-  model?: string;
-  /** Prompt template with $-expression interpolation. */
-  prompt: string;
-  /** Structured output hint (optional). */
-  response_format?: Record<string, unknown>;
 }
 
 /** Transform step: filter, map, or sort data. */
@@ -160,7 +149,7 @@ export interface ExitStep extends StepBase {
 }
 
 /** Union of all step types. */
-export type Step = ToolStep | LLMStep | TransformStep | ConditionalStep | ExitStep;
+export type Step = ToolStep | TransformStep | ConditionalStep | ExitStep;
 
 // ─── Workflow definition ──────────────────────────────────────────────────────
 
@@ -185,12 +174,6 @@ export interface ParsedSkill {
 }
 
 // ─── Run log ──────────────────────────────────────────────────────────────────
-
-/** Token usage for an LLM step. */
-export interface TokenUsage {
-  input: number;
-  output: number;
-}
 
 /** Retry tracking for a step that was retried. */
 export interface RetryRecord {
@@ -219,8 +202,6 @@ export interface StepRecord {
   inputs?: Record<string, unknown>;
   /** Number of iterations (if each was used). */
   iterations?: number;
-  /** Token counts (LLM steps only). */
-  tokens?: TokenUsage;
   /** The step's output (may be truncated in logs). */
   output?: unknown;
   /** Error details if the step failed. */
@@ -233,7 +214,6 @@ export interface StepRecord {
 export interface RunSummary {
   steps_executed: number;
   steps_skipped: number;
-  total_tokens: number;
   total_duration_ms: number;
 }
 
@@ -282,7 +262,7 @@ export interface RunLog {
 export type RuntimeEvent =
   | { type: 'workflow_start'; workflow: string; totalSteps: number }
   | { type: 'step_start'; stepId: string; stepType: StepType; tool?: string }
-  | { type: 'step_complete'; stepId: string; status: StepRunStatus; duration_ms: number; tokens?: TokenUsage; iterations?: number }
+  | { type: 'step_complete'; stepId: string; status: StepRunStatus; duration_ms: number; iterations?: number }
   | { type: 'step_skip'; stepId: string; reason: string }
   | { type: 'step_retry'; stepId: string; attempt: number; error: string }
   | { type: 'step_error'; stepId: string; error: string; onError: OnError }
@@ -323,17 +303,6 @@ export interface ToolAdapter {
   has(toolName: string): boolean;
   /** List all available tools with their metadata. Optional for backward compatibility. */
   list?(): ToolDescriptor[];
-}
-
-/** Result from an LLM call. */
-export interface LLMResult {
-  text: string;
-  tokens: TokenUsage;
-}
-
-/** LLM adapter interface for calling language models. */
-export interface LLMAdapter {
-  call(model: string | undefined, prompt: string, responseFormat?: Record<string, unknown>): Promise<LLMResult>;
 }
 
 // ─── Runtime context ──────────────────────────────────────────────────────────

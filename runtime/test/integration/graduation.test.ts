@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { parseWorkflowFromMd } from '../../src/parser/index.js';
 import { runWorkflow } from '../../src/runtime/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
-import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 
 const FIXTURES = join(import.meta.dirname, '../fixtures');
 
@@ -31,6 +30,23 @@ describe('graduation: email triage', () => {
       },
     }));
 
+    // score_email returns { from, subject, score, summary } based on the email content
+    tools.register('score_email', (args) => {
+      const email = args.email as Record<string, string>;
+      let score = 3;
+      if (email.subject?.includes('Urgent') || email.subject?.includes('incident')) score = 9;
+      if (email.subject?.includes('deals') || email.from?.includes('spam')) score = 1;
+      if (email.subject?.includes('lunch')) score = 4;
+      return {
+        output: {
+          from: email.from,
+          subject: email.subject,
+          score,
+          summary: `Priority: ${score}`,
+        },
+      };
+    });
+
     tools.register('slack.post_message', () => ({
       output: { ok: true },
     }));
@@ -41,24 +57,10 @@ describe('graduation: email triage', () => {
   it('scores, filters, sorts, and posts briefing', async () => {
     const { workflow, tools } = setupEmailTriage();
 
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      // Score based on keywords in prompt
-      let score = 3;
-      if (prompt.includes('Urgent') || prompt.includes('incident')) score = 9;
-      if (prompt.includes('deals') || prompt.includes('spam')) score = 1;
-      if (prompt.includes('lunch')) score = 4;
-
-      return {
-        text: JSON.stringify({ score, summary: `Priority: ${score}` }),
-        tokens: { input: 50, output: 20 },
-      };
-    });
-
     const log = await runWorkflow({
       workflow,
       inputs: { max_results: 20, min_score: 7 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'email-triage',
     });
 
@@ -67,8 +69,6 @@ describe('graduation: email triage', () => {
     // score_emails: each iteration over 4 emails
     const scoreRecord = log.steps.find((s) => s.id === 'score_emails')!;
     expect(scoreRecord.iterations).toBe(4);
-    expect(scoreRecord.tokens!.input).toBe(200); // 50 * 4
-    expect(scoreRecord.tokens!.output).toBe(80); // 20 * 4
 
     // filter_important: only high scores kept (score >= 7)
     const filterRecord = log.steps.find((s) => s.id === 'filter_important')!;
@@ -87,53 +87,52 @@ describe('graduation: email triage', () => {
     // format_briefing + send_briefing: executed
     expect(log.steps.find((s) => s.id === 'format_briefing')!.status).toBe('success');
     expect(log.steps.find((s) => s.id === 'send_briefing')!.status).toBe('success');
-
-    expect(log.summary.total_tokens).toBe(280);
   });
 
   it('resolves workflow output source on normal completion', async () => {
     const { workflow, tools } = setupEmailTriage();
 
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      let score = 3;
-      if (prompt.includes('Urgent') || prompt.includes('incident')) score = 9;
-      if (prompt.includes('deals') || prompt.includes('spam')) score = 1;
-      if (prompt.includes('lunch')) score = 4;
-      return {
-        text: JSON.stringify({ score, summary: `Priority: ${score}` }),
-        tokens: { input: 50, output: 20 },
-      };
-    });
-
     const log = await runWorkflow({
       workflow,
       inputs: { max_results: 20, min_score: 7 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'email-triage',
     });
 
     expect(log.status).toBe('success');
-    // Workflow outputs resolved via source: $steps.format_briefing.output.items.*
+    // Workflow outputs resolved via value: $steps.format_briefing.output.items.*
     expect(log.outputs.important_count).toBe(2);
     expect(Array.isArray(log.outputs.emails)).toBe(true);
     expect((log.outputs.emails as unknown[]).length).toBe(2);
   });
 
   it('exits early when no important emails', async () => {
-    const { workflow, tools } = setupEmailTriage();
+    const workflow = loadWorkflow('graduation-email-triage');
+    const tools = new MockToolAdapter();
+
+    tools.register('gmail.search', () => ({
+      output: {
+        messages: [
+          { from: 'newsletter@spam.com', subject: 'Weekly deals', body: 'Check out our offers' },
+          { from: 'hr@company.com', subject: 'Team lunch Friday', body: 'Pizza or sushi?' },
+        ],
+      },
+    }));
 
     // All scores below threshold
-    const llm = new MockLLMAdapter(() => ({
-      text: JSON.stringify({ score: 2, summary: 'Low priority' }),
-      tokens: { input: 50, output: 20 },
-    }));
+    tools.register('score_email', (args) => {
+      const email = args.email as Record<string, string>;
+      return {
+        output: { from: email.from, subject: email.subject, score: 2, summary: 'Low priority' },
+      };
+    });
+
+    tools.register('slack.post_message', () => ({ output: { ok: true } }));
 
     const log = await runWorkflow({
       workflow,
       inputs: { max_results: 20, min_score: 7 },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'email-triage',
     });
 
@@ -154,7 +153,7 @@ describe('graduation: email triage', () => {
   });
 });
 
-// ─── Graduation Test 2: Deployment Report (Zero Tokens) ────────────────────
+// ─── Graduation Test 2: Deployment Report (Zero LLM) ────────────────────────
 
 describe('graduation: deployment report', () => {
   function setupDeployReport() {
@@ -199,20 +198,17 @@ describe('graduation: deployment report', () => {
     return { workflow, tools };
   }
 
-  it('filters, sorts, formats — zero tokens', async () => {
+  it('filters, sorts, formats — no LLM steps', async () => {
     const { workflow, tools } = setupDeployReport();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { repo: 'my-org/web-app' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'deploy-report',
     });
 
     expect(log.status).toBe('success');
-    expect(log.summary.total_tokens).toBe(0); // Zero LLM tokens!
 
     // filter_production: only 2 production deployments
     const filterRecord = log.steps.find((s) => s.id === 'filter_production')!;
@@ -241,18 +237,16 @@ describe('graduation: deployment report', () => {
 
   it('resolves workflow output source on normal completion', async () => {
     const { workflow, tools } = setupDeployReport();
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { repo: 'my-org/web-app' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'deploy-report',
     });
 
     expect(log.status).toBe('success');
-    // Workflow outputs resolved via source: $steps.format_report.output.items.*
+    // Workflow outputs resolved via value: $steps.format_report.output.items.*
     expect(log.outputs.count).toBe(2); // 2 production deployments
     expect(Array.isArray(log.outputs.deployments)).toBe(true);
     expect((log.outputs.deployments as unknown[]).length).toBe(2);
@@ -269,13 +263,11 @@ describe('graduation: deployment report', () => {
       },
     }));
     tools.register('slack.post_message', () => ({ output: { ok: true } }));
-    const llm = new MockLLMAdapter();
 
     const log = await runWorkflow({
       workflow,
       inputs: { repo: 'my-org/web-app' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'deploy-report',
     });
 
@@ -283,7 +275,7 @@ describe('graduation: deployment report', () => {
     const exitRecord = log.steps.find((s) => s.id === 'exit_if_none')!;
     expect(exitRecord.status).toBe('success');
     expect(exitRecord.output).toEqual({ count: 0, deployments: [] });
-    // Exit output takes precedence over source
+    // Exit output takes precedence over workflow output value expressions
     expect(log.outputs).toEqual({ count: 0, deployments: [] });
   });
 });
@@ -324,30 +316,22 @@ describe('graduation: content moderation', () => {
   it('routes high-severity violations to auto-remove + urgent alert', async () => {
     const { workflow, tools } = setupContentModeration();
 
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      if (prompt.includes('terrible people')) {
-        return {
-          text: JSON.stringify({ post_id: 'p2', severity: 'high', reason: 'harassment' }),
-          tokens: { input: 30, output: 15 },
-        };
+    // evaluate_post: returns severity based on post content
+    tools.register('evaluate_post', (args) => {
+      const post = args.post as Record<string, string>;
+      if (post.body?.includes('terrible people')) {
+        return { output: { post_id: post.id, severity: 'high', reason: 'harassment' } };
       }
-      if (prompt.includes('cheap watches')) {
-        return {
-          text: JSON.stringify({ post_id: 'p3', severity: 'low', reason: 'spam' }),
-          tokens: { input: 30, output: 15 },
-        };
+      if (post.body?.includes('cheap watches')) {
+        return { output: { post_id: post.id, severity: 'low', reason: 'spam' } };
       }
-      return {
-        text: JSON.stringify({ post_id: prompt.match(/p\d/)?.[0] ?? 'unknown', severity: 'none', reason: '' }),
-        tokens: { input: 30, output: 15 },
-      };
+      return { output: { post_id: post.id, severity: 'none', reason: '' } };
     });
 
     const log = await runWorkflow({
       workflow,
       inputs: { channel_id: 'general' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'content-moderation',
     });
 
@@ -396,24 +380,18 @@ describe('graduation: content moderation', () => {
     const { workflow, tools } = setupContentModeration();
 
     // Only low severity violations, no high
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      if (prompt.includes('cheap watches')) {
-        return {
-          text: JSON.stringify({ post_id: 'p3', severity: 'low', reason: 'spam' }),
-          tokens: { input: 30, output: 15 },
-        };
+    tools.register('evaluate_post', (args) => {
+      const post = args.post as Record<string, string>;
+      if (post.body?.includes('cheap watches')) {
+        return { output: { post_id: post.id, severity: 'low', reason: 'spam' } };
       }
-      return {
-        text: JSON.stringify({ post_id: 'unknown', severity: 'none', reason: '' }),
-        tokens: { input: 30, output: 15 },
-      };
+      return { output: { post_id: post.id, severity: 'none', reason: '' } };
     });
 
     const log = await runWorkflow({
       workflow,
       inputs: { channel_id: 'general' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'content-moderation',
     });
 
@@ -438,35 +416,26 @@ describe('graduation: content moderation', () => {
   it('resolves workflow output source on normal completion with high severity', async () => {
     const { workflow, tools } = setupContentModeration();
 
-    const llm = new MockLLMAdapter((_model, prompt) => {
-      if (prompt.includes('terrible people')) {
-        return {
-          text: JSON.stringify({ post_id: 'p2', severity: 'high', reason: 'harassment' }),
-          tokens: { input: 30, output: 15 },
-        };
+    tools.register('evaluate_post', (args) => {
+      const post = args.post as Record<string, string>;
+      if (post.body?.includes('terrible people')) {
+        return { output: { post_id: post.id, severity: 'high', reason: 'harassment' } };
       }
-      if (prompt.includes('cheap watches')) {
-        return {
-          text: JSON.stringify({ post_id: 'p3', severity: 'low', reason: 'spam' }),
-          tokens: { input: 30, output: 15 },
-        };
+      if (post.body?.includes('cheap watches')) {
+        return { output: { post_id: post.id, severity: 'low', reason: 'spam' } };
       }
-      return {
-        text: JSON.stringify({ post_id: prompt.match(/p\d/)?.[0] ?? 'unknown', severity: 'none', reason: '' }),
-        tokens: { input: 30, output: 15 },
-      };
+      return { output: { post_id: post.id, severity: 'none', reason: '' } };
     });
 
     const log = await runWorkflow({
       workflow,
       inputs: { channel_id: 'general' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'content-moderation',
     });
 
     expect(log.status).toBe('success');
-    // Workflow outputs resolved via source expressions
+    // Workflow outputs resolved via value expressions
     expect(log.outputs.evaluated).toBe(4); // 4 posts fetched
     expect(log.outputs.auto_removed).toBe(1); // 1 high severity
     expect(log.outputs.queued_for_review).toBe(1); // 1 low severity
@@ -481,13 +450,12 @@ describe('graduation: content moderation', () => {
     tools.register('community.remove_posts', () => ({ output: { removed: true } }));
     tools.register('slack.post_message', () => ({ output: { ok: true } }));
     tools.register('community.queue_review', () => ({ output: { queued: true } }));
-    const llm = new MockLLMAdapter();
+    tools.register('evaluate_post', () => ({ output: { post_id: '', severity: 'none', reason: '' } }));
 
     const log = await runWorkflow({
       workflow,
       inputs: { channel_id: 'general' },
       toolAdapter: tools,
-      llmAdapter: llm,
       workflowName: 'content-moderation',
     });
 

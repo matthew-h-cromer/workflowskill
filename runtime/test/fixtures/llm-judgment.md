@@ -1,6 +1,6 @@
 ---
 name: llm-judgment
-description: Tool step followed by LLM step for scoring.
+description: Tool step followed by scoring tool step.
 ---
 
 # LLM Judgment
@@ -26,13 +26,9 @@ steps:
         type: array
 
   - id: score
-    type: llm
-    model: haiku
+    type: tool
+    tool: score_email
     description: Score email priority
-    prompt: |
-      Score the priority of this email from 1-10.
-      Subject: $steps.fetch_emails.output.messages
-      Return JSON: { "score": <int>, "summary": "<one line>" }
     inputs:
       messages:
         type: array

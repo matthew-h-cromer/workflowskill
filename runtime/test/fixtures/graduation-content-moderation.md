@@ -47,24 +47,9 @@ steps:
       queued_for_review: 0
 
   - id: evaluate_posts
-    type: llm
+    type: tool
+    tool: evaluate_post
     description: Check each post against community guidelines
-    model: haiku
-    prompt: |
-      Evaluate this post against community guidelines.
-      Flag violations for: harassment, spam, misinformation,
-      illegal content.
-
-      Post by $item.author: $item.body
-
-      Respond as JSON: { "post_id": "<id>", "severity": "none|low|high",
-      "reason": "<explanation or empty string>" }
-    response_format:
-      type: object
-      properties:
-        post_id: { type: string }
-        severity: { type: string }
-        reason: { type: string }
     each: $steps.fetch_posts.output.posts
     inputs:
       post:

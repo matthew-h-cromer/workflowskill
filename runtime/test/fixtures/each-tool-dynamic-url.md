@@ -27,18 +27,26 @@ steps:
 
   - id: fetch_details
     type: tool
-    tool: http.request
+    tool: web.scrape
     description: Fetch details for each item
     each: $steps.get_ids.output.ids
     inputs:
       url:
         type: string
         value: "${inputs.base_url}${item}.json"
+      selector:
+        type: string
+        value: "div.item"
+      fields:
+        type: object
+        value:
+          title: "h1"
+          id: "@data-id"
     outputs:
       title:
         type: string
-        value: $result.body.title
+        value: $result.results[0].title
       id:
         type: int
-        value: $result.body.id
+        value: $result.results[0].id
 ```

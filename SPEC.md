@@ -148,7 +148,7 @@ outputs:
   <name>: { type: string|int|float|boolean|array|object, value: <expression> }
 steps:
   - id: string
-    type: tool|llm|transform|conditional|exit
+    type: tool|transform|conditional|exit
     description: string
     inputs:
       <name>: { type: <type>, value: <expression>, default: <value> }
@@ -157,11 +157,6 @@ steps:
 
     # Tool fields
     tool: string                    # registered tool name
-
-    # LLM fields
-    model: string                   # model identifier (optional)
-    prompt: string                  # prompt template with $-expressions
-    response_format: object         # structured output hint (optional)
 
     # Transform fields
     operation: filter|map|sort      # transform operation
@@ -205,10 +200,10 @@ A workflow should have a defined schema for inputs and outputs. Being able to ex
 | Field | Required | Description |
 |-------|----------|-------------|
 | id | yes | Unique identifier within the workflow. Referenced by other steps via `$steps.<id>.output`. |
-| type | yes | One of: `tool`, `llm`, `transform`, `conditional`, `exit`. |
+| type | yes | One of: `tool`, `transform`, `conditional`, `exit`. |
 | description | no | Human-readable explanation. Displayed in run logs. |
-| inputs | no | Named input schema. Required for tool, llm, and transform steps. Not used by exit or conditional steps. |
-| outputs | no | Named output schema. Required for tool, llm, and transform steps. Not used by exit or conditional steps. |
+| inputs | no | Named input schema. Required for tool and transform steps. Not used by exit or conditional steps. |
+| outputs | no | Named output schema. Required for tool and transform steps. Not used by exit or conditional steps. |
 | condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
 | each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
 | delay | no | Inter-iteration pause when combined with `each`. Duration string: integer followed by `ms` or `s` (e.g., `"1s"`, `"500ms"`). Only valid when `each` is present; rejected at validation time otherwise. The delay fires between iterations, not after the last one. |
@@ -253,8 +248,6 @@ outputs:
     value: $steps.fetch.output.title
 ```
 
-> **Backwards compatibility.** Runtimes must also accept `source` as an alias for `value` on step inputs, step outputs, and workflow outputs.
-
 **Resolution order:**
 1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$result` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
 2. **Workflow output `value`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `value` resolution.
@@ -295,14 +288,11 @@ Expressions appear in `condition` guards, `each` fields, input `value` reference
 
 **Template interpolation.** String values containing `${...}` are treated as templates. Each `${ref}` block is evaluated as a reference and its result is spliced into the surrounding string. References inside `${...}` omit the leading `$` (e.g., `${inputs.query}`, `${steps.fetch.output.body}`). If the entire value is a single `${ref}` with no surrounding text, the typed result is preserved (not coerced to string). Use `$${` to produce a literal `${`. Template interpolation applies to `value` fields on step inputs, step outputs, and workflow outputs. Primary use case: constructing dynamic URLs in `each` loops (e.g., `"${inputs.base_url}${item}.json"`).
 
-**Prompt interpolation.** Expressions in `prompt` fields (on LLM steps) follow the same reference resolution rules: `$inputs`, `$steps`, `$item`, and `$index` are resolved and property access works. Comparison and logical operators are not supported in prompt interpolation. The resolved value is coerced to its string representation and inserted at the reference position. Objects and arrays are serialized as JSON. Null values are inserted as the empty string.
-
 ### Step Types
 
 | Type | Description |
 |------|-------------|
-| **Tool** | Invokes a registered tool directly. No LLM involved. Use for any step where the inputs, operation, and expected output shape are known at authoring time. |
-| **LLM** | Calls a language model with an explicit prompt. The only step type that consumes tokens. Use for steps requiring judgment, creativity, or natural language understanding. |
+| **Tool** | Invokes a registered tool via the host's ToolAdapter. No LLM involved. Use for any step where the inputs, operation, and expected output shape are known at authoring time. All external calls — including LLM inference — go through a tool step. |
 | **Transform** | Filters, maps, sorts, or reshapes data. Pure data manipulation inside the runtime. Use to prepare the output of one step as input for the next. |
 | **Conditional** | Evaluates a `condition` expression and dispatches to the matching branch. Each branch contains one or more step IDs to execute. Returns the output of the last step in the selected branch. For skipping a single step, use the `condition` common field instead. |
 | **Exit** | Terminates the workflow immediately with a status and optional output. Use inside a conditional branch for early termination, or as a circuit breaker when a critical step fails with `on_error: ignore`. |
@@ -314,14 +304,6 @@ Expressions appear in `condition` guards, `each` fields, input `value` reference
 | `tool` | yes | Name of the tool to invoke, as registered in the platform's tool registry (MCP server, function, etc.). |
 
 The step's resolved `inputs` are passed as the tool's arguments. The tool's response becomes the step's output. The runtime does not interpret the response.
-
-#### LLM Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `model` | no | Model identifier (e.g., `haiku`, `sonnet`). Falls back to the platform's default model. |
-| `prompt` | yes | Prompt template. `$`-prefixed expression references are interpolated before sending to the model. |
-| `response_format` | no | Structured output hint passed to models that support it. Not enforced by the runtime in this version. |
 
 #### Transform Fields
 
@@ -367,7 +349,7 @@ Steps referenced in `then` and `else` are defined in the main steps array but ex
 
 ## Runtime
 
-A WorkflowSkill runtime is a lightweight execution engine. It reads the workflow YAML, validates the graph, executes each step in sequence, and produces a structured log. It does not reason, plan, or make decisions. Every decision point is resolved by the workflow definition itself: conditions evaluate to true or false, transforms apply declared operations, and LLM steps call a model with an explicit prompt.
+A WorkflowSkill runtime is a lightweight execution engine. It reads the workflow YAML, validates the graph, executes each step in sequence, and produces a structured log. It does not reason, plan, or make decisions. Every decision point is resolved by the workflow definition itself: conditions evaluate to true or false, transforms apply declared operations, and tool steps call the host's registered tools.
 
 ### Execution Model
 
@@ -381,21 +363,19 @@ Execution proceeds in two phases.
 2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
 3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results. If `delay` is present, the runtime pauses for the specified duration between iterations (not after the last).
 4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
-5. **Map outputs.** If any declared output has a `value` field (or its `source` alias), resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `value` pass through by key name.
+5. **Map outputs.** If any declared output has a `value` field, resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `value` pass through by key name.
 6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.
 7. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
 8. **Handle errors.** If the step still failed after all retry attempts, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
 9. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
 
-After the last step completes, the runtime resolves workflow output `value` expressions from the final runtime context. For each declared workflow output with a `value` (or its `source` alias), the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
+After the last step completes, the runtime resolves workflow output `value` expressions from the final runtime context. For each declared workflow output with a `value`, the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
 
 ### Step Executors
 
 Each step type has a dedicated executor. The runtime dispatches to the correct one based on the step's `type` field.
 
-**Tool.** Resolves the tool by name from the platform's tool registry (MCP server, registered function, etc.). Passes the step's resolved inputs as the tool's arguments. Returns the tool's response as the step's output. The runtime does not interpret the response.
-
-**LLM.** Resolves the model from the step's `model` field, falling back to a platform default. Constructs the prompt by interpolating expression references in the `prompt` field. Sends the prompt and resolved inputs to the model API. Returns the model's response. The `response_format` field, when present, is passed to models that support structured output as a hint. The runtime does not enforce conformance against it in this version. Output validation relies on the standard step-level schema check.
+**Tool.** Resolves the tool by name from the host's ToolAdapter. Passes the step's resolved inputs as the tool's arguments. Returns the tool's response as the step's output. The runtime does not interpret the response. All external calls — including LLM inference — are routed through a tool step; the runtime itself has no LLM dependency.
 
 **Transform.** Applies one of three built-in operations to reshape data between steps. No external calls. No LLM. Pure data manipulation inside the runtime.
 
@@ -481,23 +461,22 @@ The run log contains:
 | `inputs` | The workflow inputs that were provided |
 | `outputs` | The workflow outputs that were produced |
 | `steps[]` | Ordered array of step records |
-| `summary` | Aggregate counts: steps executed, steps skipped, total tokens, total duration |
+| `summary` | Aggregate counts: steps executed, steps skipped, total duration |
 
 Each step record contains:
 
 | Field | Description |
 |-------|-------------|
 | `id` | The step's declared identifier |
-| `executor` | Which executor ran: `tool`, `llm`, `transform`, `conditional`, `exit` |
+| `executor` | Which executor ran: `tool`, `transform`, `conditional`, `exit` |
 | `status` | `success`, `failed`, or `skipped` |
 | `reason` | Why the step was skipped (if applicable) |
 | `duration_ms` | Wall-clock time for this step |
 | `iterations` | Number of iterations (if `each` was used) |
-| `tokens` | Input and output token counts (LLM steps only) |
 | `output` | The step's output (truncated) |
 | `error` | Error details (if the step failed) |
 
-Every step is accounted for, including skipped ones. Token usage is isolated to LLM steps. Timing is per-step, so bottlenecks are visible at a glance. When something goes wrong, you look at the run log and see exactly which step failed, what its inputs were, and what error it returned.
+Every step is accounted for, including skipped ones. Timing is per-step, so bottlenecks are visible at a glance. When something goes wrong, you look at the run log and see exactly which step failed, what its inputs were, and what error it returned.
 
 ### Runtime Boundaries
 
@@ -521,14 +500,14 @@ This boundary is deliberate. The runtime stays small by not absorbing platform c
 A conformant WorkflowSkill runtime must:
 
 1. Parse and validate workflow YAML before executing any steps.
-2. Execute all five step types: tool, llm, transform, conditional, exit.
+2. Execute all four step types: tool, transform, conditional, exit.
 3. Evaluate `condition` guards and `each` iteration on any step that declares them.
 4. Enforce `on_error` semantics: `fail` halts the workflow, `ignore` logs and continues with null output.
 5. Execute retry policies respecting `max`, `delay`, and `backoff`.
 6. Validate step outputs against declared schemas.
 7. Produce a structured run log for every execution, including skipped steps.
 8. Reject workflows containing unrecognized step types rather than silently ignoring them.
-9. Resolve step output `value` expressions (and their `source` alias) using the `$result` reference after each step's executor returns.
-10. Resolve workflow output `value` expressions (and their `source` alias) from the final runtime context after all steps complete, with exit step output taking precedence.
+9. Resolve step output `value` expressions using the `$result` reference after each step's executor returns.
+10. Resolve workflow output `value` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
 
 A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.

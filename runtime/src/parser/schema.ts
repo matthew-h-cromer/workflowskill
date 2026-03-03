@@ -10,7 +10,7 @@ const schemaTypeEnum = z.enum(['string', 'int', 'float', 'boolean', 'array', 'ob
 // FieldSchema can be recursive (items/properties contain FieldSchema).
 // We avoid deep recursion issues by using z.unknown() for nested levels.
 // This is sufficient for validation — we don't need infinite depth.
-// Note: `default` is intentionally not supported at nested level (only workflow inputs use `default`).
+// Note: `default` is not supported at nested level (only workflow inputs use `default`).
 const nestedFieldSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
@@ -21,79 +21,43 @@ const nestedFieldSchema = z.object({
 export const fieldSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
-  // Backwards compat: accept legacy `default` and normalize to `value`
-  default: z.unknown().optional(),
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
-}).transform((obj) => {
-  const { default: legacy, ...rest } = obj;
-  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
-  return rest;
 });
 
 // ─── Workflow inputs and outputs ──────────────────────────────────────────────
 
 // Workflow inputs use `default` as canonical field for fallback values.
-// Accepts legacy `value` and normalizes to `default` for backwards compat.
 export const workflowInputSchema = z.object({
   type: schemaTypeEnum,
   default: z.unknown().optional(),
-  value: z.unknown().optional(),  // backwards compat → normalize to default
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
-}).transform((obj) => {
-  const { value: legacy, ...rest } = obj;
-  if (rest.default === undefined && legacy !== undefined) rest.default = legacy;
-  return rest;
 });
 
-// Workflow outputs: accept legacy `source`, normalize to `value`
 const workflowOutputBaseSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
-  default: z.unknown().optional(),
-  source: z.string().optional(),
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
-}).transform((obj) => {
-  const { source, default: legacy, ...rest } = obj;
-  if (rest.value === undefined && source !== undefined) rest.value = source;
-  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
-  return rest;
 });
 export const workflowOutputSchema = workflowOutputBaseSchema;
 
 // ─── Step inputs and outputs ──────────────────────────────────────────────────
 
-// Step inputs: accept legacy `source`, normalize to `value`
 const stepInputBaseSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
-  default: z.unknown().optional(),
-  source: z.string().optional(),
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
-}).transform((obj) => {
-  const { source, default: legacy, ...rest } = obj;
-  if (rest.value === undefined && source !== undefined) rest.value = source;
-  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
-  return rest;
 });
 export const stepInputSchema = stepInputBaseSchema;
 
-// Step outputs: accept legacy `source`, normalize to `value`
 const stepOutputBaseSchema = z.object({
   type: schemaTypeEnum,
   value: z.unknown().optional(),
-  default: z.unknown().optional(),
-  source: z.string().optional(),
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
-}).transform((obj) => {
-  const { source, default: legacy, ...rest } = obj;
-  if (rest.value === undefined && source !== undefined) rest.value = source;
-  if (rest.value === undefined && legacy !== undefined) rest.value = legacy;
-  return rest;
 });
 export const stepOutputSchema = stepOutputBaseSchema;
 
@@ -109,7 +73,7 @@ export const retryPolicySchema = z.object({
 
 const stepBaseSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['tool', 'llm', 'transform', 'conditional', 'exit']),
+  type: z.enum(['tool', 'transform', 'conditional', 'exit']),
   description: z.string().optional(),
   inputs: z.record(z.string(), stepInputSchema).default({}),
   outputs: z.record(z.string(), stepOutputSchema).default({}),
@@ -125,13 +89,6 @@ const stepBaseSchema = z.object({
 const toolStepSchema = stepBaseSchema.extend({
   type: z.literal('tool'),
   tool: z.string().min(1),
-});
-
-const llmStepSchema = stepBaseSchema.extend({
-  type: z.literal('llm'),
-  model: z.string().optional(),
-  prompt: z.string().min(1),
-  response_format: z.record(z.string(), z.unknown()).optional(),
 });
 
 const transformFilterStepSchema = stepBaseSchema.extend({
@@ -179,7 +136,6 @@ const transformStepSchema = z.discriminatedUnion('operation', [
 // Top-level step schema: discriminate by type, with transform handled by sub-union.
 export const stepSchema = z.union([
   toolStepSchema,
-  llmStepSchema,
   transformStepSchema,
   conditionalStepSchema,
   exitStepSchema,

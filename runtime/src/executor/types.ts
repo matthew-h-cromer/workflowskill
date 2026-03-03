@@ -1,6 +1,6 @@
 // Executor result types and error class.
 
-import type { ExitStatus, TokenUsage } from '../types/index.js';
+import type { ExitStatus } from '../types/index.js';
 
 /** Additional context attached to a step execution error. */
 export interface StepErrorContext {
@@ -24,10 +24,9 @@ export class StepExecutionError extends Error {
   }
 }
 
-/** Result from a standard step execution (tool, llm, transform). */
+/** Result from a standard step execution (tool, transform). */
 export interface StepOutput {
   output: unknown;
-  tokens?: TokenUsage;
 }
 
 /** Result from a conditional step execution. */

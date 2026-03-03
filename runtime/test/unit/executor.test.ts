@@ -6,17 +6,14 @@ import type {
   ConditionalStep,
   ExitStep,
   ToolStep,
-  LLMStep,
   RuntimeContext,
 } from '../../src/types/index.js';
 import { executeTransform } from '../../src/executor/transform.js';
 import { executeConditional } from '../../src/executor/conditional.js';
 import { executeExit } from '../../src/executor/exit.js';
 import { executeTool } from '../../src/executor/tool.js';
-import { executeLLM } from '../../src/executor/llm.js';
-import { dispatch, StepExecutionError } from '../../src/executor/index.js';
+import { StepExecutionError } from '../../src/executor/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
-import { MockLLMAdapter } from '../../src/adapters/mock-llm-adapter.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -359,6 +356,7 @@ describe('Tool executor', () => {
   });
 
   it('marks tool errors as retriable', async () => {
+    expect.assertions(2);
     const step = makeStep<ToolStep>({
       id: 'failing',
       type: 'tool',
@@ -380,6 +378,7 @@ describe('Tool executor', () => {
   });
 
   it('includes tool name in error context', async () => {
+    expect.assertions(3);
     const step = makeStep<ToolStep>({
       id: 'failing',
       type: 'tool',
@@ -400,146 +399,5 @@ describe('Tool executor', () => {
       expect(err.context).toBeDefined();
       expect(err.context!.tool).toBe('my_api');
     }
-  });
-});
-
-// ─── LLM executor ──────────────────────────────────────────────────────────
-
-describe('LLM executor', () => {
-  it('interpolates prompt and returns response with tokens', async () => {
-    const step = makeStep<LLMStep>({
-      id: 'score',
-      type: 'llm',
-      model: 'haiku',
-      prompt: 'Score this: $inputs.text',
-      inputs: { text: { type: 'string' } },
-      outputs: { scored: { type: 'object' } },
-    });
-    const adapter = new MockLLMAdapter((_model, prompt) => ({
-      text: JSON.stringify({ score: 8, summary: prompt }),
-      tokens: { input: 20, output: 15 },
-    }));
-    const ctx = baseContext({ inputs: { text: 'Hello world' } });
-    const result = await executeLLM(step, { text: 'Hello world' }, ctx, adapter);
-    expect(result.tokens).toEqual({ input: 20, output: 15 });
-    // Output is the parsed JSON directly (not wrapped — per spec)
-    const output = result.output as Record<string, unknown>;
-    expect(output.score).toBe(8);
-  });
-
-  it('keeps text response when not valid JSON', async () => {
-    const step = makeStep<LLMStep>({
-      id: 'summarize',
-      type: 'llm',
-      prompt: 'Summarize: $item.content',
-      inputs: {},
-      outputs: { summary: { type: 'string' } },
-    });
-    const adapter = new MockLLMAdapter(() => ({
-      text: 'This is a summary.',
-      tokens: { input: 10, output: 8 },
-    }));
-    const ctx = baseContext({ item: { content: 'Long text...' } });
-    const result = await executeLLM(step, {}, ctx, adapter);
-    expect(result.output).toBe('This is a summary.');
-  });
-
-  it('throws retriable StepExecutionError on LLM failure', async () => {
-    const step = makeStep<LLMStep>({
-      id: 'fail',
-      type: 'llm',
-      prompt: 'test',
-      inputs: {},
-      outputs: {},
-    });
-    const adapter = new MockLLMAdapter(() => {
-      throw new Error('Rate limit exceeded');
-    });
-    try {
-      await executeLLM(step, {}, baseContext(), adapter);
-    } catch (e) {
-      expect(e).toBeInstanceOf(StepExecutionError);
-      expect((e as StepExecutionError).retriable).toBe(true);
-      expect((e as StepExecutionError).message).toBe('Rate limit exceeded');
-    }
-  });
-
-  it('returns raw output when no outputs declared', async () => {
-    const step = makeStep<LLMStep>({
-      id: 'raw',
-      type: 'llm',
-      prompt: 'test',
-      inputs: {},
-      outputs: {},
-    });
-    const adapter = new MockLLMAdapter(() => ({
-      text: 'just text',
-      tokens: { input: 5, output: 3 },
-    }));
-    const result = await executeLLM(step, {}, baseContext(), adapter);
-    expect(result.output).toBe('just text');
-  });
-});
-
-// ─── Dispatch ──────────────────────────────────────────────────────────────
-
-describe('dispatch', () => {
-  const toolAdapter = new MockToolAdapter();
-  const llmAdapter = new MockLLMAdapter();
-
-  toolAdapter.register('test_tool', () => ({ output: { data: 'test' } }));
-
-  it('dispatches tool step', async () => {
-    const step = makeStep<ToolStep>({
-      id: 't',
-      type: 'tool',
-      tool: 'test_tool',
-      inputs: {},
-      outputs: {},
-    });
-    const result = await dispatch(step, {}, baseContext(), toolAdapter, llmAdapter);
-    expect(result.kind).toBe('output');
-  });
-
-  it('dispatches transform step', async () => {
-    const step = makeStep<TransformMapStep>({
-      id: 't',
-      type: 'transform',
-      operation: 'map',
-      expression: { v: '$item' },
-      inputs: { items: { type: 'array' } },
-      outputs: { mapped: { type: 'array' } },
-    });
-    const result = await dispatch(step, { items: [1, 2] }, baseContext(), toolAdapter, llmAdapter);
-    expect(result.kind).toBe('output');
-    if (result.kind === 'output') {
-      expect(result.output).toEqual({ mapped: [{ v: 1 }, { v: 2 }] });
-    }
-  });
-
-  it('dispatches conditional step', async () => {
-    const step = makeStep<ConditionalStep>({
-      id: 'c',
-      type: 'conditional',
-      condition: '$inputs.x == 1',
-      then: ['a'],
-      inputs: {},
-      outputs: {},
-    });
-    const ctx = baseContext({ inputs: { x: 1 } });
-    const result = await dispatch(step, {}, ctx, toolAdapter, llmAdapter);
-    expect(result.kind).toBe('branch');
-  });
-
-  it('dispatches exit step', async () => {
-    const step = makeStep<ExitStep>({
-      id: 'e',
-      type: 'exit',
-      status: 'success',
-      inputs: {},
-      outputs: {},
-    });
-    const result = await dispatch(step, {}, baseContext(), toolAdapter, llmAdapter);
-    expect(result.kind).toBe('exit');
   });
 });

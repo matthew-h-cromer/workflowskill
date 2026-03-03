@@ -9,29 +9,37 @@ description: Tests step output source mapping with $result and workflow output s
 inputs:
   url:
     type: string
-    default: "https://api.example.com/todos/1"
+    default: "https://example.com/articles"
 
 outputs:
   title:
     type: string
     value: $steps.fetch.output.title
-  user_id:
-    type: int
-    value: $steps.fetch.output.user_id
+  author:
+    type: string
+    value: $steps.fetch.output.author
 
 steps:
   - id: fetch
     type: tool
-    tool: http.request
+    tool: web.scrape
     inputs:
       url:
         type: string
         value: $inputs.url
+      selector:
+        type: string
+        value: "article.post"
+      fields:
+        type: object
+        value:
+          title: "h1"
+          author: "span.author"
     outputs:
       title:
         type: string
-        value: $result.body.title
-      user_id:
-        type: int
-        value: $result.body.userId
+        value: $result.results[0].title
+      author:
+        type: string
+        value: $result.results[0].author
 ```

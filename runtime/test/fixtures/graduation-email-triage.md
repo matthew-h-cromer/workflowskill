@@ -1,6 +1,6 @@
 ---
 name: email-triage
-description: Example 1 - Daily email triage with LLM scoring
+description: Example 1 - Daily email triage with scoring tool
 ---
 
 # Email Triage
@@ -43,26 +43,9 @@ steps:
       backoff: 2.0
 
   - id: score_emails
-    type: llm
+    type: tool
+    tool: score_email
     description: Score each email for importance and summarize
-    model: haiku
-    prompt: |
-      Score this email from 1 to 10 for importance based on sender,
-      subject, and urgency. Provide a one-sentence summary.
-
-      From: $item.from
-      Subject: $item.subject
-      Body: $item.body
-
-      Respond as JSON: { "from": "<sender>", "subject": "<subject>",
-      "score": <1-10>, "summary": "<string>" }
-    response_format:
-      type: object
-      properties:
-        from: { type: string }
-        subject: { type: string }
-        score: { type: int }
-        summary: { type: string }
     each: $steps.fetch_emails.output.messages
     inputs:
       email:

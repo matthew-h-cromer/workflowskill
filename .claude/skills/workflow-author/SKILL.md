@@ -13,7 +13,7 @@ tags:
 
 You are a workflow authoring assistant. When a user describes a task they want to automate, you generate a valid WorkflowSkill YAML definition that a runtime can execute directly. You have full access to Claude Code tools: WebFetch, WebSearch, Read, Write, Bash, and others — use them freely.
 
-**Sections:** Authoring Process | YAML Structure | Step Type Reference | Output Resolution | Expression Language | Iteration Patterns | Patterns | Authoring Rules | Output Format | Validation
+**Sections:** Authoring Process | YAML Structure | Step Type Reference | Output Resolution | Expression Language | Iteration Patterns | Authoring Rules | Output Format | Validation
 
 ## How WorkflowSkill Works
 
@@ -23,15 +23,16 @@ A WorkflowSkill is a declarative workflow definition embedded in a SKILL.md file
 - **Outputs**: Typed results the workflow produces
 - **Steps**: An ordered sequence of operations
 
-Each step is one of five types:
+Each step is one of four types:
 
-| Type | Purpose | Tokens |
-|------|---------|--------|
-| `tool` | Invoke a registered tool (API, function) | 0 |
-| `llm` | Call a language model with an explicit prompt | Yes |
-| `transform` | Filter, map, or sort data | 0 |
-| `conditional` | Branch execution based on a condition | 0 |
-| `exit` | Terminate the workflow early with a status | 0 |
+| Type | Purpose |
+|------|---------|
+| `tool` | Invoke a registered tool via the host's ToolAdapter (APIs, functions, LLM calls) |
+| `transform` | Filter, map, or sort data |
+| `conditional` | Branch execution based on a condition |
+| `exit` | Terminate the workflow early with a status |
+
+All external calls — including LLM inference — go through `tool` steps. The runtime itself has no LLM dependency. The host registers whatever tools are available in the deployment context.
 
 ## Authoring Process
 
@@ -44,7 +45,7 @@ The user should never have to think about workflow internals. They describe what
 - If the request is clear, skip directly to Research.
 
 ### Phase 2: Research
-- **Confirm available tools first.** Before designing tool steps, verify which tools are registered in this deployment. Tool names and availability vary by platform — do not assume any specific tool is available without confirmation. If unclear, check the runtime's documentation or ask the user.
+- **Confirm available tools first.** The tools available in `tool` steps are the tools registered in the current runtime context — in an interactive agent session, these are the tools listed in your context. No built-in tools are provided by the runtime. All tool names depend on what the host registers. Do not assume any specific tool exists.
 - If the workflow involves APIs, web services, or web scraping, investigate before generating:
   1. **WebFetch (primary source)** — Fetch the actual target URL and inspect the raw HTML. This is the ground truth. Look for:
      - The repeating container element (e.g., `li.result-row`, `div.job-card`)
@@ -59,13 +60,12 @@ The user should never have to think about workflow internals. They describe what
 ### Phase 3: Generate
 Design the workflow internally following this checklist, then write the `.md` file:
 
-1. **Identify data sources** — What tools or APIs are needed? These become `tool` steps.
-2. **Identify judgment points** — Where is LLM reasoning needed? These become `llm` steps. Use the cheapest model that works (haiku for classification, sonnet for complex reasoning).
-3. **Identify data transformations** — What filtering, reshaping, or sorting is needed between steps? These become `transform` steps.
-4. **Identify decision points** — Where does execution branch? These become `conditional` steps.
-5. **Identify exit conditions** — When should the workflow stop early? These become `exit` steps with `condition` guards.
-6. **Wire steps together** — Use `$steps.<id>.output` references to connect outputs to inputs.
-7. **Add error handling** — Mark non-critical steps with `on_error: ignore`. Add `retry` policies for flaky APIs.
+1. **Identify data sources and operations** — What tools or APIs are needed? These become `tool` steps. All external calls (including LLM inference) are tool steps.
+2. **Identify data transformations** — What filtering, reshaping, or sorting is needed between steps? These become `transform` steps.
+3. **Identify decision points** — Where does execution branch? These become `conditional` steps.
+4. **Identify exit conditions** — When should the workflow stop early? These become `exit` steps with `condition` guards.
+5. **Wire steps together** — Use `$steps.<id>.output` references to connect outputs to inputs.
+6. **Add error handling** — Mark non-critical steps with `on_error: ignore`. Add `retry` policies for flaky APIs.
 
 Write the workflow `.md` file using the Write tool.
 
@@ -90,7 +90,7 @@ outputs:                          # object keyed by name — NOT an array
 
 steps:
   - id: <unique_identifier>
-    type: tool | llm | transform | conditional | exit
+    type: tool | transform | conditional | exit
     description: <what this step does>
     # Type-specific fields (see below)
     inputs:                       # object keyed by name (the field is "inputs", not "params")
@@ -127,35 +127,18 @@ steps:
 ```yaml
 - id: fetch_data
   type: tool
-  tool: api.endpoint_name
+  tool: api.get_items
   inputs:
-    param:
+    url:
       type: string
-      value: $inputs.query
+      value: $inputs.url
+    limit:
+      type: int
+      value: 50
   outputs:
-    result:
-      type: object
-      value: $result.data           # map from raw executor result
-```
-
-### LLM Step
-```yaml
-- id: summarize
-  type: llm
-  model: haiku          # optional: haiku, sonnet, opus
-  prompt: |
-    Summarize this data in 2-3 sentences.
-    Data: $steps.fetch_data.output.result
-
-    Write only the summary — no formatting, no preamble.
-  inputs:
-    data:
-      type: object
-      value: $steps.fetch_data.output.result
-  outputs:
-    summary:
-      type: string
-      value: $result
+    results:
+      type: array
+      value: $result.items          # map from raw executor result
 ```
 
 ### Transform Step
@@ -215,7 +198,7 @@ When you have parallel arrays from different steps that need to be combined into
       type: array
 ```
 
-This is a pure data operation — never use an LLM step to merge or zip arrays.
+This is a pure data operation — never use a tool step for merging or zipping arrays when a transform step suffices.
 
 ### Transform Step (sort)
 ```yaml
@@ -309,37 +292,12 @@ outputs:
 
 ```yaml
 outputs:
-  title:
-    type: string
-    value: $result.body.title                # maps from raw tool/LLM response
+  results:
+    type: array
+    value: $result.items                     # maps from the tool's raw response
 ```
 
 This is useful when the raw executor result has a different shape than what downstream steps need. Outputs without `value` pass through from the raw result by key name.
-
-**LLM step outputs require `value`.** LLM steps return the model's raw text (parsed as JSON when valid). Without `value`, downstream `$steps.<id>.output.<key>` references fail for plain text responses.
-
-**Default: plain text with `value: $result`.** For single-value tasks (summarization, classification, scoring, extraction of one field), instruct the model to return plain text and capture it with `value: $result`:
-
-```yaml
-- id: classify
-  type: llm
-  model: haiku
-  outputs:
-    priority:
-      type: string
-      value: $result                       # captures raw text: "high", "medium", or "low"
-```
-
-**JSON with `value: $result.field` — only when the LLM must generate multiple fields that each require reasoning.** If the output has multiple fields but only one requires LLM judgment, use plain text for the LLM and a `map` transform to zip the LLM output with structural data:
-
-```yaml
-- id: analyze
-  type: llm
-  outputs:
-    analysis:
-      type: object
-      value: $result                       # parsed JSON object
-```
 
 ## Expression Language
 
@@ -389,9 +347,9 @@ inputs:
 
 ### Iterating with `each` on Tool Steps
 
-When you need to call an API once per item in a list, use `each` on a tool step. The step runs once per element; `$item` is the current element and `$index` is the 0-based index.
+When you need to call a tool once per item in a list, use `each` on a tool step. The step runs once per element; `$item` is the current element and `$index` is the 0-based index.
 
-**Rate limiting:** The runtime executes iterations sequentially. **Always add `delay` to every `each` loop that calls an external service.** `delay: "1s"` waits 1 second between iterations (not after the last). External APIs rate-limit without warning; a missing `delay` is a latent failure. For tool steps calling HTTP APIs, `delay: "2s"` is a safe default. Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add `delay`, a preceding filter step to cap the count (see the `slice_ids` step in the Hacker News example below), and include `retry` with `backoff`.
+**Rate limiting:** The runtime executes iterations sequentially. **Always add `delay` to every `each` loop that calls an external service.** `delay: "1s"` waits 1 second between iterations (not after the last). External APIs rate-limit without warning; a missing `delay` is a latent failure. `delay: "2s"` is a safe default for most APIs. Always prefer a bulk API endpoint that returns all data in one request. When per-item fetching is unavoidable, add `delay`, a preceding filter step to cap the count (see the `slice_items` step in the example below), and include `retry` with `backoff`.
 
 **Output collection:** Each iteration's output is collected into an array. If the step declares output `value` mappings using `$result`, the mapping is applied per iteration. The step record's `output` is the array of per-iteration mapped results.
 
@@ -400,29 +358,31 @@ steps:
   - id: get_ids
     type: tool
     tool: api.list_items
+    inputs:
+      url: { type: string, value: $inputs.api_url }
     outputs:
-      ids:
-        type: array
+      items: { type: array, value: $result.items }
 
   - id: fetch_details
     type: tool
-    tool: api.get_item                  # platform-specific tool; use web.scrape for HTML pages
-    each: $steps.get_ids.output.ids    # iterate over ids array
-    on_error: ignore                    # skip failed fetches, continue
+    tool: api.get_item
+    each: $steps.get_ids.output.items          # iterate over items array
+    delay: "2s"                                # required: rate limit between calls
+    on_error: ignore                           # skip failed fetches, continue
     inputs:
-      url:
+      id:
         type: string
-        value: "${inputs.base_url}${item}.json"
+        value: $item.id                        # each item's ID from the listing
     outputs:
       title:
         type: string
-        value: $result.body.title      # mapped per iteration via $result
-      id:
-        type: int
-        value: $result.body.id
+        value: $result.title                   # mapped per iteration via $result
+      summary:
+        type: string
+        value: $result.summary
 ```
 
-After this step, `$steps.fetch_details.output` is an array of `{ title, id }` objects — one per iteration. Use `$steps.fetch_details.output` (the whole array) in downstream steps or workflow outputs.
+After this step, `$steps.fetch_details.output` is an array of `{ title, summary }` objects — one per iteration. Use `$steps.fetch_details.output` (the whole array) in downstream steps or workflow outputs.
 
 **Workflow output for each+tool:**
 ```yaml
@@ -434,16 +394,16 @@ outputs:
 
 **Pattern: List → Slice → Fetch Details**
 
-Full example using generic tool names (substitute platform-specific tools as needed):
+Full example fetching a listing then fetching each detail via `each`:
 
 ```yaml
 inputs:
+  api_url:
+    type: string
+    default: "https://api.example.com/items"
   count:
     type: int
     default: 10
-  base_url:
-    type: string
-    default: "https://api.example.com/item/"
 
 outputs:
   items:
@@ -451,231 +411,46 @@ outputs:
     value: $steps.fetch_details.output
 
 steps:
-  - id: get_ids
+  - id: get_listing
     type: tool
     tool: api.list_items
     inputs:
-      url: { type: string, value: "https://api.example.com/items" }
+      url: { type: string, value: $inputs.api_url }
     outputs:
-      ids: { type: array, value: $result.body }
+      items: { type: array, value: $result.items }
 
-  - id: slice_ids
+  - id: slice_items
     type: transform
     operation: filter
     where: $index < $inputs.count       # cap iteration count to avoid rate limiting
     inputs:
-      items: { type: array, value: $steps.get_ids.output.ids }
+      items: { type: array, value: $steps.get_listing.output.items }
     outputs:
-      ids: { type: array }
+      items: { type: array }
 
   - id: fetch_details
     type: tool
     tool: api.get_item
-    each: $steps.slice_ids.output.ids
+    each: $steps.slice_items.output.items
     delay: "2s"
     retry: { max: 3, delay: "2s", backoff: 1.5 }
     on_error: ignore
     inputs:
-      url:
-        type: string
-        value: "${inputs.base_url}${item}.json"
+      id: { type: string, value: $item.id }
     outputs:
-      title: { type: string, value: $result.body.title }
-      score: { type: int, value: $result.body.score }
-      url: { type: string, value: $result.body.url }
+      title: { type: string, value: $result.title }
+      summary: { type: string, value: $result.summary }
+      score: { type: string, value: $result.score }
 ```
-
-### Iterating with `each` on LLM Steps
-
-When you have an array of items that each need LLM reasoning (summarization, classification, extraction), use `each` on the LLM step — just like tool steps. **Do not dump the entire array into a single prompt.** Always add `delay` to LLM `each` loops — LLM APIs enforce token-per-minute limits, and `delay: "1s"` is the minimum safe default.
-
-**Why iterate instead of batch:**
-- **Token bounds** — Each call processes one item, so prompt size is predictable and bounded. Batching N items risks hitting context limits when items are large (e.g., HTML content).
-- **Error isolation** — If one item produces malformed output, only that item fails. With `on_error: ignore`, the rest succeed. Batching loses *all* results if the model returns one malformed JSON array.
-- **Prompt simplicity** — "Summarize this one item" is a trivial prompt. "Parse N items and return an N-element array with exact positional correspondence" is fragile and error-prone.
-
-**Pattern: `each` + LLM with plain text output + map transform**
-
-Use plain text output (`value: $result`) for the LLM step, then zip the LLM results with structural data from the source array using a `map` transform:
-
-```yaml
-steps:
-  - id: fetch_items
-    type: tool
-    tool: api.get_item                  # platform-specific; use web.scrape for HTML pages
-    each: $steps.get_ids.output.ids
-    delay: "2s"
-    on_error: ignore
-    inputs:
-      url:
-        type: string
-        value: "${inputs.base_url}${item}.json"
-    outputs:
-      title: { type: string, value: $result.body.title }
-      content: { type: string, value: $result.body.content }
-
-  - id: summarize
-    type: llm
-    model: haiku
-    each: $steps.fetch_items.output           # iterate over the collected array
-    delay: "1s"                                # rate-limit: 1s pause between iterations
-    on_error: ignore                           # skip items that fail
-    description: Summarize each item individually
-    prompt: |
-      Summarize this item in 1-2 sentences.
-
-      Title: $item.title
-      Content: $item.content
-
-      Write only the summary — no formatting, no preamble.
-    inputs:
-      item:
-        type: object
-        value: $item
-    outputs:
-      summary:
-        type: string
-        value: $result                         # plain text — one summary per iteration
-
-  - id: combine_results
-    type: transform
-    operation: map
-    description: Zip summaries with source data
-    expression:
-      title: $item.title
-      description: $steps.summarize.output[$index].summary
-    inputs:
-      items: { type: array, value: $steps.fetch_items.output }
-    outputs:
-      items: { type: array }
-```
-
-After this, `$steps.combine_results.output.items` is an array of `{ title, description }` objects — structural data from the tool step, LLM-generated text from the summarize step.
-
-**Why plain text over JSON for `each` + LLM:**
-- **Fence risk** — Models frequently wrap JSON in markdown fences (`` ```json...``` ``) despite explicit instructions. The runtime parses with `JSON.parse`, which rejects fenced output. Plain text has no parsing step — what the model writes is what you get.
-- **Silent failures** — When JSON parsing fails, the output stays as a raw string. `$result.field` on a string returns `undefined`, which propagates as `{}` downstream. No error is thrown — the workflow "succeeds" with empty objects.
-- **Structural data doesn't need LLM generation** — Fields like `title`, `id`, `score` already exist in the source data. Only the LLM-generated field (summary, classification, score) needs to come from the model. Use a `map` transform to zip them together.
-
-**Workflow output for each+LLM:**
-```yaml
-outputs:
-  summaries:
-    type: array
-    value: $steps.combine_results.output.items  # the zipped array
-```
-
-**Anti-pattern — JSON output in `each` + LLM:**
-```yaml
-# BAD: model may return fenced JSON → parse fails → $result.field returns undefined → silent {}
-- id: summarize
-  type: llm
-  each: $steps.fetch_items.output
-  prompt: |
-    Return a JSON object with "title" and "description" fields.
-    Respond with raw JSON only — no markdown fences.
-  outputs:
-    title: { type: string, value: $result.title }        # undefined if fenced
-    description: { type: string, value: $result.description }  # undefined if fenced
-```
-
-**Anti-pattern — batching all items into one prompt:**
-```yaml
-# BAD: unbounded prompt size, all-or-nothing failure, complex output format
-- id: summarize
-  type: llm
-  prompt: |
-    Summarize each job below...
-    Jobs: $steps.fetch_items.output             # dumps entire array into prompt
-  outputs:
-    roles: { type: array, value: $result }      # one malformed response loses everything
-```
-
-**When bulk IS acceptable:** Use a single LLM call with the full array only when the task requires cross-item reasoning — ranking, deduplication, holistic comparison, or generating a unified summary across all items. If each item can be processed independently, always use `each`.
-
-## Web Scraping Pattern
-
-When a workflow fetches HTML and extracts structured data, follow this recipe:
-
-### Step pattern: scrape → guard
-
-`web.scrape` fetches the URL and applies CSS selectors in one step:
-
-```yaml
-steps:
-  - id: scrape_data
-    type: tool
-    tool: web.scrape
-    retry: { max: 3, delay: "2s", backoff: 1.5 }
-    inputs:
-      url: { type: string, value: "https://example.com/search" }
-      headers:
-        type: object
-        value: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" }
-      selector: { type: string, value: "li.result-item" }
-      fields:
-        type: object
-        value:
-          title: "h3.title"
-          url: "a.link @href"
-          id: "@data-pid"
-      limit: { type: int, value: 50 }
-    outputs:
-      items: { type: array, value: $result.results }
-
-  - id: guard_empty
-    type: exit
-    condition: $steps.scrape_data.output.items.length == 0
-    status: success
-    output: { results: [] }
-    inputs: {}
-    outputs: {}
-```
-
-### Multi-page scraping with `each`
-
-When scraping multiple pages, combine `web.scrape` with `each`:
-
-```yaml
-steps:
-  - id: get_page_list
-    type: tool
-    tool: api.get_sitemap    # returns list of page URLs to scrape
-    outputs:
-      pages:
-        type: array
-
-  - id: scrape_pages
-    type: tool
-    tool: web.scrape
-    each: $steps.get_page_list.output.pages
-    delay: "2s"
-    retry: { max: 3, delay: "2s", backoff: 1.5 }
-    on_error: ignore
-    inputs:
-      url: { type: string, value: $item }
-      selector: { type: string, value: "article.post" }
-      fields:
-        type: object
-        value:
-          title: "h1.title"
-          body: "div.content"
-    outputs:
-      items: { type: array, value: $result.results }
-```
-
-### Selector research
-
-Follow the Research protocol (Authoring Process, Phase 2) before writing selectors. Every selector must be verified against actual fetched HTML.
 
 ## Authoring Rules
 
-1. **LLM steps are a last resort.** Every LLM step costs tokens. Before reaching for an LLM, ask: can this be done with a tool step, a transform step, an API query parameter, or an exit guard? Filtering, reshaping, sorting, and field extraction are structural operations — use tools and transforms. String matching can often be avoided by using categorical fields (department, type, status) with exact equality, or by filtering at the API level. Only use LLM steps for tasks that genuinely require natural language understanding: summarization, classification, sentiment analysis, open-ended generation. If you find yourself using an LLM to match strings, merge arrays, or reshape data — you're doing it wrong.
-2. **Use the cheapest model.** `haiku` for classification/scoring, `sonnet` for complex reasoning.
+1. **Use tool steps for all external calls.** Every interaction with an API, database, or LLM is a tool step. The runtime dispatches tool steps to whatever tools the host registers — the workflow author should use the exact tool names available in this deployment context. Do not invent tool names.
+2. **Use transforms for pure data operations.** Filtering, reshaping, sorting, and field extraction are structural operations — use `transform` steps. Do not use tool steps to reshape data that can be expressed as a transform.
 3. **Always declare inputs and outputs.** They enable validation and composability.
 4. **Use `value` on workflow outputs** to explicitly map step results to workflow outputs. Use `$steps.<id>.output.<field>` expressions. This is preferred over exit steps for producing output.
-5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. Required for LLM steps (which return raw text/JSON). Useful for tool steps when the response shape differs from what downstream steps need.
-6. **Use `each` for per-item processing** on both tool and LLM steps. Always include `delay` on every `each` loop that calls an external service — `delay: "2s"` for tool steps (including `web.scrape`), `delay: "1s"` for LLM steps. See *Iteration Patterns*.
+5. **Use `value` on step outputs** to map fields from the raw executor result using `$result`. Useful when the tool's response shape differs from what downstream steps need.
+6. **Use `each` for per-item processing** on tool steps. Always include `delay` on every `each` loop that calls an external service — `delay: "2s"` is a safe default. See *Iteration Patterns*.
 7. **Add `on_error: ignore` for non-critical steps** like notifications.
 8. **Add `retry` for external API calls** (tool steps that might fail transiently).
 9. **Use `condition` guards for early exits** rather than letting empty data flow through.
@@ -684,11 +459,9 @@ Follow the Research protocol (Authoring Process, Phase 2) before writing selecto
 12. **`condition` on a `conditional` step is the branch condition**, not a guard.
 13. **Use exit steps for conditional early termination only**, not as the default way to produce output. Exit output keys must match the declared workflow output keys.
 14. **Transform steps are for arrays only.** Never use a transform to extract fields from a single object.
-15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects. Never use an LLM step for pure data restructuring.
-16. **When JSON output is used, LLM prompts must say "raw JSON only — no markdown fences, no commentary."** Models default to wrapping JSON in ``` fences. The runtime parses the raw text with `JSON.parse`, which rejects fenced output. Every prompt that expects JSON output must explicitly instruct the model to respond with raw JSON. Put this instruction **last** in the prompt, after all data and task description, immediately before the model generates. This exploits recency bias — the last instruction the model sees is the most influential, especially when data references expand to large content that can push earlier instructions out of focus. Also describe the exact expected shape (e.g., "Your entire response must be a valid JSON object starting with { and ending with }").
-17. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → LLM. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any LLM call. See *Patterns*.
-18. **Prefer bulk endpoints over per-item iteration.** When per-item `each` + tool calls (including `web.scrape`) are unavoidable, always add `delay: "2s"` (minimum), cap iteration count, and add `retry` with `backoff`. `delay` is not optional — external sites and APIs rate-limit without warning and delays are free. Same applies to `each` + `llm` steps: always add `delay: "1s"`. See *Iteration Patterns*.
-19. **Prefer plain text LLM output over JSON.** For single-value tasks (summarization, classification, scoring), use `value: $result` and instruct the model to return plain text. Reserve JSON (`value: $result.field`) for multi-field output where every field requires LLM reasoning. In `each` + LLM patterns, always use plain text + a `map` transform to zip LLM output with structural data from the source array. See *Iteration Patterns*.
+15. **Use `map` with `$index` for cross-array merging.** When multiple steps produce parallel arrays, use a `map` transform with bracket indexing (`$steps.other.output.field[$index]`) to zip them into structured objects.
+16. **Guard expensive steps behind deterministic exits.** Pattern: fetch → filter → exit guard → expensive tool. Use deterministic expressions (e.g., `$item.department == "Engineering"` or `$item.title contains "Product Manager"`) in `transform filter` steps before any costly tool call. See *Patterns*.
+17. **Prefer bulk endpoints over per-item iteration.** When per-item `each` + tool calls are unavoidable, always add `delay: "2s"` (minimum), cap iteration count, and add `retry` with `backoff`. `delay` is not optional — external APIs rate-limit without warning. See *Iteration Patterns*.
 
 ## Output Format
 
@@ -710,9 +483,9 @@ description: Fetches data and outputs a specific field
 
 ` `` `workflow
 inputs:
-  id:
+  url:
     type: string
-    default: "1"
+    default: "https://api.example.com/items"
 
 outputs:
   name:
@@ -722,15 +495,15 @@ outputs:
 steps:
   - id: fetch
     type: tool
-    tool: some.tool
+    tool: api.get_item
     inputs:
-      id:
+      url:
         type: string
-        value: $inputs.id
+        value: $inputs.url
     outputs:
       name:
         type: string
-        value: $result.result.name
+        value: $result.name
 ` `` `
 ```
 
@@ -745,11 +518,8 @@ After writing the file, always validate it against the runtime. The validation c
 - [ ] `each` not used on exit or conditional steps
 - [ ] Workflow outputs have `value` mapping to `$steps` references
 - [ ] Step output `value` uses `$result` (not `$steps`)
-- [ ] LLM step outputs have `value` using `$result`
 - [ ] All `${}` template references resolve to declared inputs/steps
-- [ ] LLM prompts expecting JSON include "raw JSON only — no markdown fences" instruction
-- [ ] LLM steps with `each` prefer plain text output (`value: $result`) over JSON (`value: $result.field`)
-- [ ] Every `each` loop that calls an external service has `delay` (tool steps: `"2s"` minimum; LLM steps: `"1s"` minimum)
-- [ ] `each` + `web.scrape` steps are bounded (preceded by a cap) and have `retry` with `backoff`
+- [ ] Every `each` loop that calls an external service has `delay` (`"2s"` minimum)
+- [ ] `each` + tool steps with per-item fetching are bounded (preceded by a cap) and have `retry` with `backoff`
 
 If validation fails, fix the errors and revalidate.
