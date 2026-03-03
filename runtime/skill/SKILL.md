@@ -1,6 +1,6 @@
 ---
 name: workflow-author
-description: Generate valid WorkflowSkill YAML from natural language descriptions. Teaches Claude Code to author executable workflow definitions.
+description: Author, validate, and run workflows. Use when the user wants to create, automate, build, write, or schedule a workflow or recurring task.
 ---
 
 # WorkflowSkill Author
