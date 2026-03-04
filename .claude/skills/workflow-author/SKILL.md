@@ -5,7 +5,7 @@ description: Generate valid WorkflowSkill YAML from natural language description
 
 # WorkflowSkill Author
 
-Read `runtime/skill/SKILL.md` for the full authoring guide — it is the single source of truth for workflow authoring rules, YAML structure, step type reference, expression language, iteration patterns, and validation checklist.
+Read `runtime/skill/SKILL.md` for the full authoring guide — it is the single source of truth for YAML structure, step types, expression language, iteration, design rules, and validation checklist.
 
 ## Available tools (CLI runtime)
 
@@ -15,14 +15,15 @@ When authoring workflows to run via `workflowskill run`, these tools are pre-reg
 
 Fetches a URL and returns readable content.
 
-| Input | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `url` | string | yes | — | URL to fetch |
-| `extract` | `'markdown'` \| `'text'` | no | `'markdown'` | Output format |
+| Input     | Type                     | Required | Default      | Description   |
+| --------- | ------------------------ | -------- | ------------ | ------------- |
+| `url`     | string                   | yes      | —            | URL to fetch  |
+| `extract` | `'markdown'` \| `'text'` | no       | `'markdown'` | Output format |
 
 Output fields: `content` (string), `title` (string, may be absent), `url` (string)
 
 Example step:
+
 ```yaml
 - id: fetch_page
   type: tool
@@ -47,18 +48,19 @@ Example step:
 
 Calls Claude and returns a parsed JSON object.
 
-| Input | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `prompt` | string | yes | — | User prompt |
-| `system` | string | no | — | System prompt |
-| `schema` | object | no | — | JSON schema for the response shape (formatting hint) |
-| `model` | string | no | `claude-sonnet-4-20250514` | Model ID |
+| Input    | Type   | Required | Default                    | Description                                          |
+| -------- | ------ | -------- | -------------------------- | ---------------------------------------------------- |
+| `prompt` | string | yes      | —                          | User prompt                                          |
+| `system` | string | no       | —                          | System prompt                                        |
+| `schema` | object | no       | —                          | JSON schema for the response shape (formatting hint) |
+| `model`  | string | no       | `claude-sonnet-4-20250514` | Model ID                                             |
 
 Output: a parsed JSON object — map specific fields via `$result.<field>` in step outputs.
 
 Requires `ANTHROPIC_API_KEY` environment variable.
 
 Example step:
+
 ```yaml
 - id: extract
   type: tool
