@@ -127,6 +127,8 @@ outputs:
     value: $steps.fetch.output.title
 ```
 
+Use `$steps.<id>.output` when the step returns a plain value (string, array, object) with no named step outputs declared. Use `$steps.<id>.output.<field>` only when the step declares named outputs and you need a specific field. Never add a field selector for a step whose result is a plain string — it will always resolve to nothing.
+
 ### Workflow Steps
 
 **id**
@@ -234,6 +236,10 @@ outputs:
 ```
 
 Outputs without `value` pass through from the raw result by key name. `$result` is only valid in step output `value` — not in workflow outputs.
+
+Only declare step outputs when you need to extract and rename specific fields from a structured result. If downstream steps reference `$steps.<id>.output` directly — without a field selector — omit the `outputs` block entirely; the full result is always available that way regardless.
+
+When a tool returns a plain string rather than a JSON object, there are no fields to extract. Declaring named outputs with `$result.<field>` will always resolve to nothing. Reference the string directly as `$steps.<id>.output` in workflow outputs or downstream step inputs.
 
 **condition**
 
