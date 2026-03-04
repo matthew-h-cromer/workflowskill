@@ -343,9 +343,9 @@ To use a literal string starting with `$`, escape it: `"$$100"` → `"$100"`.
 
 ## Design Rules
 
-### Minimize LLM usage
+### LLM vs. Deterministic Steps
 
-Always prefer deterministic steps. LLMs cost money, add latency, and introduce variability. Every item removed by a free `transform` step saves one expensive LLM call. Every field left out of a schema saves tokens on every invocation.
+If the operation has a single correct answer derivable from the data, use a deterministic step. LLMs cost money, add latency, and introduce variability — use them only when no deterministic alternative exists.
 
 **Step costs:**
 
@@ -355,11 +355,34 @@ Always prefer deterministic steps. LLMs cost money, add latency, and introduce v
 | `tool` (API)                       | Latency + rate limits        |
 | `tool` (LLM)                       | Expensive — billed per token |
 
-**Tips to minimize LLM usage:**
+**Use an LLM ONLY for:**
+
+- Interpreting ambiguous or unstructured text where the meaning is context-dependent
+- Extracting structured data from prose where field boundaries aren't predictable
+- Generating natural language where wording quality matters
+- Classification that can't be reduced to substring or numeric comparison
+
+**NEVER use an LLM for:**
+
+| Operation | Alternative |
+| --- | --- |
+| Merging parallel arrays | `transform map` + `$index` |
+| Filtering by substring | `transform filter` + `contains` |
+| Filtering by numeric threshold | `transform filter` + comparison operators |
+| Grouping by boolean condition | Two `transform filter` steps with complementary `where` |
+| Sorting | `transform sort` |
+| Counting | `.length` |
+| Formatting strings | Template interpolation in step `value` inputs, `exit` outputs, or workflow `outputs` (not inside `transform map` expressions — those only resolve `$`-prefixed references) |
+| Branching | `conditional` step or `condition` guard |
+| Reshaping/renaming fields | `transform map` + `expression` object |
+| String equality check | `==` operator |
+| Array membership | `contains` operator |
+
+If you find yourself writing a prompt that says "filter", "merge", "group by", "sort", or "format each item" — stop. These are deterministic operations.
+
+**Cost control for unavoidable LLM steps:**
 
 - Filter and cap with `transform` steps before passing data to any `tool` step.
-- Use `contains` in `transform filter` `where` clauses to match text — it's free and needs no LLM.
-- Use `transform map` with `$index` to merge parallel arrays — never use an LLM to reshape or join data.
 - Use `each` on LLM steps that process a list. Never pass the whole collection in one bulk prompt — per-item calls are cheaper, higher quality, and easier to debug.
 - Always precede an `each` + LLM step with a `transform filter` using `$index < $inputs.count` to bound cost.
 - Keep LLM output schemas minimal — only request fields you actually use downstream.
