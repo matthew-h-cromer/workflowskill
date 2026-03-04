@@ -51,7 +51,18 @@ const stepInputBaseSchema = z.object({
   items: nestedFieldSchema.optional(),
   properties: z.record(z.string(), z.union([z.string(), nestedFieldSchema])).optional(),
 });
-export const stepInputSchema = stepInputBaseSchema;
+// Check for "default" before Zod strips it (only workflow inputs use "default")
+export const stepInputSchema = z.unknown()
+  .superRefine((val, ctx) => {
+    if (typeof val === 'object' && val !== null && 'default' in val) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['default'],
+        message: 'Step inputs do not support "default" — use "value" to provide a value. "default" is only valid on workflow inputs.',
+      });
+    }
+  })
+  .pipe(stepInputBaseSchema);
 
 const stepOutputBaseSchema = z.object({
   type: schemaTypeEnum,

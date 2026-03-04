@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateWorkflow } from '../../src/validator/index.js';
+import { validateWorkflow, validateWorkflowSkill } from '../../src/validator/index.js';
 import { MockToolAdapter } from '../../src/adapters/mock-tool-adapter.js';
 import type { WorkflowDefinition } from '../../src/types/index.js';
 
@@ -517,5 +517,162 @@ describe('validateWorkflow - conditional branch cycle detection', () => {
     const result = validateWorkflow(wf, adapter);
     expect(result.valid).toBe(true);
     expect(result.errors.filter(e => e.message.includes('Cycle'))).toHaveLength(0);
+  });
+});
+
+// ─── A3.1: "default" on step inputs (schema-level check) ──────────────────────
+
+describe('validateWorkflow - default on step inputs', () => {
+  it('rejects "default" on a step input (parse-level error)', () => {
+    // "default" is only valid on workflow inputs; step inputs use "value"
+    const content = `
+\`\`\`workflow
+inputs: {}
+outputs: {}
+steps:
+  - id: fetch
+    type: tool
+    tool: my_tool
+    inputs:
+      query:
+        type: string
+        default: "fallback"
+    outputs: {}
+\`\`\`
+`;
+    const result = validateWorkflowSkill({ content });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.message.includes('"default"'))).toBe(true);
+  });
+
+  it('accepts "default" on workflow inputs (not step inputs)', () => {
+    const content = `
+\`\`\`workflow
+inputs:
+  query:
+    type: string
+    default: "fallback"
+outputs: {}
+steps:
+  - id: fetch
+    type: tool
+    tool: my_tool
+    inputs:
+      query:
+        type: string
+        value: $inputs.query
+    outputs: {}
+\`\`\`
+`;
+    // No tool adapter → tool check skipped; schema should pass
+    const result = validateWorkflowSkill({ content });
+    // May fail due to missing tool, but NOT due to "default" error
+    const hasDefaultError = result.errors.some(e => e.message.includes('"default"'));
+    expect(hasDefaultError).toBe(false);
+  });
+});
+
+// ─── A3.2: "$result" in workflow output value ─────────────────────────────────
+
+describe('validateWorkflow - $result in workflow output value', () => {
+  it('rejects $result in workflow output value', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {
+        data: { type: 'array', value: '$result.items' },
+      },
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: { items: { type: 'array' } },
+        },
+      ],
+    };
+    const adapter = mockToolsFor(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e =>
+      e.path === 'outputs.data.value' && e.message.includes('"$result"'),
+    )).toBe(true);
+  });
+
+  it('accepts $steps references in workflow output value', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {
+        data: { type: 'array', value: '$steps.fetch.output.items' },
+      },
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: { items: { type: 'array' } },
+        },
+      ],
+    };
+    const adapter = mockToolsFor(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ─── A3.3: "$steps" in step output value ─────────────────────────────────────
+
+describe('validateWorkflow - $steps in step output value', () => {
+  it('rejects $steps references in step output value', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: {},
+        },
+        {
+          id: 'process',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: {
+            data: { type: 'array', value: '$steps.fetch.output.items' },
+          },
+        },
+      ],
+    };
+    const adapter = mockToolsFor(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e =>
+      e.path.includes('outputs.data.value') && e.message.includes('"$result"'),
+    )).toBe(true);
+  });
+
+  it('accepts $result references in step output value', () => {
+    const wf: WorkflowDefinition = {
+      inputs: {},
+      outputs: {},
+      steps: [
+        {
+          id: 'fetch',
+          type: 'tool',
+          tool: 'test_tool',
+          inputs: {},
+          outputs: {
+            data: { type: 'array', value: '$result.items' },
+          },
+        },
+      ],
+    };
+    const adapter = mockToolsFor(['test_tool']);
+    const result = validateWorkflow(wf, adapter);
+    expect(result.valid).toBe(true);
   });
 });

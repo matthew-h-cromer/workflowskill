@@ -458,14 +458,15 @@ async function executeWithEach(
   const baseResolvedInputs = resolveInputs(step.inputs, context, step.id);
   const results: unknown[] = [];
   let totalRetries: RetryRecord | undefined;
+  let iterationError: unknown = undefined;
 
-  try {
-    for (let i = 0; i < eachArray.length; i++) {
-      const itemContext: RuntimeContext = {
-        ...context,
-        item: eachArray[i],
-        index: i,
-      };
+  for (let i = 0; i < eachArray.length; i++) {
+    const itemContext: RuntimeContext = {
+      ...context,
+      item: eachArray[i],
+      index: i,
+    };
+    try {
       const iterInputs = resolveInputs(step.inputs, itemContext, step.id);
       const { result, retries } = await dispatchWithRetry(
         step,
@@ -486,16 +487,53 @@ async function executeWithEach(
         const mappedIterOutput = applyStepOutputMapping(step.outputs, result.output, itemContext);
         results.push(mappedIterOutput);
       }
-
-      emit(onEvent, { type: 'each_progress', stepId: step.id, current: i + 1, total: eachArray.length });
-
-      // Inter-iteration delay for rate limiting
-      if (step.delay && i < eachArray.length - 1) {
-        await sleep(parseDelay(step.delay));
+    } catch (err) {
+      // Track the last iteration error; push null so the results array stays aligned
+      iterationError = err;
+      results.push(null);
+      // Accumulate retry info attached by dispatchWithRetry
+      const attachedRetries = err instanceof Error ? (err as ErrorWithRetries).__retries : undefined;
+      if (attachedRetries) {
+        totalRetries = totalRetries ?? { attempts: 0, errors: [] };
+        totalRetries.attempts += attachedRetries.attempts;
+        totalRetries.errors.push(...attachedRetries.errors);
       }
     }
-  } catch (err) {
-    return handleStepError(step, err, context, startTime, baseResolvedInputs, totalRetries, onEvent);
+
+    emit(onEvent, { type: 'each_progress', stepId: step.id, current: i + 1, total: eachArray.length });
+
+    // Inter-iteration delay for rate limiting
+    if (step.delay && i < eachArray.length - 1) {
+      await sleep(parseDelay(step.delay));
+    }
+  }
+
+  // If any iteration failed, apply on_error policy with partial results preserved
+  if (iterationError !== undefined) {
+    let errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+    if (iterationError instanceof StepExecutionError && iterationError.context?.tool) {
+      errorMessage = `Tool "${iterationError.context.tool}": ${errorMessage}`;
+    }
+    const onError = step.on_error ?? 'fail';
+    const durationMs = Math.round(performance.now() - startTime);
+    context.steps[step.id] = { output: results };
+    const record: StepRecord = {
+      id: step.id,
+      executor: step.type,
+      status: 'failed',
+      duration_ms: durationMs,
+      inputs: baseResolvedInputs,
+      iterations: eachArray.length,
+      output: results,
+      error: errorMessage,
+      retries: totalRetries,
+    };
+    emit(onEvent, { type: 'step_error', stepId: step.id, error: errorMessage, onError });
+    emit(onEvent, { type: 'step_complete', stepId: step.id, status: 'failed', duration_ms: durationMs, iterations: eachArray.length });
+    if (onError === 'ignore') {
+      return { records: [record] };
+    }
+    return { records: [record], failed: true };
   }
 
   context.steps[step.id] = { output: results };

@@ -102,6 +102,16 @@ export function validateWorkflow(
       }
     }
 
+    // Validate step output value expressions: $result is correct, $steps is wrong here
+    for (const [outputName, output] of Object.entries(step.outputs)) {
+      if (typeof output.value === 'string' && hasStepReferences(output.value)) {
+        errors.push({
+          path: `${path}.outputs.${outputName}.value`,
+          message: `Step output "value" must use "$result" to map from the raw executor result, not "$steps" references. Use "$steps" in workflow outputs or step input values.`,
+        });
+      }
+    }
+
     // Validate guard condition references
     if (step.condition) {
       validateExpressionReferences(
@@ -166,14 +176,23 @@ export function validateWorkflow(
 
   // Validate workflow output value references (expressions and templates)
   for (const [outputName, outputDef] of Object.entries(workflow.outputs)) {
-    if (typeof outputDef.value === 'string' && hasStepReferences(outputDef.value)) {
-      const refs = extractStepReferences(outputDef.value);
-      for (const refId of refs) {
-        if (!stepMap.has(refId)) {
-          errors.push({
-            path: `outputs.${outputName}.value`,
-            message: `References undefined step "${refId}"`,
-          });
+    if (typeof outputDef.value === 'string') {
+      // $result is only valid in step output value, not workflow output value
+      if (outputDef.value.startsWith('$result') || /\$\{result[.\[]/.test(outputDef.value)) {
+        errors.push({
+          path: `outputs.${outputName}.value`,
+          message: `"$result" is not valid in workflow output "value" — use "$steps.<id>.output" instead. "$result" is only valid in step output "value".`,
+        });
+      }
+      if (hasStepReferences(outputDef.value)) {
+        const refs = extractStepReferences(outputDef.value);
+        for (const refId of refs) {
+          if (!stepMap.has(refId)) {
+            errors.push({
+              path: `outputs.${outputName}.value`,
+              message: `References undefined step "${refId}"`,
+            });
+          }
         }
       }
     }

@@ -121,6 +121,41 @@ describe('resolveExpression', () => {
     expect(resolveExpression('$inputs.account == "user@example.com"', ctx)).toBe(true);
   });
 
+  // Numeric coercion for == and !=
+  it('== coerces numeric strings: "7" == 7 → true', () => {
+    const numCtx: RuntimeContext = { ...ctx, item: '7' };
+    expect(resolveExpression('$item == 7', numCtx)).toBe(true);
+  });
+
+  it('== coerces numeric strings: 7 == "7" → true', () => {
+    const numCtx: RuntimeContext = { ...ctx, item: 7 };
+    expect(resolveExpression('$item == "7"', numCtx)).toBe(true);
+  });
+
+  it('== does not coerce non-numeric strings: "abc" == 7 → false', () => {
+    const strCtx: RuntimeContext = { ...ctx, item: 'abc' };
+    expect(resolveExpression('$item == 7', strCtx)).toBe(false);
+  });
+
+  it('== still uses strict equality for same types: 7 == 7 → true', () => {
+    expect(resolveExpression('$inputs.threshold == 7', ctx)).toBe(true);
+  });
+
+  it('== still uses strict equality for strings: "abc" == "abc" → true', () => {
+    const strCtx: RuntimeContext = { ...ctx, item: 'abc' };
+    expect(resolveExpression('$item == "abc"', strCtx)).toBe(true);
+  });
+
+  it('!= coerces numeric strings: "7" != 7 → false', () => {
+    const numCtx: RuntimeContext = { ...ctx, item: '7' };
+    expect(resolveExpression('$item != 7', numCtx)).toBe(false);
+  });
+
+  it('!= does not coerce non-numeric strings: "abc" != 7 → true', () => {
+    const strCtx: RuntimeContext = { ...ctx, item: 'abc' };
+    expect(resolveExpression('$item != 7', strCtx)).toBe(true);
+  });
+
   // Boolean and null literals
   it('evaluates boolean comparison', () => {
     expect(resolveExpression('$inputs.enabled == true', ctx)).toBe(true);

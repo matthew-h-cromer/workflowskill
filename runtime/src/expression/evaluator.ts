@@ -111,10 +111,32 @@ function evaluateBinary(
   const rval = evaluate(right, context);
 
   switch (op) {
-    case '==':
-      return lval === rval;
-    case '!=':
-      return lval !== rval;
+    case '==': {
+      if (lval === rval) return true;
+      // Numeric coercion: compare a number with a numeric string
+      if (typeof lval === 'number' && typeof rval === 'string') {
+        const n = Number(rval);
+        return !Number.isNaN(n) && lval === n;
+      }
+      if (typeof lval === 'string' && typeof rval === 'number') {
+        const n = Number(lval);
+        return !Number.isNaN(n) && n === rval;
+      }
+      return false;
+    }
+    case '!=': {
+      if (lval === rval) return false;
+      // Numeric coercion: compare a number with a numeric string
+      if (typeof lval === 'number' && typeof rval === 'string') {
+        const n = Number(rval);
+        return Number.isNaN(n) || lval !== n;
+      }
+      if (typeof lval === 'string' && typeof rval === 'number') {
+        const n = Number(lval);
+        return Number.isNaN(n) || n !== rval;
+      }
+      return true;
+    }
     case '>':
       return toNumber(lval) > toNumber(rval);
     case '<':

@@ -989,12 +989,13 @@ describe('each + delay', () => {
   });
 });
 
-// ─── each + on_error: ignore per-iteration behavior (L8) ─────────────────────
-// Current behavior: a failed iteration halts the each loop and marks the whole step as failed.
-// With on_error: ignore, the workflow continues (step output = null).
+// ─── each + on_error: ignore per-iteration behavior ──────────────────────────
+// Failed iterations produce null in the results array; the loop continues.
+// With on_error: ignore the step is marked failed but the workflow continues
+// and the partial results array is preserved.
 
 describe('each + on_error: ignore', () => {
-  it('workflow continues when each step fails mid-iteration with on_error: ignore', async () => {
+  it('collects partial results when iterations fail mid-loop', async () => {
     const workflow = loadWorkflow('each-ignore');
     const tools = new MockToolAdapter();
     let callCount = 0;
@@ -1023,8 +1024,13 @@ describe('each + on_error: ignore', () => {
     expect(stepRecord?.status).toBe('failed');
     expect(stepRecord?.error).toContain('Item 2 failed');
 
-    // Step output is null when on_error: ignore absorbs the failure
-    expect(log.outputs['results']).toBeNull();
+    // All 3 iterations ran; failed iteration produces null in the array
+    expect(stepRecord?.iterations).toBe(3);
+    expect(Array.isArray(stepRecord?.output)).toBe(true);
+    expect(stepRecord?.output).toEqual([{ result: 'ok-1' }, null, { result: 'ok-3' }]);
+
+    // Workflow output reflects the partial results, not null
+    expect(log.outputs['results']).toEqual([{ result: 'ok-1' }, null, { result: 'ok-3' }]);
   });
 });
 
