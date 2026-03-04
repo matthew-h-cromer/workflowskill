@@ -1,6 +1,6 @@
 {
   "name": "workflowskill",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "WorkflowSkill runtime - execute declarative agent workflows",
   "author": "Matthew Cromer",
   "repository": {
