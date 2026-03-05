@@ -44,6 +44,35 @@ Example step:
       value: $result.title
 ```
 
+### `web_fetch_raw`
+
+Fetches a URL and returns the raw response body without any HTML-to-markdown conversion. Use for API endpoints that return JSON or other structured data.
+
+| Input | Type   | Required | Description  |
+| ----- | ------ | -------- | ------------ |
+| `url` | string | yes      | URL to fetch |
+
+Output fields: `content` (string, raw body), `url` (string), `contentType` (string), `status` (number)
+
+Example step:
+
+```yaml
+- id: fetch_api
+  type: tool
+  tool: web_fetch_raw
+  inputs:
+    url:
+      type: string
+      value: $inputs.api_url
+  outputs:
+    content:
+      type: string
+      value: $result.content
+    status:
+      type: int
+      value: $result.status
+```
+
 ### `llm`
 
 Calls Claude and returns a parsed JSON object.

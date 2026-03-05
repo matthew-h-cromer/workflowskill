@@ -83,6 +83,7 @@ Built-in tools provided by the CLI:
 | Tool | Description | Required env |
 | --- | --- | --- |
 | `web_fetch` | Fetch a URL, return markdown or plain text | — |
+| `web_fetch_raw` | Fetch a URL, return raw response body (no conversion) | — |
 | `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
 
 ## Architecture

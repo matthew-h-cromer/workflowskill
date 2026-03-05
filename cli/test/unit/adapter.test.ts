@@ -2,17 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { CliToolAdapter } from '../../src/adapter.js';
 
 describe('CliToolAdapter', () => {
-  it('registers web_fetch and llm', () => {
+  it('registers web_fetch, web_fetch_raw, and llm', () => {
     const adapter = new CliToolAdapter();
     expect(adapter.has('web_fetch')).toBe(true);
+    expect(adapter.has('web_fetch_raw')).toBe(true);
     expect(adapter.has('llm')).toBe(true);
     expect(adapter.has('unknown')).toBe(false);
   });
 
-  it('list() returns descriptors for both tools', () => {
+  it('list() returns descriptors for all tools', () => {
     const adapter = new CliToolAdapter();
     const names = adapter.list().map((t) => t.name);
     expect(names).toContain('web_fetch');
+    expect(names).toContain('web_fetch_raw');
     expect(names).toContain('llm');
   });
 
