@@ -49,6 +49,13 @@ export class CliToolAdapter implements ToolAdapter {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'URL to fetch' },
+          method: {
+            type: 'string',
+            enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+            description: 'HTTP method (default: GET)',
+          },
+          headers: { type: 'object', description: 'Optional HTTP headers' },
+          body: { type: 'string', description: 'Optional request body (for POST/PUT/PATCH)' },
         },
         required: ['url'],
       },
