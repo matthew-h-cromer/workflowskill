@@ -1,9 +1,9 @@
 ---
-name: web-fetch-hacker-news
+name: summarize-hacker-news
 description: Fetches the Hacker News homepage and returns a concise, readable summary of the top stories.
 ---
 
-# Web Fetch: Hacker News
+# Summarize Hacker News
 
 Fetches https://news.ycombinator.com and uses Claude Haiku to produce a concise, readable summary of the top stories.
 
@@ -43,7 +43,7 @@ steps:
         value: "You are a concise tech news summarizer. Return a brief, readable summary of the top Hacker News stories — what's trending and why it matters. Plain prose, no bullet lists, 3–5 sentences max."
       prompt:
         type: string
-        value: "Here is the Hacker News front page:\n\n{{ steps.fetch.output.content }}"
+        value: "Here is the Hacker News front page:\n\n${steps.fetch.output.content}"
       schema:
         type: object
         value:
