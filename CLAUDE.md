@@ -84,6 +84,7 @@ Built-in tools provided by the CLI:
 | --- | --- | --- |
 | `web_fetch` | Fetch a URL, return markdown or plain text | — |
 | `web_fetch_raw` | Fetch a URL, return raw response body (no conversion) | — |
+| `web_scrape` | Fetch a page and extract data via CSS selectors | — |
 | `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
 
 ## Architecture

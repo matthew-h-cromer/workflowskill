@@ -73,6 +73,42 @@ Example step:
       value: $result.status
 ```
 
+### `web_scrape`
+
+Fetches a web page and extracts structured text data via CSS selectors.
+
+| Input       | Type             | Required | Description                                          |
+| ----------- | ---------------- | -------- | ---------------------------------------------------- |
+| `url`       | string           | yes      | URL to fetch                                         |
+| `selectors` | object           | yes      | Map of name → CSS selector; each returns matched text nodes |
+| `headers`   | object           | no       | Optional HTTP headers to include in the request      |
+
+Output fields: `status` (number, HTTP status code), `results` (object mapping selector names to arrays of matched text strings)
+
+Example step:
+
+```yaml
+- id: scrape_page
+  type: tool
+  tool: web_scrape
+  inputs:
+    url:
+      type: string
+      value: $inputs.url
+    selectors:
+      type: object
+      value:
+        headings: h2
+        prices: .price
+  outputs:
+    headings:
+      type: array
+      value: $result.results.headings
+    prices:
+      type: array
+      value: $result.results.prices
+```
+
 ### `llm`
 
 Calls Claude and returns a parsed JSON object.

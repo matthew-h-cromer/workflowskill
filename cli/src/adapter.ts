@@ -3,6 +3,7 @@
 import type { ToolAdapter, ToolDescriptor, ToolResult } from 'workflowskill';
 import { webFetch } from './tools/web-fetch.js';
 import { webFetchRaw } from './tools/web-fetch-raw.js';
+import { webScrape } from './tools/web-scrape.js';
 import { llm } from './tools/llm.js';
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
@@ -60,6 +61,33 @@ export class CliToolAdapter implements ToolAdapter {
           status: { type: 'number' },
         },
         required: ['content', 'url', 'contentType', 'status'],
+      },
+    });
+
+    this.register('web_scrape', webScrape, {
+      description: 'Fetch a web page and extract structured text data via CSS selectors.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL to fetch' },
+          selectors: {
+            type: 'object',
+            description: 'Map of name → CSS selector; each entry returns matched text nodes',
+          },
+          headers: {
+            type: 'object',
+            description: 'Optional HTTP headers to include in the request',
+          },
+        },
+        required: ['url', 'selectors'],
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'number' },
+          results: { type: 'object' },
+        },
+        required: ['status', 'results'],
       },
     });
 
