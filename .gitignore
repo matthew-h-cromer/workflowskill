@@ -1,8 +1,10 @@
-node_modules/
-dist/
-coverage/
-*.tsbuildinfo
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 .DS_Store
 .env
-generated/
-cli/runs/
+.vscode/

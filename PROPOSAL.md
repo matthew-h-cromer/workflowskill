@@ -1,65 +1,32 @@
-# Proposal: WorkflowSkill — Deterministic Agent Skill Workflows
+# Proposal: WorkflowSkill — Temporal-Based Workflow Engine for Agent Automation
 
 > **Related documents:** [Specification](SPEC.md) | [Examples](examples/)
 
 ## Contents
 
 - [Executive Summary](#executive-summary)
-- [Why a Standard](#why-a-standard)
-- [Why Now](#why-now)
 - [Problem Statement](#problem-statement)
-  - [Workflows Are Misaligned As Skills](#workflows-are-misaligned-as-skills)
   - [The Cost Problem](#the-cost-problem)
   - [The Reliability Problem](#the-reliability-problem)
-- [Alternatives](#alternatives)
+- [Why Temporal](#why-temporal)
+- [Why Python](#why-python)
+- [Authoring Model](#authoring-model)
+- [Architecture](#architecture)
 - [Security Considerations](#security-considerations)
-- [Adoption Path](#adoption-path)
-- [Future Work](#future-work)
-  - [Approval Gates](#approval-gates)
-  - [Workflow Composability](#workflow-composability)
-  - [Extended Transform Operations](#extended-transform-operations)
-  - [Workflow Registry](#workflow-registry)
+- [Vision: Closing the Author/Consumer Gap](#vision-closing-the-authorconsumer-gap)
 - [Appendix: Use Case Taxonomy](#appendix-use-case-taxonomy)
 
 ## Executive Summary
 
-AI agents can now do real work on your behalf: triage your email, brief you on your calendar, monitor your finances, publish content on a schedule. But there's a problem. Every time one of these automations runs, the agent approaches it like it's never done it before. It reads its instructions from scratch, reasons about what to do, picks its tools, and improvises its way through, even if it ran the exact same job yesterday and will run it again tomorrow.
+AI agents can now do real work on your behalf: triage your email, brief you on your calendar, monitor your finances, publish content on a schedule. But there's a problem. Every time one of these automations runs, the agent approaches it like it's never done it before. It reads its instructions from scratch, reasons about what to do, picks its tools, and improvises its way through — even if it ran the exact same job yesterday and will run it again tomorrow.
 
 This makes recurring automations expensive and fragile. A simple daily email triage can cost $4.50/month in AI inference alone. More importantly, results drift between runs. Output that looked fine on Monday gets formatted differently on Tuesday. A step that worked last week gets skipped this week. Users learn not to trust their automations, and many abandon them entirely.
 
-The root cause is a design mismatch. Most of what happens in a repeated workflow doesn't require intelligence at all. Fetching data, filtering a list, formatting a message, deciding where to send it: these are deterministic steps. Only a fraction of the work (scoring an email's importance, summarizing a document, making a judgment call) actually needs an AI model. But today, the entire job runs through one.
-
-WorkflowSkill fixes this by letting authors declare a workflow's plan once. Deterministic steps execute directly through a lightweight runtime with no AI, no cost, and the same result every time. Steps that genuinely require judgment invoke a model, and authors choose which model, so a cheap one handles simple classification while a more capable one handles nuance. Error handling and retries are explicit rather than improvised.
-
-And you don't have to write any of it by hand. You describe what you want in plain language — "triage my email every morning, score each one, send me the important ones on Slack" — and an agent generates the workflow for you. The YAML is the execution artifact, not the authoring surface. This is the key unlock: structured, reliable automation that anyone can speak into existence, regardless of technical background.
+**WorkflowSkill** fixes this with a different approach: agents author Python workflows using Temporal, the industry-standard durable execution engine. Instead of improvising each run, an agent writes a workflow once — readable Python code in a SKILL.md file — and Temporal executes it with built-in durability, retry logic, and scheduling. Deterministic steps cost nothing; only steps that genuinely need judgment invoke a model.
 
 The result: that $4.50/month email triage drops to $0.09. Every run follows the same plan. Behavior is auditable and version-controlled. The automation becomes reliable enough to run while you sleep.
 
-## Why a Standard
-
-Imagine someone publishes a workflow that monitors apartment listings and alerts you when a unit matching your criteria drops in price. You install it like any skill — one file, dropped into your agent. It runs on your schedule, with your credentials, on whichever platform you use. You trust it because the execution plan is right there in the YAML: every step, every tool call, every conditional path, auditable and version-controlled. And when someone publishes a better one, you swap it in without changing anything else.
-
-That's what a standard makes possible. A workflow authored in Claude Code can run identically in Codex, Cursor, Gemini CLI, or OpenClaw. Published to a registry, it would be immediately usable by every agent that speaks the format. The ecosystem stops rebuilding the same automations in isolation and starts building on each other's work. And every platform benefits — not because any one of them built a better feature, but because they all share a format that lets users compose and share skills freely across their tools. An open standard lifts the whole ecosystem.
-
-The foundation is here. The AgentSkill standard ([agentskills.io](https://agentskills.io)) already spans 27+ agent products and [10,700+ published skills](https://clawhub.io). But today, skills are documentation — they teach an agent what to do, not how. Closing that gap at the standard level creates a shared ecosystem of composable automations: authored by anyone, executed anywhere, improved by everyone. Personal automation becomes something you browse, install, and compose — not something you build from scratch every time.
-
-## Why Now
-
-Two signals indicate this is the right moment.
-
-**Repeatable tasks are the core use case.** Of ClawHub's ~3,300 legitimate skills, 35–50% involve multi-step orchestration rather than single-tool API documentation. The Productivity category (25% of the registry) is explicitly described as "email automation and workflow optimization." Development skills (29.7%) are full of CI/CD pipelines, deployment automation, and monitoring workflows. Repeatable multi-step execution isn't an edge case — it's what people actually use agent platforms for. Yet the spec has no first-class way to express it. The community has noticed: projects like flowmind and Lobster have emerged independently to fill the gap, each implementing its own incompatible workflow format.
-
-**Cost is compounding.** As agent platforms add scheduling, more workflows run unattended. Every new cron job multiplies the cost of full LLM orchestration — OpenClaw users report $47/week in API costs for routine automations. That cost isn't just a line item. It's a barrier. The people who would benefit most from personal automation — non-technical users running a side hustle, managing a household, staying on top of their finances — are exactly the people who can't justify spending $200/month on API calls for tasks that shouldn't need an LLM at all. Until the cost drops by an order of magnitude, agent-powered workflows remain a tool for enthusiasts, not a utility for everyone.
-
 ## Problem Statement
-
-### Workflows Are Misaligned As Skills
-
-The AgentSkills specification identifies four primary use cases: domain expertise, new capabilities, repeatable workflows, and interoperability. Three of those four are essentially static. You load the skill and the agent can perform a variety of tasks. But workflows are different.
-
-Repeatable workflows run on schedules. They run unattended. They run dozens or hundreds of times. And right now, every run uses an expensive orchestrator that takes creative freedom at every turn rather than the just specific step where you actually need inference.
-
-This is a structural misalignment. Any agent platform that implements the AgentSkills spec, allows skills to define workflows, and uses LLM orchestration to execute them is going to face problems around cost and reliability.
 
 ### The Cost Problem
 
@@ -67,144 +34,148 @@ Any time an agent is executing a workflow, it runs a full LLM session. The agent
 
 Consider a daily email triage of 20 emails:
 
-| Step                                 | What Happens                          | Tokens            |
-| ------------------------------------ | ------------------------------------- | ----------------- |
-| 1: Session Init                      | Agent reads SKILL.md instructions     | ~500              |
-| 2: Tool Selection                    | LLM reasons about which tool to call  | ~200              |
-| 3: Tool Execution                    | gmail.search called, results returned | ~800              |
-| 4: Per-Email Processing              | LLM scores/summarizes each email      | ~300 × 20 = 6,000 |
-| 5: Output Formatting                 | LLM formats the final briefing        | ~400              |
-| 6: Notification Decision             | LLM decides how to notify             | ~200              |
-| **Total per run**                    |                                       | **~8,000–12,000** |
-| **Monthly (daily cron for 30 days)** |                                       | **~300,000**      |
+| Step | What Happens | Tokens |
+|------|-------------|--------|
+| 1: Session Init | Agent reads SKILL.md instructions | ~500 |
+| 2: Tool Selection | LLM reasons about which tool to call | ~200 |
+| 3: Tool Execution | gmail.search called, results returned | ~800 |
+| 4: Per-Email Processing | LLM scores/summarizes each email | ~300 × 20 = 6,000 |
+| 5: Output Formatting | LLM formats the final briefing | ~400 |
+| 6: Notification Decision | LLM decides how to notify | ~200 |
+| **Total per run** | | **~8,000–12,000** |
+| **Monthly (daily cron for 30 days)** | | **~300,000** |
 
-In this example, only step 4 is doing work that truly requires an LLM. Being able to perform the rest of the steps without an LLM would eliminate 26% of the cost. For workflows that have heavier orchestration relative to the actual LLM work, savings will be even more.
+In this example, only step 4 is doing work that truly requires an LLM. With WorkflowSkill:
 
-We start to see truly massive cost savings when we consider customizing which model we use per step:
+| | Current | WorkflowSkill | Reduction |
+|---|---------|---------|-----------|
+| LLM steps | 6 | 1 | 83% fewer |
+| Tokens per run | ~8,100 | ~6,000 | 26% fewer |
+| Model | Sonnet ($15/M output) | Haiku ($1.25/M output) | 12x cheaper per token |
+| Cost per run | ~$0.15 | ~$0.003 | 98% cheaper |
+| Monthly (30x) | ~$4.50 | ~$0.09 | $4.41 saved per month |
 
-|                | Current               | WorkflowSkill          | Reduction             |
-| -------------- | --------------------- | ---------------------- | --------------------- |
-| LLM steps      | 6                     | 1                      | 83% fewer             |
-| Tokens per run | ~8,100                | ~6,000                 | 26% fewer             |
-| Model          | Sonnet ($15/M output) | Haiku ($1.25/M output) | 12x cheaper per token |
-| Cost per run   | ~$0.15                | ~$0.003                | 98% cheaper           |
-| Monthly (30x)  | ~$4.50                | ~$0.09                 | $4.41 saved per month |
-
-In this example, it means we may choose to use Haiku over Sonnet. In that instance given Haiku is 12x cheaper per token, we would eliminate more like 98% of the cost.
-
-Now consider a second case: the deployment report from Example 2. This workflow fetches deployments, filters to production, sorts by time, and posts to Slack. It requires zero judgment. But without WorkflowSkill, an LLM orchestrates every step:
-
-| Step                                 | What Happens                                     | Tokens      |
-| ------------------------------------ | ------------------------------------------------ | ----------- |
-| 1: Session Init                      | Agent reads SKILL.md instructions                | ~500        |
-| 2: Tool Selection                    | LLM reasons about which GitHub API to call       | ~200        |
-| 3: Tool Execution                    | github.list_deployments called, results returned | ~600        |
-| 4: Result Interpretation             | LLM reads and filters to production              | ~800        |
-| 5: Formatting                        | LLM formats the Slack message                    | ~400        |
-| 6: Delivery Decision                 | LLM decides where to send it                     | ~200        |
-| **Total per run**                    |                                                  | **~2,700**  |
-| **Monthly (daily cron for 30 days)** |                                                  | **~81,000** |
-
-At Sonnet pricing ($15/M output tokens): ~$1.22/month. With WorkflowSkill: $0.00. Every token was waste. No step in this workflow requires inference. Multiply by the number of similar automations a team runs (deployment reports, backup confirmations, status aggregations, alert routing) and the savings are substantial.
-
-This is not to mention the possibility of purely deterministic workflows (backups, aggregation, rule-based handling, etc.) which may not use an LLM at all.
+Purely deterministic workflows (backups, aggregation, rule-based handling) use no LLM at all.
 
 ### The Reliability Problem
 
-When an LLM orchestrates a workflow, it improvises. It reads the SKILL.md and decides, in that moment, with that context window, at that temperature, which tools to call, in what order, with what arguments. Most of the time it gets it right. But _most of the time_ is not a property you want in a system running unattended on a schedule, with real cost tied to its performance.
+When an LLM orchestrates a workflow, it improvises. It reads the SKILL.md and decides, in that moment, with that context window, at that temperature, which tools to call, in what order, with what arguments. Most of the time it gets it right. But *most of the time* is not a property you want in a system running unattended on a schedule.
 
-Some examples: The LLM might format output differently on Tuesday than Monday, breaking a downstream parser. It might decide to skip a step that seems redundant but isn't. It might handle a failed tool call by apologizing in the notification rather than retrying. It might start troubleshooting and drift from the original objective completely. None of these are bugs in the LLM. They are the natural consequence of using a probabilistic system to orchestrate a deterministic job.
+Some failure modes: The LLM might format output differently on Tuesday than Monday, breaking a downstream parser. It might decide to skip a step that seems redundant but isn't. It might handle a failed tool call by apologizing in the notification rather than retrying. None of these are bugs in the LLM. They are the natural consequence of using a probabilistic system to orchestrate a deterministic job.
 
-Security researchers studying the OpenClaw ecosystem note that users routinely abandon cron-based automations after unpredictable behavior and revert to manual workflows. The top use case guides for the platform explicitly warn readers to "start supervised before granting autonomy," because the field has learned that unsupervised LLM-orchestrated workflows drift.
+WorkflowSkill addresses this at the architectural level. The execution path is Python code, not prose. Error handling is explicit: Temporal retries failed activities with configurable backoff. Every run follows the same plan. That plan can be read, audited, version-controlled, and tested before it touches production systems. When something goes wrong, Temporal's execution history gives you step-level timing and failure reasons.
 
-Troubleshooting makes the problem concrete. When a skill-based workflow misbehaves, you have two fuzzy inputs: the intent written in the skill and the intent inferred from the execution transcript. Neither is precise. Comparing them to find root cause is interpretive work, and so is the fix you design. A deterministic workflow changes this entirely. Behavior is measurable against explicit expectations. The gap between what should have happened and what did happen is visible, not inferred. Building and iterating on explicit definitions is a fundamentally different class of problem, and a much easier one. Each iteration moves your automation toward a concrete outcome rather than drifting around one.
+## Why Temporal
 
-WorkflowSkill addresses this at the architectural level. The execution path is declared, not improvised. Error handling is explicit: retry with backoff, fail-or-ignore semantics per step. Every run follows the same plan. That plan can be read, audited, version-controlled, and tested before it touches production systems. When something goes wrong, you have a structured run log with step-level timing and failure reasons, not a transcript to synthesize.
+Temporal is the right foundation for three reasons:
 
-The result is automation that is trustworthy enough to run while you are asleep.
+**Training data.** Temporal has extensive public documentation, tutorials, example repositories, and Stack Overflow answers. LLMs have seen a lot of Temporal code. When an agent authors a workflow, it can draw on this existing knowledge to write correct, idiomatic Temporal code — far more reliably than it could with a custom DSL no model has seen before.
 
-## Alternatives
+**Reference implementations.** Any agent authoring a Temporal workflow can look at real Temporal Python examples in its training data. The patterns are established: `@workflow.defn`, `@activity.defn`, `workflow.execute_activity()`. These idioms are correct by construction.
 
-A natural question: why define a new workflow format when existing tools already orchestrate AI workflows?
+**Built-in durability.** Temporal provides retry policies, activity heartbeating, timeouts, scheduled workflows (cron), and state persistence — all built in, all well-tested. We don't need to implement any of this ourselves. An agent can author a production-grade durable workflow by following standard Temporal patterns.
 
-| Approach                         | What It Is                                                                  | Why It Doesn't Fill This Gap                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **LangGraph**                    | Graph-based workflow orchestration for LLM applications                     | Framework-specific. Python-only. Requires writing code, not declaring a plan. Not a standard that multiple agents can consume.                                                                                                                                                                                                                                                                           |
-| **CrewAI**                       | Role-based multi-agent coordination                                         | Solves a different problem: agent teams, not repeatable workflows. Every run still involves full LLM orchestration.                                                                                                                                                                                                                                                                                      |
-| **Temporal / Prefect / Airflow** | Production workflow engines                                                 | Designed for infrastructure-scale orchestration (data pipelines, deployment automation). Require a runtime server, worker processes, and operational investment far beyond what an agent skill needs. Different abstraction level entirely.                                                                                                                                                              |
-| **Haystack**                     | Python pipeline framework for LLM applications                              | Validates the core thesis: Haystack separates deterministic and LLM steps and achieves the lowest token usage among comparable frameworks. But it is a framework, not a standard. Python-only, code-first. A single agent platform could use Haystack internally; the ecosystem cannot standardize on it.                                                                                                |
-| **Lobster**                      | OpenClaw's built-in typed workflow shell for composing tools into pipelines | The closest existing solution and strong validation of the problem. Lobster is a shell-style pipeline engine (exec, where, pick, pipe) with approval gates and typed data. But it is OpenClaw-specific, not a cross-platform standard. It cannot be consumed by Claude Code, Cursor, Codex, or any other agent. A standard that lives inside AgentSkill lets every platform benefit, including OpenClaw. |
-| **flowmind**                     | Community-built OpenClaw meta-skill for chaining skills into sequences      | Proves the demand. Users built this because the platform didn't have a solution. WorkflowSkill is the standardized answer: typed inputs/outputs, error handling, run logs, and a spec that any platform can implement.                                                                                                                                                                                   |
+The result is a framework where agents author workflows that are durable, schedulable, retryable, and observable from day one — not because we built those features, but because we chose a foundation that already has them.
 
-The common thread: every existing approach is either a framework (tied to one language, one runtime, one ecosystem) or an infrastructure tool (too heavy for agent skills). None of them are a portable, declarative format that lives inside an existing skill file and works across 27+ agent products.
+## Why Python
 
-WorkflowSkill is not competing with LangGraph or Temporal. It operates at a different layer. A LangGraph application could invoke a WorkflowSkill. A Temporal workflow could trigger one. The goal is not to replace orchestration frameworks but to give the skills layer a standard way to declare what should happen, so that the execution can be deterministic where possible and intelligent only where necessary.
+Python is the right language for agent-authored workflows:
+
+- **Most LLM training data.** More Python code exists in LLM training sets than any other language. Agents write Python more reliably and naturally than any alternative.
+- **Most accessible for humans.** Technical and semi-technical users can read and understand Python. Workflows authored by agents remain auditable.
+- **Temporal SDK quality.** The Temporal Python SDK is mature and well-documented.
+- **Ecosystem.** `httpx`, `anthropic`, `beautifulsoup4` — the libraries needed for common workflow actions are idiomatic Python with excellent documentation.
+
+## Authoring Model
+
+Workflows are embedded as Python code blocks in SKILL.md files. The format is:
+
+```
+---
+name: my-workflow
+description: What this workflow does
+inputs:
+  query:
+    type: str
+    default: "default value"
+---
+
+# My Workflow
+
+A description of what this workflow does.
+
+\```python
+result = await workflow.execute_activity(
+    "my_action",
+    {"query": query},
+)
+return {"result": result}
+\```
+```
+
+This format has several advantages:
+
+1. **Readable.** The markdown prose explains the intent; the Python code shows the implementation.
+2. **Auditable.** Every action call, every data flow, every conditional is visible as Python code.
+3. **Agent-friendly.** Agents author Python naturally. The SKILL.md format adds minimal overhead — just frontmatter for metadata and a fenced code block.
+4. **Version-controlled.** The workflow is a text file. It diffs cleanly, commits naturally, and can be reviewed like any other code.
+
+## Architecture
+
+WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic — it knows nothing about specific tools like `web_fetch` or `llm`. Consumers (the CLI, OpenClaw plugin, future platforms) import the library and register their own tools as Temporal activities via the **actions** abstraction.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Consumer (CLI / OpenClaw plugin / custom runner)       │
+│                                                         │
+│  from workflowskill import ActionRegistry, run_skill          │
+│  registry = ActionRegistry()                            │
+│  registry.register("web_fetch", handler, ...)           │
+│  result = await run_skill("my-skill.md", inputs, registry) │
+└─────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  workflowskill library                                        │
+│                                                         │
+│  loader/    — parse SKILL.md, extract workflow class    │
+│  actions/   — ActionRegistry: wrap handlers as          │
+│               Temporal activities                       │
+│  runner/    — start embedded Temporal, run workflow     │
+└─────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  Temporal (temporalio SDK)                              │
+│  Durable execution, retries, scheduling, state          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Library/consumer separation:** The `workflowskill` library provides the action registration interface and the runner. The CLI registers its built-in tools (`web_fetch`, `llm`, etc.) as actions. An OpenClaw plugin would import `workflowskill` and register OpenClaw's tools instead. The library has no opinion about what tools exist.
 
 ## Security Considerations
 
-WorkflowSkill changes the trust model for skill execution. Today, an LLM mediates every tool call: it reads the skill instructions, decides which tools to invoke, and the platform can inspect the LLM's reasoning before allowing execution. A WorkflowSkill runtime executes tool calls directly, without LLM mediation. This is the source of its performance advantage, but it also means the workflow definition itself becomes the security boundary.
+Python code is the security boundary, and that's an advantage over natural language instructions.
 
-Three properties of the design mitigate this:
+**Workflows are auditable.** Every action call, every data flow, and every conditional is Python code that can be reviewed before the workflow runs. There is no hidden logic. A security review of a WorkflowSkill workflow is a review of readable code, not an interpretation of what an LLM might decide to do.
 
-**The workflow is auditable.** Every tool call, every input source, and every conditional path is declared in YAML and can be reviewed before the workflow runs. There is no hidden logic. A security review of a WorkflowSkill is a review of a data file, not an interpretation of what an LLM might decide to do.
+**The runtime has no capabilities of its own.** WorkflowSkill can only execute actions that the consumer has explicitly registered. If a consumer registers `web_fetch` but not `shell_exec`, the workflow cannot execute shell commands — even if the Python code tries to import `subprocess`. Actions are the only execution boundary, and consumers control which actions exist.
 
-**The runtime has no capabilities of its own.** It can only invoke tools that the platform has already registered and authorized. If a tool requires elevated permissions, the platform's existing authorization model controls access. The runtime does not bypass tool-level security.
+**Python code is more auditable than prose.** A malicious SKILL.md instruction written in natural language can be subtle and hard to detect. Malicious Python code making unexpected network calls is visible as code. Static analysis tools, code review, and sandboxing all apply directly to Python in ways they cannot apply to prose.
 
-**The capabilities proposal (#170) applies directly.** The active AgentSkill proposal for declaring required capabilities (`shell`, `filesystem`, `network`, `browser`) works with WorkflowSkill without modification. A WorkflowSkill that calls `gmail.search` and `slack.post_message` declares `network` capability. The platform enforces this before the runtime starts.
+The remaining risk is malicious workflow definitions. This is the same class of risk that exists today with malicious SKILL.md instructions. The mitigation is the same: skill vetting and platform-level action authorization. WorkflowSkill makes this review easier because the data flow is explicit code rather than inferred intent.
 
-The remaining risk is malicious workflow definitions: a skill that declares a workflow wiring sensitive data to an exfiltration endpoint. This is the same class of risk that exists today with malicious SKILL.md instructions (see the ClawHavoc campaign and CVE-2026-25253). The mitigation is the same: skill vetting, capability declarations, and platform-level tool authorization. WorkflowSkill makes this review easier, not harder, because the data flow is explicit rather than inferred from natural language instructions.
+## Vision: Closing the Author/Consumer Gap
 
-## Adoption Path
+Today, there is a practical gap between workflow authors (technical users who write the Python code) and workflow consumers (non-technical users who run workflows authored by others). This gap exists because authoring Python Temporal workflows requires technical knowledge.
 
-Adoption is centered on building a working implementation and proving the spec in production before proposing it for formal standardization.
+We are actively working to close that gap. The end goal is: a non-technical user describes what they want in plain language, and an agent generates a production-grade Temporal workflow that runs reliably on a schedule. The author/consumer split dissolves.
 
-**Phase 1: Reference runtime.** Build a WorkflowSkill runtime as an OpenClaw module. OpenClaw is the right starting point: the largest open-source agent platform (196k+ stars), full AgentSkill support, an active community already building workflow tools (flowmind, Lobster), and the exact pain points described in this RFC documented in their issue tracker. The reference runtime implements the full spec: all five step types, expression evaluation, error handling, retry policies, and structured run logs.
-
-**Phase 2: Community feedback.** Run real workflows in production on OpenClaw. Publish results: cost comparisons, reliability metrics, authoring experience. Gather feedback from workflow authors and platform maintainers. Iterate on the spec where real usage reveals gaps or unnecessary complexity.
-
-**Phase 3: Formal proposal.** Submit the refined WorkflowSkill extension to the AgentSkill working group under AAIF (AI Agent Interoperability Framework) / Linux Foundation governance. The reference implementation and production data serve as evidence of viability. The goal is inclusion in the AgentSkill specification, not a competing standard.
-
-**Phase 4: Conformance test suite.** Once the spec is stable and accepted, publish a platform-agnostic test suite that any runtime can run to verify compliance. Tests cover step type execution, expression resolution, error handling semantics, conditional branching, iteration, and run log format. The suite is what makes cross-platform adoption practical: the OpenClaw module is one implementation, the tests define correctness.
-
-This path is deliberately incremental. It does not require any existing platform to change anything until they choose to adopt the extension. It does not fork the ecosystem. And it produces a working implementation before asking for standardization.
-
-## Future Work
-
-The following capabilities are considered for inclusion once the core specification has proven its value in production.
-
-### Approval Gates
-
-**Approval gates.** Pause execution and wait for human authorization before high-stakes steps. This is the most architecturally complex addition: it requires state serialization, process suspension and resumption, a notification contract with the platform, and timeout handling. It is also the only feature that forces the runtime to maintain state across process boundaries. Every other executor is fire-and-forget within a single run.
-
-### Workflow Composability
-
-**Workflow composability.** Invoke one WorkflowSkill as a step within another, with typed inputs and outputs validated across the boundary. This requires scoping rules for child workflows, nested run log merging, and cross-skill versioning semantics. Composability becomes valuable once the community has built a critical mass of standalone workflows to compose.
-
-**Fallback paths.** Declare alternative step definitions that execute when a primary step fails. More expressive than `on_error: ignore` because the fallback can take a completely different action rather than continuing with null output.
-
-**Loop step type.** Repeat-until patterns for polling, convergence, and retry-with-adaptation. The `each` field handles iteration over known collections. The loop step addresses cases where the number of iterations isn't known in advance: waiting for an API to return a specific status, refining output until a quality threshold is met, or retrying with modified parameters.
-
-### Extended Transform Operations
-
-**Extended transform operations.** `pick` (select specific fields from an object), `format` (interpolate values into a string template), `group`, `flatten`, `merge`, `concat`, `count`, and `unique`. The initial three operations (filter, map, sort) are orthogonal primitives that cover the majority of data reshaping needs. `pick` is a special case of `map`. `format` duplicates what the expression language already provides in prompt templates. Additional operations will be added based on demand from real workflows.
-
-**Expression extensions.** Null coalescing (`??`) for handling missing data from skipped steps, and the `in` operator for set membership checks. Both are deferred until real usage patterns clarify their semantics and interaction with the error handling model.
-
-**Run log verbosity levels.** Configurable detail levels: minimal (timing and status only), standard (current default), and debug (full untruncated inputs and outputs). Useful for production storage optimization and detailed troubleshooting respectively.
-
-**Structured output enforcement.** Strict validation of LLM responses against declared `response_format` schemas. Deferred because LLM output validation is inherently messy (partial conformance, model-specific structured output support varies), and the failure modes need to be understood before enforcement semantics are specified.
-
-**Parallel execution.** Steps execute sequentially in declaration order. Some workflows contain independent branches that could run concurrently. A future version may introduce parallel execution groups or automatic parallelism based on dependency analysis. Deferred because the sequential model is simpler to reason about, debug, and log, and because the performance bottleneck in most workflows is external API latency rather than step sequencing.
-
-**Spec versioning.** A `version` field on the workflow block declaring which spec version the workflow was written against. This becomes necessary when new step types, expression operators, or execution semantics are added. Deferred from the initial spec to avoid premature versioning before the format stabilizes through real usage.
-
-### Workflow Registry
-
-**Workflow registry.** A package registry for published WorkflowSkills, with semantic versioning, dependency resolution, and discoverability. This is what turns WorkflowSkill from a format into an ecosystem. ClawHub already hosts 10,700+ skills, but they are flat files with no versioning, no dependency graph, and no composability contract. A registry changes that. A team publishes `email-triage@1.2.0`. Another team builds `morning-briefing@1.0.0` that depends on it. When `email-triage` ships a breaking change, semver catches it. When a user searches for "slack notification," they find a tested, versioned workflow they can drop into their own composition. This is the pattern that made npm the engine of the Node ecosystem: small, composable, versioned packages that build on each other. Spec versioning is the prerequisite. Workflow composability (invoking one WorkflowSkill as a step in another) is the enabling feature. The registry is where the compounding value lives. Deferred because it requires both of those foundations, plus decisions about hosting, namespacing, trust verification, and governance that should be informed by real community usage rather than designed in advance.
+Temporal makes this vision achievable. Because agents have extensive training data on Temporal Python patterns, they can generate correct, idiomatic workflows from natural language descriptions with increasing reliability. Every improvement in agent capability directly improves the quality of generated workflows. The framework meets the agent where it already is.
 
 ## Appendix: Use Case Taxonomy
 
-Workflow use cases organized by the fundamental job the workflow performs. Each category includes example workflows that follow the WorkflowSkill pattern: fetch data, process it, deliver a result.
+Workflow use cases organized by the fundamental job the workflow performs. Each category includes example workflows that follow the WorkflowSkill pattern: register actions, fetch data, process it, deliver a result.
 
 ### Watch & Alert — "Tell me when something changes"
 
@@ -256,7 +227,7 @@ Generate structured text (listings, messages, documents) by combining a template
 
 ### Discover & Recommend — "Find something good that fits my situation"
 
-Query or search based on current context (what's in the fridge, what's on tonight) and return ranked options.
+Query or search based on current context and return ranked options.
 
 - **What to watch tonight:** Fetch new releases on streaming services; filter by genre preferences and runtime
 - **Recipe from fridge:** Take a list of on-hand ingredients; retrieve and rank recipes that use them
@@ -301,14 +272,6 @@ Gather, synthesize, and structure information from multiple sources into a usefu
 - **How-to compiler:** Search for tutorials on a task; extract key steps and consolidate into a single guide
 - **Product deep-dive:** Fetch reviews, spec sheets, and forum discussions for a product; summarize pros and cons
 - **DIY feasibility check:** Fetch material costs and tool requirements for a project; estimate total cost and complexity
-
-### Seasonal & Life Event — "Help me get through this thing that only happens once a year"
-
-Workflows triggered by calendar events or life milestones with bounded scope and a clear completion state.
-
-- **Back-to-school supplies:** Fetch a school's supply list; compare against last year's purchases; output a delta list
-- **Tax document collector:** Search email for W-2, 1099, and statement PDFs; list what's arrived and what's missing
-- **Garage sale pricer:** Take a list of items to sell; look up comparable sold listings; suggest prices for each
 
 ### Small Business & Side Hustle — "Run this part of my business automatically"
 

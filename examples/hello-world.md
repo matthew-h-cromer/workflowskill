@@ -1,21 +1,15 @@
 ---
 name: hello-world
 description: Returns "Hello, world!". No API keys or external services required.
+outputs:
+  message:
+    type: str
 ---
 
 # Hello World
 
-The simplest possible workflow.
+The simplest possible workflow — no activities, no external calls.
 
-```workflow
-outputs:
-  message:
-    type: string
-
-steps:
-  - id: greet
-    type: exit
-    status: success
-    output:
-      message: "Hello, world!"
+```python
+return {"message": "Hello, world!"}
 ```

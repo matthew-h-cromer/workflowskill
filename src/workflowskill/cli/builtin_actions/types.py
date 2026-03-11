@@ -1,0 +1,66 @@
+"""I/O dataclasses for built-in CLI actions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+# web_fetch
+
+@dataclass
+class WebFetchInput:
+    url: str
+    extract: str = "markdown"  # "markdown" | "text"
+
+
+@dataclass
+class WebFetchOutput:
+    content: str
+    url: str
+
+
+# web_fetch_raw
+
+@dataclass
+class WebFetchRawInput:
+    url: str
+    method: str = "GET"
+    headers: dict[str, str] = field(default_factory=dict)
+    body: str | None = None
+
+
+@dataclass
+class WebFetchRawOutput:
+    content: str
+    url: str
+    content_type: str
+    status: int
+
+
+# web_scrape
+
+@dataclass
+class WebScrapeInput:
+    url: str
+    selectors: dict[str, str | dict[str, str]]
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class WebScrapeOutput:
+    status: int
+    results: dict[str, list[str]]
+
+
+# llm
+
+@dataclass
+class LlmInput:
+    prompt: str
+    system: str | None = None
+    schema: dict | None = None  # type: ignore[type-arg]
+    model: str = "claude-sonnet-4-6"
+
+
+@dataclass
+class LlmOutput:
+    result: object  # The parsed JSON object returned by the LLM

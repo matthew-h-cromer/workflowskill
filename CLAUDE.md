@@ -1,113 +1,137 @@
 # WorkflowSkill
 
-Declarative workflow language + TypeScript runtime for orchestrating tool-calling agents.
+Temporal-based workflow engine where agents author Python workflows from natural language descriptions.
 
 ## Spec
 
-`SPEC.md` is the authoritative source of truth. Read the relevant section before modifying any runtime module.
+`SPEC.md` is the authoritative source of truth. Read the relevant section before modifying any module.
+
+## Architecture
+
+**Library + CLI** — `workflowskill` is a pure orchestration library; the CLI wraps it with built-in actions (`web_fetch`, `llm`, etc.) for command-line use. An OpenClaw plugin or other consumer would import `workflowskill` and register its own actions instead.
+
+**Tool-agnostic runtime** — The `workflowskill` library knows nothing about specific tools. Consumers register tools as Temporal activities via the `ActionRegistry`. This keeps the library modular and reusable across platforms.
+
+**Temporal foundation** — Durable execution, retry policies, scheduling, and state persistence are provided by Temporal. We do not implement these ourselves.
 
 ## Repo Structure
 
 ```
 SPEC.md                          # Language spec (authoritative)
-examples/                        # Runnable workflow examples (flat, no subdirs)
-runtime/                         # TypeScript reference implementation (npm package)
-  src/
-    types/index.ts               # All types
-    parser/                      # parseSkillMd, parseWorkflowYaml, schema.ts (Zod)
-    expression/                  # Expression language: resolve, template, lex/parse/eval
-    validator/                   # validateWorkflow — DAG, type, tool checks
-    executor/                    # dispatch + 4 step executors
-    runtime/                     # runWorkflow — execution loop, run log
-    adapters/                    # MockToolAdapter (only adapter; no LLM adapter)
-    config/                      # loadConfig — env vars
-    index.ts                     # Public API (all re-exports live here)
-  test/
-    unit/                        # One file per module
-    integration/                 # End-to-end + graduation tests
-  skill/SKILL.md                 # Workflow-author skill (single source of truth)
-cli/                             # CLI package (workflowskill command)
-  src/
-    cli.ts                       # Entry point: arg parsing, file loading, run
-    display.ts                   # Colored onEvent handler (picocolors)
-    adapter.ts                   # CliToolAdapter: web_fetch + llm
-    tools/
-      web-fetch.ts               # web_fetch tool
-      llm.ts                     # llm tool (Anthropic SDK)
-  test/
-    unit/                        # Unit tests for each module
-    integration/                 # Runs hello-world.md via child process
-.claude/
-  skills/workflow-author/SKILL.md  # Pointer to runtime/skill/SKILL.md + local context
-  rules/                           # Auto-loaded coding rules
+PROPOSAL.md                      # Design rationale and problem statement
+examples/                        # Runnable workflow examples (SKILL.md format)
+src/
+  workflowskill/
+    __init__.py                  # Public API: ActionRegistry, run_skill, LoadedSkill
+    config.py                    # Temporal connection config (env vars)
+    actions/
+      __init__.py
+      registry.py                # ActionRegistry — register tools as Temporal activities
+    loader/
+      __init__.py
+      skill_loader.py            # Parse SKILL.md → LoadedSkill
+      validator.py               # AST validator for restricted Python subset
+    runner/
+      __init__.py
+      runner.py                  # run_skill() — load → start Temporal → execute → return
+    cli/
+      __init__.py
+      main.py                    # Click CLI: run, worker commands
+      display.py                 # Rich console output
+      builtin_actions/           # Built-in actions provided by CLI (not by library)
+        __init__.py
+        types.py                 # I/O dataclasses for built-in actions
+        web_fetch.py             # web_fetch + web_fetch_raw actions
+        web_scrape.py            # web_scrape action
+        llm.py                   # llm action (Anthropic SDK)
+pyproject.toml                   # Python project config (uv, dependencies)
+skill/SKILL.md                   # Workflow-author skill (authoring guide)
 ```
 
 ## Development
 
-Runtime library (`runtime/`):
-
 ```sh
-npm run typecheck   # tsc --noEmit
-npm run test        # vitest run
-npm run lint        # eslint src/ test/
-npm run build       # tsdown — produces dist/
+uv sync --extra dev      # Install dependencies
+uv run pytest            # Run tests
+uv run mypy src/         # Type checking
+uv run ruff check src/   # Linting
+uv run ruff format src/  # Formatting
+
+# Dev without installing:
+uv run python -m workflowskill.cli.main run <file>
+
+# Install CLI globally:
+uv tool install .
+workflowskill run examples/hello-world.md
 ```
 
-Pre-publish gate: `npm run prepublishOnly` runs typecheck + test + lint + build in sequence.
+## Eval Suite
 
-CLI (`cli/`):
+The project includes an eval-driven test suite that measures how well `skill/SKILL.md`
+teaches an LLM to generate valid workflows. Evals are separate from unit/integration
+tests — they call Claude and cost money, so they run only on demand.
 
-```sh
-npm install         # installs deps and symlinks runtime via file:../runtime
-npm run build       # tsdown — produces dist/cli.mjs
-npm run typecheck   # tsc --noEmit
-npm run test        # vitest run (unit + integration)
-npm run lint        # eslint src/ test/
-npm link            # makes `workflowskill` available globally
-
-# Dev without building:
-npx tsx src/cli.ts run <file>
-```
-
-## CLI Usage
+### Running evals
 
 ```sh
-workflowskill run <file>                          # run a workflow file
-workflowskill run <file> -i key=value             # pass an input (repeatable)
-workflowskill run <file> --json-input '{...}'     # pass all inputs as JSON
-workflowskill run <file> --output-json            # print full RunLog as JSON
+uv run pytest -m eval -v                    # Run all evals
+uv run pytest -m eval -k test_loop -v       # Run one eval
+EVAL_RETRIES=5 uv run pytest -m eval -v     # Multi-trial stability check
+uv run pytest -m eval --eval-snapshot -v     # Save generated outputs for diffing
 ```
 
-Built-in tools provided by the CLI:
+Requires `ANTHROPIC_API_KEY` in the environment. Tests are skipped automatically
+if the key is not set.
 
-| Tool | Description | Required env |
-| --- | --- | --- |
-| `web_fetch` | Fetch a URL, return markdown or plain text | — |
-| `web_fetch_raw` | Fetch a URL, return raw response body (no conversion) | — |
-| `web_scrape` | Fetch a page and extract data via CSS selectors | — |
-| `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
+### What evals test
 
-## Architecture
+Each eval gives Claude a natural-language task and checks whether the generated
+SKILL.md has the correct structure via AST analysis. Tests target specific language
+features: pure logic, single/sequential/parallel activities, conditionals, loops,
+retry policies, error recovery, explicit timeouts, and LLM schema usage.
 
-- **Library + CLI** — `runtime/` is a pure orchestration library; `cli/` wraps it with `web_fetch` and `llm` tools for command-line use.
-- **4 step types:** `tool`, `transform`, `conditional`, `exit`
-- **9-step execution lifecycle** per step (see SPEC.md § Runtime > Execution Model)
-- **`ToolAdapter` interface** is the only runtime boundary; adapters live in `src/adapters/`
+### When to run evals
+
+Run evals **before and after** modifying `skill/SKILL.md`. Compare results to confirm
+your changes improved (or at least didn't regress) generation quality. Use `--eval-snapshot`
+to save outputs and diff them across changes.
+
+### Adding new evals
+
+When adding a new language feature or workflow pattern:
+1. Add an AST check function to `tests/evals/ast_checks.py` if needed
+2. Add a test case to `tests/evals/test_authoring.py` with a task description and
+   structural assertions
+3. Run the eval to establish a baseline before updating the authoring guide
 
 ## Key Conventions
 
 | Convention | Rule |
-| --- | --- |
-| Step output field | `value` |
-| Mapping from executor result | `$result` (not `$output`) |
-| Workflow input fallbacks | `default` field (not `value`) |
-| ESM imports | `.js` extension on all local imports |
-| `noUncheckedIndexedAccess` | Guard array access; use `!` after bounds check |
-
-## SKILL.md
-
-`runtime/skill/SKILL.md` is the single source of truth for the workflow-author skill. Edit it directly. `.claude/skills/workflow-author/SKILL.md` is a thin pointer that references the canonical file and adds local Claude Code context (available tools, dev workflow). Do not duplicate authoring content into the pointer file.
+|-----------|------|
+| Workflow return type | Always `dict` |
+| Action handler signature | `async def handler(args: dict) -> dict` |
+| Action invocation | `workflow.execute_activity("name", args_dict, start_to_close_timeout=...)` |
+| Input passing | Flat keyword args dict to `@workflow.run` |
+| Timeout | Default is 30s; override with `start_to_close_timeout` only when needed |
+| I/O dataclasses | Optional inside action handlers; workflow interface uses plain `dict` |
+| Determinism | Prefer pure Python for parsing, transforming, and filtering. Use `llm` only for genuine inference (summarization, classification, generation, translation). |
 
 ## Public API
 
-Everything consumed by library users is re-exported from `runtime/src/index.ts`. Update `index.ts` whenever a public symbol is added or removed.
+Everything consumed by library users is exported from `src/workflowskill/__init__.py`:
+
+- `ActionRegistry` — register tools as Temporal activities
+- `run_skill(skill_path, inputs, registry)` — load and execute a SKILL.md
+- `load_skill(skill_path)` — parse a SKILL.md and return a `LoadedSkill`
+- `LoadedSkill` — dataclass returned by the skill loader
+- `InputSpec` — dataclass describing a single workflow input parameter
+- `OutputSpec` — dataclass describing a single workflow output
+- `SkillLoadError` — raised when a SKILL.md cannot be loaded
+
+## SKILL.md Format
+
+Workflows are Python code blocks in markdown files with YAML frontmatter. See SPEC.md § SKILL.md Format for the full specification.
+
+## Skill Authoring Guide
+
+`skill/SKILL.md` is the authoring guide for generating Python Temporal workflows in SKILL.md format. It teaches Claude how to author valid workflows.

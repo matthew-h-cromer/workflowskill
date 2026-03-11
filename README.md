@@ -1,239 +1,254 @@
 # WorkflowSkill
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node: >=20](https://img.shields.io/badge/Node-%3E%3D20-green.svg)](https://nodejs.org)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/matthew-h-cromer/workflowskill/issues)
+**Describe what you want. Claude writes the workflow. Temporal runs it forever.**
 
-> [!IMPORTANT]
-> **Pre-release.** The spec and reference runtime are complete and tested, but the API is not yet frozen. This is a good time to influence direction — open an issue if something feels wrong, missing, or over-engineered.
+WorkflowSkill turns natural language descriptions into durable Python workflows backed by Temporal. Instead of an agent improvising every run, a workflow is authored once — readable Python code — and Temporal executes it with built-in retries, scheduling, and state persistence. Deterministic steps cost nothing; only steps that genuinely need judgment invoke a model.
 
-A declarative workflow language for AI agents.
+That daily email triage costing $4.50/month in inference? With WorkflowSkill it's $0.09.
 
-1. You prompt what you need: "I want to check this website daily"
-2. Your agent writes a WorkflowSkill — an extension to [Agent Skills](https://agentskills.io/home) — that can be executed deterministically by any compatible runtime.
-3. The WorkflowSkill runs reliably and cheaply for repetitive tasks — no agent needed.
+---
 
-## What it looks like
+## Quickstart — Describe it, run it
 
-> **You:** I want to check Hacker News for AI stories every morning and email me a summary.
->
-> **Agent:** I'll author a WorkflowSkill for that. _(invokes `/workflowskill-author`, writes a SKILL.md, runs `workflowskill_validate`)_
->
-> Validated — 3 steps: `fetch`, `filter`, `email`. Running a test now... _(invokes `workflowskill_run`)_
->
-> Run complete: 4 AI stories found, summary drafted. Ready to schedule — want me to set up a daily cron at 8 AM?
+### 1. Install
 
-## Repositories
+```sh
+uv tool install .
+```
 
-| Repo                                                                                 | Description                                                          |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| **workflowskill** (this repo)                                                        | Specification, proposal, and reference runtime                       |
-| [openclaw-workflowskill](https://github.com/matthew-h-cromer/openclaw-workflowskill) | OpenClaw plugin — validate, run, and review workflows from the agent |
+### 2. Try the hello-world example
 
-## Documentation
-
-| Document                   | Description                                                        |
-| -------------------------- | ------------------------------------------------------------------ |
-| [PROPOSAL.md](PROPOSAL.md) | Design rationale, requirements, and alternatives considered        |
-| [SPEC.md](SPEC.md)         | Full language specification — the source of truth for all behavior |
-| [examples/](examples/)     | Runnable workflow examples                                         |
-| [runtime/](runtime/)       | Reference TypeScript implementation                                |
-| [cli/](cli/)               | CLI tool — run workflow files from the command line                |
-
-## Quick start
-
-```bash
-cd cli
-npm install
-npm run build
-npm link            # makes `workflowskill` available globally
-
+```sh
 workflowskill run examples/hello-world.md
 ```
 
-## CLI
-
 ```
-Usage: workflowskill run <file> [options]
-
-Options:
-  -i, --input key=value   Set a workflow input (repeatable)
-  --json-input '{...}'    Set all inputs as a JSON object
-  --output-json           Print the full RunLog as JSON to stdout
-  -h, --help              Show this help message
+Running hello-world
+Temporal server: 127.0.0.1:54215
+╭──────── hello-world ─────────╮
+│ {                            │
+│   "message": "Hello, world!" │
+│ }                            │
+╰──────────────────────────────╯
 ```
 
-The CLI ships two built-in tools:
+No API key needed. This proves the engine works.
 
-| Tool        | Description                                                    | Requires            |
-| ----------- | -------------------------------------------------------------- | ------------------- |
-| `web_fetch` | Fetch a URL, return readable content as markdown or plain text | —                   |
-| `llm`       | Call Claude, return a parsed JSON object                       | `ANTHROPIC_API_KEY` |
+### 3. Create your own
 
-Dev mode (no build step):
+WorkflowSkill includes `skill/SKILL.md` — a workflow authoring guide wired up as a Claude skill. Open Claude Code in this directory and describe what you want:
 
-```bash
-cd cli
-npx tsx src/cli.ts run <file>
+```
+$ claude
+> /workflow-author Create a workflow that takes a GitHub username as input,
+  fetches their recent public activity, and returns a one-paragraph summary
+  of what they've been working on.
 ```
 
-### Authoring WorkflowSkills
+Claude generates and saves the file to `examples/`. Run it:
 
-A WorkflowSkill is authored via natural conversation with any agent system that supports the [Agent Skills](https://agentskills.io/home) format.
-
-1. Prompt your agent to create a workflow: "I want to check this website daily"
-   - This repo is configured to work with Claude Code via `.claude/` — for other agent tools, provide the contents of `runtime/skill/SKILL.md` as context.
-2. Your agent writes a WorkflowSkill.
-3. Integrate it with your host using the [Integration](#integration) section.
-
-**Evaluate the output:** Check `status` for overall success. If a step failed, its `error` field explains why. For `each` steps, `iterations` shows per-item results. Compare per-step `inputs` and `output` values against your expectations to find where the data flow broke down.
-
-## Language overview
-
-WorkflowSkill workflows are YAML documents with four step types:
-
-| Step type     | Description                                                                     |
-| ------------- | ------------------------------------------------------------------------------- |
-| `tool`        | Invoke any tool via the host's `ToolAdapter` (APIs, functions, LLM calls, etc.) |
-| `transform`   | Filter, map, or sort data without side effects                                  |
-| `conditional` | Branch execution based on an expression                                         |
-| `exit`        | Terminate early with a status and output                                        |
-
-All external calls — including LLM inference — go through `tool` steps. The runtime itself has no LLM dependency. The host registers whatever tools are available in the deployment context.
-
-Steps are connected by `$steps.<id>.output.<field>` references. Loops use `each`. Error handling uses `on_error: fail | ignore` (retries are a separate `retry:` field).
-
-See [SPEC.md](SPEC.md) for the full language reference.
-
-## Runtime
-
-The reference implementation is a standalone TypeScript library in [`runtime/`](runtime/). It includes:
-
-- **Parser** — extracts and validates workflow YAML from Markdown
-- **Expression engine** — `$`-reference language with `${...}` template interpolation
-- **Validator** — pre-execution DAG and type checking
-- **Executor** — four step type executors
-- **Run log** — structured observability output for every run
-
-The runtime is a pure orchestration library — no CLI, no built-in tools, no LLM dependencies. Wire in your tools and run.
-
-## Integration
-
-Two entry points collapse parse → validate → run into single calls that accept raw content and never throw.
-
-```typescript
-import {
-  runWorkflowSkill,
-  validateWorkflowSkill,
-} from "workflowskill";
-
-// Validate a workflow (synchronous, never throws)
-const result = validateWorkflowSkill({
-  content,          // SKILL.md with frontmatter or bare workflow YAML
-  toolAdapter,      // optional — skips tool availability checks if absent
-});
-
-if (!result.valid) {
-  console.error(result.errors);
-}
-
-// Run a workflow (async, never throws — always returns a RunLog)
-const log = await runWorkflowSkill({
-  content,          // SKILL.md with frontmatter or bare workflow YAML
-  inputs: { ... },
-  toolAdapter,      // implements ToolAdapter
-});
-
-if (log.status === "success") {
-  console.log(log.outputs);
-}
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+workflowskill run examples/github-activity-summary.md --input username=torvalds
 ```
 
-Key ergonomic properties:
-
-- **Accepts raw content** — SKILL.md with frontmatter or bare workflow YAML, no parsing step needed
-- **Never throws** — parse, validation, and execution failures are encoded in the return value
-- **`RunLog` is always returned**, with `error?: { phase, message, details }` on failure
-
-## Adapters
-
-`ToolAdapter` is the integration boundary between the runtime and the host:
-
-```typescript
-interface ToolAdapter {
-  invoke(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
-  has(toolName: string): boolean;
-  list?(): ToolDescriptor[];
-}
+```
+Running github-activity-summary username='torvalds'
+Temporal server: 127.0.0.1:55030
+  ⟳ Executing web_fetch_raw...
+  ✓ web_fetch_raw (291ms)
+  ⟳ Executing llm...
+  ✓ llm (3023ms)
+╭────────────────────────────────── github-activity-summary ───────────────────────────────────╮
+│ {                                                                                            │
+│   "summary": "Torvalds has been exclusively active on the torvalds/linux repository, making  │
+│ a high volume of push commits to the master branch throughout late February and early March  │
+│ 2026. His activity consists entirely of direct commits, with multiple pushes per day on      │
+│ several days, reflecting his ongoing role in maintaining and advancing the Linux kernel."    │
+│ }                                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-Implement `ToolAdapter` to expose your tools (MCP servers, functions, LLM calls, etc.) to the workflow runtime.
+Workflows that use the `llm` action require `ANTHROPIC_API_KEY`.
 
-For testing, **`MockToolAdapter`** lets you supply handler functions without any external dependencies:
+---
 
-```typescript
-import { MockToolAdapter } from "workflowskill";
+## Example: What a workflow looks like
 
-const adapter = new MockToolAdapter();
-adapter.register("my_tool", async (args) => ({ output: "result" }));
+This is what Claude generates for the Hacker News task. You don't write this — Claude does.
+
+```
+examples/summarize-hacker-news.md
 ```
 
-## Run log
+```markdown
+---
+name: summarize-hacker-news
+description: Fetches the Hacker News homepage and returns a concise summary of the top stories. Requires ANTHROPIC_API_KEY.
+outputs:
+  summary:
+    type: str
+---
 
-Every call to `runWorkflowSkill` returns a `RunLog`:
+# Summarize Hacker News
 
-```typescript
-interface RunLog {
-  id: string;
-  workflow: string;
-  status: "success" | "failed";
-  summary: {
-    steps_executed: number;
-    steps_skipped: number;
-    total_duration_ms: number;
-  };
-  started_at: string; // ISO 8601
-  completed_at: string; // ISO 8601
-  duration_ms: number;
-  inputs: Record<string, unknown>;
-  steps: StepRecord[];
-  outputs: Record<string, unknown>;
-  error?: {
-    phase: "parse" | "validate" | "execute";
-    message: string;
-    details?: unknown;
-  };
-}
+Fetches https://news.ycombinator.com and uses Claude Haiku to produce a concise,
+readable summary of the top stories.
+
+```python
+# Fetch the Hacker News front page as plain text
+page = await workflow.execute_activity(
+    "web_fetch",
+    {"url": "https://news.ycombinator.com", "extract": "text"},
+    retry_policy=RetryPolicy(maximum_attempts=3),   # ← retries built in
+)
+
+# Summarize with Claude Haiku
+summary = await workflow.execute_activity(
+    "llm",
+    {
+        "model": "claude-haiku-4-5-20251001",
+        "system": "You are a concise tech news summarizer...",
+        "prompt": f"Here is the Hacker News front page:\n\n{page['content']}",
+        "schema": {                                 # ← structured output
+            "type": "object",
+            "properties": {"summary": {"type": "string"}},
+            "required": ["summary"],
+        },
+    },
+    start_to_close_timeout=timedelta(seconds=60),
+)
+
+return {"summary": summary["summary"]}
+```
 ```
 
-`error` is present only when the run failed. `outputs` is populated on success (and on `exit` steps with `status: failed`).
+What to notice: **frontmatter** declares inputs and outputs. The **Python code block** is the workflow logic. **Activities** are external calls — each one gets Temporal's retry and timeout semantics automatically.
 
-## Low-level integration
+---
 
-`parseWorkflowFromMd`, `validateWorkflow`, and `runWorkflow` are also exported for consumers who need fine-grained control over each phase.
+## How it works
+
+A SKILL.md file is a markdown file with YAML frontmatter and a Python code block. WorkflowSkill parses it, wraps the code as a Temporal workflow, and runs it using an embedded Temporal server.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Consumer (CLI / plugin / custom runner)                │
+│                                                         │
+│  from workflowskill import ActionRegistry, run_skill          │
+│  registry = ActionRegistry()                            │
+│  registry.register("web_fetch", handler, ...)           │
+│  result = await run_skill("my-skill.md", inputs, registry) │
+└─────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  workflowskill library                                        │
+│                                                         │
+│  loader/    — parse SKILL.md, extract workflow class    │
+│  actions/   — ActionRegistry: wrap handlers as          │
+│               Temporal activities                       │
+│  runner/    — start embedded Temporal, run workflow     │
+└─────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  Temporal (temporalio SDK)                              │
+│  Durable execution, retries, scheduling, state          │
+└─────────────────────────────────────────────────────────┘
+```
+
+Key capabilities available in generated workflows:
+
+- **Retries** — `retry_policy=RetryPolicy(maximum_attempts=3)` on any activity
+- **Parallel execution** — `asyncio.gather()` across multiple activities
+- **Timeouts** — `start_to_close_timeout=timedelta(seconds=60)`
+- **Structured LLM output** — pass a JSON schema to the `llm` action
+- **Scheduling** — Temporal cron scheduling for recurring workflows
+
+---
+
+## Built-in actions
+
+The CLI includes these actions out of the box:
+
+| Action | Description |
+|--------|-------------|
+| `web_fetch` | Fetch a URL as text or markdown |
+| `web_fetch_raw` | Raw HTTP request with method, headers, and body |
+| `web_scrape` | Extract structured data from web pages |
+| `llm` | Call Claude with optional structured output schema |
+
+---
+
+## Why WorkflowSkill?
+
+### Cost
+
+When an LLM orchestrates a workflow, it reasons through every step on every run. For a daily email triage of 20 emails:
+
+| | Traditional agent | WorkflowSkill |
+|---|---|---|
+| LLM steps per run | 6 | 1 |
+| Tokens per run | ~8,100 | ~6,000 |
+| Model | Sonnet ($15/M output) | Haiku ($1.25/M output) |
+| Cost per run | ~$0.15 | ~$0.003 |
+| Monthly (30 runs) | ~$4.50 | ~$0.09 |
+
+Purely deterministic workflows — backups, aggregation, rule-based handling — use no LLM at all.
+
+### Reliability
+
+LLM orchestration improvises. It reads instructions and decides, in that moment, at that temperature, which tools to call and in what order. Most of the time it's right. But "most of the time" is not a property you want in a system running unattended on a schedule.
+
+WorkflowSkill workflows are Python code. The execution path is explicit and auditable. Temporal handles failures: retries with configurable backoff, step-level execution history, and durable state across restarts. Every run follows the same plan. When something goes wrong, you know exactly which step failed and why.
+
+---
+
+## Using as a library
+
+WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`web_fetch`, `llm`, etc.). Embedding it in your own platform means registering your own:
+
+```python
+import asyncio
+from workflowskill import ActionRegistry, run_skill
+
+registry = ActionRegistry()
+registry.register("my_tool", my_handler)
+
+result = asyncio.run(run_skill("path/to/skill.md", {"query": "hello"}, registry))
+print(result)
+```
+
+Action handlers have the signature `async def handler(args: dict) -> dict`. The library has no opinion about what tools exist — that's the consumer's job.
+
+---
 
 ## Development
 
-Runtime library (`runtime/`):
+```sh
+uv sync --extra dev   # Install all dependencies including dev tools
+uv run pytest                     # Run tests
+uv run mypy src/                  # Type checking
+uv run ruff check src/            # Linting
+uv run ruff format src/           # Formatting
 
-```bash
-npm run typecheck          # tsc --noEmit
-npm run test               # Run all tests (vitest)
-npm run test:coverage      # With coverage report
-npm run lint               # ESLint
-npm run build              # tsdown
+# Run without installing:
+uv run python -m workflowskill.cli.main run examples/hello-world.md
 ```
 
-CLI (`cli/`):
+---
 
-```bash
-npm install                # installs deps + symlinks runtime
-npm run build              # tsdown → dist/cli.mjs
-npm run typecheck
-npm run test
-npm link                   # makes `workflowskill` available globally
-```
+## Requirements
 
-## License
+- Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) recommended
 
-[MIT](LICENSE)
+---
+
+## Further reading
+
+- [SPEC.md](SPEC.md) — SKILL.md format specification
+- [skill/SKILL.md](skill/SKILL.md) — Workflow authoring guide (what Claude uses to generate workflows)
+- [PROPOSAL.md](PROPOSAL.md) — Design rationale and architecture
+- [examples/](examples/) — Runnable example workflows

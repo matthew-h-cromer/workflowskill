@@ -60,57 +60,49 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 | Scope | Covers |
 |-------|--------|
-| `parser` | YAML parsing, Zod schemas, markdown extraction |
-| `expression` | Lexer, parser, evaluator for `$`-references |
-| `validator` | Pre-execution validation |
-| `executor` | Step executors (tool, llm, transform, conditional, exit) |
-| `runtime` | Orchestrator, lifecycle, run log |
-| `cli` | CLI commands (validate, run) |
-| `adapters` | Mock adapters, AnthropicLLMAdapter |
-| `tools` | BuiltinToolAdapter, builtin tool implementations (http, html) |
-| `types` | TypeScript interfaces |
-| `rfc` | RFC specification document |
+| `loader` | SKILL.md parsing, frontmatter extraction |
+| `actions` | ActionRegistry, action handlers |
+| `runner` | run_skill orchestration, Temporal lifecycle |
+| `cli` | Click CLI commands (run, worker) |
+| `builtin` | Built-in CLI actions (web_fetch, llm, etc.) |
+| `spec` | SPEC.md specification |
+| `examples` | Example workflow files |
 
 ## Examples
 
 Good:
 
 ```
-feat(parser): add YAML parser with Zod validation and test fixtures
+feat(loader): add frontmatter validation for input types
 ```
 
 ```
-docs(rfc): add expression language specification
+docs(spec): add expression language specification
 ```
 
 ```
-fix(runtime): prevent duplicate step execution in conditional branches
+fix(runner): prevent duplicate activity execution on retry
 ```
 
 ```
-chore: scaffold project with TypeScript, Vitest, and ESLint
+chore: scaffold Python project with uv and pytest
 ```
 
 Bad (and how to fix):
 
 ```
 # Bad: no type prefix, past tense
-Added Expression Language section
+Added web_fetch action
 # Good:
-docs(rfc): add expression language specification
-
-# Bad: meaningless "Step N" prefix
-Step 1: Project scaffolding
-# Good:
-chore: scaffold project with TypeScript, Vitest, and ESLint
+feat(builtin): add web_fetch action
 
 # Bad: uppercase after colon, trailing period
-feat: Add new parser module.
+feat: Add new loader module.
 # Good:
-feat(parser): add new parser module
+feat(loader): add new loader module
 
 # Bad: too vague
 fix: stuff
 # Good:
-fix(executor): handle null output from tool adapter
+fix(runner): handle null return from activity handler
 ```
