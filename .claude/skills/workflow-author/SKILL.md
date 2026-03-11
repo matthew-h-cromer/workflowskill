@@ -1,153 +1,103 @@
 ---
 name: workflow-author
-description: Generate valid WorkflowSkill YAML from natural language descriptions. Teaches Claude Code to author executable workflow definitions.
+description: Generate valid Python Temporal workflows in SKILL.md format for the WorkflowSkill workflow engine.
 ---
 
-# WorkflowSkill Author
+# WorkflowSkill Workflow Author
 
-Read `runtime/skill/SKILL.md` for the full authoring guide — it is the single source of truth for YAML structure, step types, expression language, iteration, design rules, and validation checklist.
+Read `skill/SKILL.md` for the full authoring guide — it is the single source of truth for SKILL.md format, workflow patterns, available actions, and validation rules.
 
-## Available tools (CLI runtime)
+## Output
 
-When authoring workflows to run via `workflowskill run`, these tools are pre-registered:
+After generating the workflow, **write it to a file** in the `examples/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: github-activity` → `examples/github-activity.md`). Confirm the file path to the user after writing it.
+
+## Available actions (CLI built-ins)
+
+When authoring workflows to run via `workflowskill run`, these actions are pre-registered and can be called via `workflow.execute_activity("name", args_dict, start_to_close_timeout=...)`.
 
 ### `web_fetch`
 
-Fetches a URL and returns readable content.
+Fetch a URL and return its content as markdown or plain text.
 
-| Input     | Type                     | Required | Default      | Description   |
-| --------- | ------------------------ | -------- | ------------ | ------------- |
-| `url`     | string                   | yes      | —            | URL to fetch  |
-| `extract` | `'markdown'` \| `'text'` | no       | `'markdown'` | Output format |
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | `str` | yes | — | URL to fetch |
+| `extract` | `"markdown" \| "text"` | no | `"markdown"` | Output format |
 
-Output fields: `content` (string), `title` (string, may be absent), `url` (string)
+Output: `content` (str), `url` (str)
 
-Example step:
+Example:
 
-```yaml
-- id: fetch_page
-  type: tool
-  tool: web_fetch
-  inputs:
-    url:
-      type: string
-      value: $inputs.url
-    extract:
-      type: string
-      value: markdown
-  outputs:
-    content:
-      type: string
-      value: $result.content
-    title:
-      type: string
-      value: $result.title
+```python
+page = await workflow.execute_activity(
+    "web_fetch",
+    {"url": url, "extract": "markdown"},
+    start_to_close_timeout=timedelta(seconds=30),
+)
+content = page["content"]
 ```
 
 ### `web_fetch_raw`
 
-Fetches a URL and returns the raw response body without any HTML-to-markdown conversion. Use for API endpoints that return JSON or other structured data.
+Fetch a URL and return the raw response body without conversion. Use for API endpoints returning JSON or other structured data.
 
-| Input | Type   | Required | Description  |
-| ----- | ------ | -------- | ------------ |
-| `url` | string | yes      | URL to fetch |
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | `str` | yes | URL to fetch |
+| `method` | `str` | no | HTTP method (default: `"GET"`) |
+| `headers` | `dict` | no | Request headers |
+| `body` | `str` | no | Request body (not allowed with GET) |
 
-Output fields: `content` (string, raw body), `url` (string), `contentType` (string), `status` (number)
-
-Example step:
-
-```yaml
-- id: fetch_api
-  type: tool
-  tool: web_fetch_raw
-  inputs:
-    url:
-      type: string
-      value: $inputs.api_url
-  outputs:
-    content:
-      type: string
-      value: $result.content
-    status:
-      type: int
-      value: $result.status
-```
+Output: `content` (str), `url` (str), `content_type` (str), `status` (int)
 
 ### `web_scrape`
 
-Fetches a web page and extracts structured text data via CSS selectors.
+Fetch a web page and extract structured text via CSS selectors.
 
-| Input       | Type             | Required | Description                                          |
-| ----------- | ---------------- | -------- | ---------------------------------------------------- |
-| `url`       | string           | yes      | URL to fetch                                         |
-| `selectors` | object           | yes      | Map of name → CSS selector; each returns matched text nodes |
-| `headers`   | object           | no       | Optional HTTP headers to include in the request      |
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | `str` | yes | URL to scrape |
+| `selectors` | `dict[str, str]` | yes | Map of name → CSS selector |
+| `headers` | `dict` | no | Request headers |
 
-Output fields: `status` (number, HTTP status code), `results` (object mapping selector names to arrays of matched text strings)
+Output: `status` (int), `results` (dict[str, list[str]])
 
-Example step:
+Example:
 
-```yaml
-- id: scrape_page
-  type: tool
-  tool: web_scrape
-  inputs:
-    url:
-      type: string
-      value: $inputs.url
-    selectors:
-      type: object
-      value:
-        headings: h2
-        prices: .price
-  outputs:
-    headings:
-      type: array
-      value: $result.results.headings
-    prices:
-      type: array
-      value: $result.results.prices
+```python
+page = await workflow.execute_activity(
+    "web_scrape",
+    {"url": url, "selectors": {"prices": ".price", "titles": "h2"}},
+    start_to_close_timeout=timedelta(seconds=30),
+)
+prices = page["results"].get("prices", [])
 ```
 
 ### `llm`
 
-Calls Claude and returns a parsed JSON object.
+Call Claude and return a parsed JSON object.
 
-| Input    | Type   | Required | Default                    | Description                                          |
-| -------- | ------ | -------- | -------------------------- | ---------------------------------------------------- |
-| `prompt` | string | yes      | —                          | User prompt                                          |
-| `system` | string | no       | —                          | System prompt                                        |
-| `schema` | object | no       | —                          | JSON schema for the response shape (formatting hint) |
-| `model`  | string | no       | `claude-sonnet-4-20250514` | Model ID                                             |
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `prompt` | `str` | yes | — | User message |
+| `system` | `str` | no | — | System prompt |
+| `schema` | `dict` | no | — | JSON schema the response must match |
+| `model` | `str` | no | `"claude-sonnet-4-6"` | Claude model ID |
 
-Output: a parsed JSON object — map specific fields via `$result.<field>` in step outputs.
+Output: parsed JSON object — access fields as `result["field_name"]`.
 
 Requires `ANTHROPIC_API_KEY` environment variable.
 
-Example step:
+Example:
 
-```yaml
-- id: extract
-  type: tool
-  tool: llm
-  inputs:
-    prompt:
-      type: string
-      value: "Extract the key facts from this article: ${steps.fetch_page.output.content}"
-    schema:
-      type: object
-      value:
-        title: string
-        summary: string
-        facts:
-          type: array
-          items:
-            type: string
-  outputs:
-    summary:
-      type: string
-      value: $result.summary
-    facts:
-      type: array
-      value: $result.facts
+```python
+summary = await workflow.execute_activity(
+    "llm",
+    {
+        "prompt": f"Summarize:\n\n{content}",
+        "schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
+    },
+    start_to_close_timeout=timedelta(seconds=60),
+)
+text = summary["summary"]
 ```

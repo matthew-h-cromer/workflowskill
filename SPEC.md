@@ -5,509 +5,444 @@
 ## Contents
 
 - [Quick Example](#quick-example)
-- [Context](#context)
-- [Proposal Requirements](#proposal-requirements)
-- [Authoring Model](#authoring-model)
-- [WorkflowSkill](#workflowskill)
-  - [Backwards Compatibility](#backwards-compatibility)
-  - [Workflow Inputs and Outputs](#workflow-inputs-and-outputs)
-  - [Step Definition](#step-definition)
-  - [Step Inputs and Outputs](#step-inputs-and-outputs)
-  - [Expression Language](#expression-language)
-  - [Step Types](#step-types)
-  - [Flow Control](#flow-control)
-- [Runtime](#runtime)
-  - [Execution Model](#execution-model)
-  - [Step Executors](#step-executors)
-  - [Error Handling](#error-handling)
-  - [Run Log](#run-log)
-  - [Runtime Boundaries](#runtime-boundaries)
-  - [Conformance](#conformance)
+- [SKILL.md Format](#skillmd-format)
+  - [Frontmatter](#frontmatter)
+  - [Python Code Block](#python-code-block)
+- [Workflow Definition](#workflow-definition)
+- [Actions](#actions)
+  - [Action Registration](#action-registration)
+  - [Calling Actions from Workflows](#calling-actions-from-workflows)
+  - [Action I/O Typing](#action-io-typing)
+- [Input/Output Typing](#inputoutput-typing)
+- [Skill Loading](#skill-loading)
+- [Runner](#runner)
+- [CLI](#cli)
 
 ## Quick Example
 
-A minimal workflow that fetches data, transforms it, and exits with a result:
+A minimal hello-world workflow in SKILL.md format:
+
+```
+---
+name: hello-world
+description: Returns a greeting. No external services required.
+---
+
+# Hello World
+
+The simplest possible workflow.
+
+\```python
+return {"message": "Hello, world!"}
+\```
+```
+
+A workflow that calls an action:
+
+```
+---
+name: fetch-page
+description: Fetches a URL and returns its content as markdown.
+inputs:
+  url:
+    type: str
+    default: "https://example.com"
+---
+
+# Fetch Page
+
+\```python
+result = await workflow.execute_activity(
+    "web_fetch",
+    {"url": url, "extract": "markdown"},
+)
+return {"content": result["content"]}
+\```
+```
+
+## SKILL.md Format
+
+A SKILL.md file is a markdown document with YAML frontmatter and a fenced `python` code block containing **the body of the workflow's run method** — just the logic, nothing else.
+
+The loader auto-injects all imports and wraps the code in the workflow class. Authors write only what the method does.
+
+### Frontmatter
+
+The frontmatter block appears at the top of the file between `---` delimiters.
+
+```yaml
+---
+name: my-workflow          # Required. Identifier for the workflow.
+description: What it does  # Required. Human-readable description.
+inputs:                    # Optional. Workflow inputs with types and defaults.
+  query:
+    type: str
+    default: "default value"
+  count:
+    type: int
+    default: 10
+outputs:                   # Optional. Declared workflow outputs.
+  result:
+    type: str
+    description: The result value
+---
+```
+
+**Supported input types:** `str`, `int`, `float`, `bool`, `list`, `dict`
+
+All inputs are optional — they may be overridden at runtime via CLI flags or programmatic invocation. If not provided, the `default` value is used.
+
+**`outputs`** is optional. When declared, the runner validates that every declared key is present in the returned dict. Each entry has:
+- `type` — the expected type (informational only; not enforced at runtime)
+- `description` — human-readable description (optional)
+
+### Python Code Block
+
+The code block contains **only the method body** — no imports, no class, no decorators:
+
+````markdown
+```python
+result = await workflow.execute_activity(
+    "web_fetch",
+    {"url": url, "extract": "markdown"},
+)
+return {"content": result["content"]}
+```
+````
+
+The loader generates the full module automatically:
+
+```python
+# Auto-injected by the loader:
+from temporalio import workflow as _tw
+from temporalio.common import RetryPolicy
+from datetime import timedelta
+import asyncio
+
+# Proxy that defaults start_to_close_timeout=timedelta(seconds=30):
+workflow = _WorkflowProxy()
+
+# Auto-generated from frontmatter name and inputs:
+@workflow.defn
+class FetchPageWorkflow:
+    @workflow.run
+    async def run(self, url: str = "https://example.com") -> dict:
+        # ← user code goes here
+        result = await workflow.execute_activity(...)
+        return {"content": result["content"]}
+```
+
+**What is available in user code:**
+- `workflow` — proxy object; use `workflow.execute_activity(...)` to call actions
+- `RetryPolicy` — for retry policies on activity calls
+- `timedelta` — for explicit timeouts
+- `asyncio` — for `asyncio.gather(...)` and other async utilities
+- All built-in Python types and functions (see restrictions below)
+
+**Default timeout:** `workflow.execute_activity()` defaults to `start_to_close_timeout=timedelta(seconds=30)`. Pass an explicit `start_to_close_timeout` to override.
+
+**Class name:** Derived from frontmatter `name` by capitalizing each hyphen/underscore-separated word and appending `Workflow`. Example: `fetch-page` → `FetchPageWorkflow`.
+
+**Method signature:** Derived from frontmatter `inputs`. Each input becomes a typed parameter with its default value.
+
+Rules:
+- The code block must **not** contain imports — they are auto-injected.
+- The code block must **not** contain class definitions.
+- Input names used in the code must match the keys declared in frontmatter `inputs`.
+- The code must return a `dict` (via `return`).
+
+**Restricted Python:** The code block is validated against a restricted subset of Python at load time. Only method-body constructs are allowed.
+
+**Blocked patterns:**
+- `import os`, `import sys`, `import subprocess`, or any import statement (all auto-injected)
+- Class definitions (`class Foo: ...`)
+- `eval()`, `exec()`, `compile()`, `open()`, `__import__()`, `getattr()`, `setattr()`, `delattr()`, `globals()`, `locals()`, `vars()`, `breakpoint()`
+- Dunder attribute access (`__class__`, `__subclasses__`, `__builtins__`, etc.)
+- `with` / `async with` statements
+- `global` / `nonlocal` statements
+- `lambda` expressions
+
+These restrictions keep workflows simple and safe. All external operations must go through registered actions via `workflow.execute_activity()`.
+
+## Workflow Definition
+
+Workflow method-body code uses these patterns:
+
+```python
+# Single activity call (default 30s timeout)
+result = await workflow.execute_activity(
+    "action_name",
+    {"key": "value"},
+)
+return {"output": result["field"]}
+```
+
+**Key conventions:**
+
+| Convention | Rule |
+|-----------|------|
+| Return type | Always `dict` |
+| Action invocation | `workflow.execute_activity("name", args_dict, ...)` |
+| Action args | Pass as a `dict` (not a dataclass) |
+| Default timeout | 30 seconds (auto-applied; override with `start_to_close_timeout`) |
+
+**Explicit timeout:**
+
+```python
+result = await workflow.execute_activity(
+    "my_action",
+    {"url": url},
+    start_to_close_timeout=timedelta(seconds=60),
+)
+```
+
+**Parallel execution:**
+
+```python
+a, b = await asyncio.gather(
+    workflow.execute_activity("action_a", {...}),
+    workflow.execute_activity("action_b", {...}),
+)
+```
+
+**Retry policy:**
+
+```python
+result = await workflow.execute_activity(
+    "my_action",
+    {"url": url},
+    retry_policy=RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=2)),
+)
+```
+
+## Actions
+
+Actions are WorkflowSkill's abstraction for platform-provided tools. The `workflowskill` library is tool-agnostic — it knows nothing about `web_fetch`, `llm`, or any specific capability. Consumers (the CLI, plugins, custom runners) register their tools as actions via the `ActionRegistry`.
+
+When a workflow calls `workflow.execute_activity("web_fetch", ...)`, Temporal routes that to the registered `web_fetch` action. The action runs as a Temporal activity with full durability, retry, and timeout semantics.
+
+### Action Registration
+
+```python
+from workflowskill import ActionRegistry
+
+registry = ActionRegistry()
+
+# Register a handler function as an action
+registry.register(
+    name="my_action",
+    handler=my_handler_function,
+)
+```
+
+The handler must be an `async` function (or a sync function — the registry wraps it). It receives a `dict` of inputs and returns a `dict` of outputs:
+
+```python
+async def my_handler(args: dict) -> dict:
+    url = args["url"]
+    # ... do work ...
+    return {"content": result}
+```
+
+### Calling Actions from Workflows
+
+In the workflow code block, call registered actions via `workflow.execute_activity()`:
+
+```python
+result = await workflow.execute_activity(
+    "my_action",
+    {"key": "value"},
+)
+# result is the dict returned by the handler
+content = result["content"]
+```
+
+The activity name must match the name used in `registry.register()`.
+
+### Action I/O Typing
+
+Action handlers receive a `dict` and return a `dict`. This keeps the interface simple and compatible with any caller. For internal clarity, handlers may use dataclasses:
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class FetchInput:
+    url: str
+    extract: str = "markdown"
+
+@dataclass
+class FetchOutput:
+    content: str
+    title: str | None = None
+    url: str = ""
+
+async def web_fetch_handler(args: dict) -> dict:
+    inp = FetchInput(**args)
+    # ... fetch ...
+    out = FetchOutput(content=content, title=title, url=inp.url)
+    return out.__dict__
+```
+
+## Input/Output Typing
+
+Workflow inputs are declared in frontmatter and passed as keyword arguments to the generated `@workflow.run` method. Outputs are returned as a `dict`.
+
+**Input declaration in frontmatter:**
 
 ```yaml
 inputs:
   query:
-    type: string
-    default: "software engineer"
-
-outputs:
-  jobs:
-    type: array
-    value: $steps.scrape.output.items
-
-steps:
-  - id: scrape
-    type: tool
-    tool: web.scrape
-    inputs:
-      url:
-        type: string
-        value: "https://example.com/jobs?q=${inputs.query}"
-      selector:
-        type: string
-        value: ".job-title"
-    outputs:
-      items:
-        type: array
-        value: $result.results
-
-  - id: guard_empty
-    type: exit
-    condition: $steps.scrape.output.items.length == 0
-    status: success
-    output: { jobs: [] }
+    type: str
+    default: "hello"
+  count:
+    type: int
+    default: 5
 ```
 
-Steps wire data with `$steps.<id>.output.<field>`. The `condition` guard on the exit step fires only when the results are empty. See [examples/](examples/) for runnable workflows.
+**Generated method signature:**
 
-## Context
-
-**Agent:** A running instance that pairs a model with memory, tools, and skills to act on behalf of a user. The agent is the subject that invokes tools, interprets skills, and executes workflows. Where a tool *does* and a skill *knows*, an agent *acts*.
-
-**Tool:** A primitive capability the agent can invoke, such as MCP server endpoints, bash scripts, or Python modules. Extends what agents can do beyond pure language generation.
-
-**Skill:** Procedural knowledge enabling domain expertise, new capabilities, repeatable workflows, or interoperability for agents. Agents load skills into their context when deemed appropriate. Skills follow the AgentSkill standard defined at agentskills.io.
-
-**Workflow:** Any task that is repeatable and contains discrete steps. A skill may define a workflow.
-
-**Deterministic:** A system that always produces the exact same output from the same input. In this proposal we are using the term loosely. Inference is not deterministic. We just care to make our systems as deterministic as possible.
-
-**Composable:** The ability for smaller components to be combined in ways that build more complex and useful systems. In this proposal, we aim to make skills composable, which makes them more useful.
-
-**Cost:** Ultimately we care about minimizing the amount of money we spend to get a discrete amount of work done via agents. In this proposal we will speak about tokens as a proxy for cost.
-
-**Reliability:** The agent's ability to produce consistent, predictable results across repeated runs, even when individual steps fail.
-
-**★ WorkflowSkill:** The proposed extension to the AgentSkill standard which makes a skill executable by a runtime in a way that is deterministic and composable, aiming to drastically reduce cost and increase reliability when agents execute workflows.
-
-## Proposal Requirements
-
-**PR1: Natural Language Authoring**
-I want users to describe a workflow in plain language and have an agent generate the WorkflowSkill YAML, so that creating an automation is as easy as explaining what you want and no one has to write YAML by hand.
-
-**PR2: Autonomous Improvement**
-I want agents to inspect workflow definitions and structured run logs, identify failures or inefficiencies, and propose improvements autonomously, so that workflows get better over time without the user ever editing the workflow directly.
-
-**PR3: Workflow Language**
-I want a declarative workflow language that a lightweight runtime can execute directly, so that deterministic steps run without LLM inference and cost scales with complexity rather than frequency.
-
-**PR4: Targeted LLM Usage**
-I want to specify which model to use per LLM step so that judgment-heavy steps can use a capable model while simple classification or summarization steps use a cheaper one, and deterministic steps use no model at all.
-
-**PR5: Backwards Compatibility**
-I want WorkflowSkill to live inside the existing SKILL.md format so that adoption is incremental, systems without a runtime still function, no existing skills break, and the ecosystem doesn't fork.
-
-**PR6: Input/Output Schemas**
-I want typed, validated inputs and outputs on every workflow so that workflows are self-documenting, callers get clear errors on bad input, and agents can programmatically assess whether a run produced a valid result.
-
-**PR7: Observability**
-I want structured, step-level run logs with timing, inputs, outputs, and failure reasons so that debugging a failed workflow is a lookup rather than a transcript interpretation exercise.
-
-**PR8: Traceability**
-I want every workflow execution to produce a unique run ID and a full record of which steps ran, which were skipped, and what data flowed between them, so that I can reconstruct exactly what happened in any past run without ambiguity.
-
-**PR9: Flow Control**
-I want conditional branching, iteration, and early exits expressed declaratively so that workflow logic is visible and auditable rather than improvised per-run by the LLM.
-
-**PR10: Error Handling**
-I want explicit, per-step error handling semantics (fail, ignore) so that a single step failure doesn't silently corrupt the rest of the workflow or produce a partial result the user mistakes for a complete one.
-
-**PR11: Retries**
-I want configurable retry policies with backoff so that transient failures (rate limits, network timeouts, temporary API errors) are absorbed automatically without human intervention or wasted LLM reasoning about what to do next.
-
-### Authoring Model
-
-A reasonable concern: declarative YAML is harder to write and maintain than natural language instructions. If WorkflowSkill trades runtime cost for authoring cost, the tradeoff might not be worth it.
-
-The answer is that humans won't write most workflows. LLMs will. PR1 (Natural Language Authoring) is not aspirational. It is how the format is designed to be used. A user describes what they want: "triage my email every morning, score each one for importance, send me the important ones on Slack." An agent generates the WorkflowSkill YAML, validates it, and offers it for review. The YAML is the execution artifact, not the authoring surface.
-
-This is analogous to how SQL is used in practice. Most SQL is generated by ORMs, query builders, and application code, not typed by hand. The structured format exists so machines can execute it reliably, not so humans can write it comfortably. The same applies here. The workflow YAML is legible enough for a human to review and audit, but the primary author is an agent.
-
-The structured format also enables PR2 (Autonomous Improvement). An agent can read a workflow definition, compare it against run logs, identify failures or inefficiencies, and propose modifications. This is possible precisely because the format is structured and machine-readable. Natural language instructions are easy to write but hard to improve systematically.
-
-## WorkflowSkill
-
-A WorkflowSkill is defined by adding a `workflow` fenced code block to an existing SKILL.md file. The block contains a YAML execution plan.
-
-```
----
-name: string
-description: string
----
+```python
+async def run(self, query: str = "hello", count: int = 5) -> dict:
 ```
 
-````yaml
-```workflow
-inputs:
-  <name>: { type: string|int|float|boolean|array|object, default: <value> }
-outputs:
-  <name>: { type: string|int|float|boolean|array|object, value: <expression> }
-steps:
-  - id: string
-    type: tool|transform|conditional|exit
-    description: string
-    inputs:
-      <name>: { type: <type>, value: <expression>, default: <value> }
-    outputs:
-      <name>: { type: <type>, value: <expression> }
+The loader passes inputs as a flat dict of keyword arguments. Defaults in frontmatter are used when inputs are not provided at runtime.
 
-    # Tool fields
-    tool: string                    # registered tool name
+**Output:** The return value is the workflow result. It must be a `dict`. The keys become the workflow's named outputs. When `outputs` is declared in frontmatter, the runner validates that all declared keys are present in the returned dict.
 
-    # Transform fields
-    operation: filter|map|sort      # transform operation
-    where: expression               # filter: keep items where true
-    expression: object              # map: output shape per item
-    field: string                   # sort: field to sort by
-    direction: asc|desc             # sort: order (default: asc)
+## Skill Loading
 
-    # Conditional fields
-    condition: expression           # branch condition
-    then: [step_id, ...]            # true branch
-    else: [step_id, ...]            # false branch (optional)
+The skill loader parses a SKILL.md file and returns a `LoadedSkill` ready for execution.
 
-    # Exit fields
-    status: success|failed          # termination status
-    output: expression              # final output (optional)
+**Loading process:**
 
-    # Common flow control fields
-    condition: expression           # guard: skip if false (optional)
-    each: expression                # iterate over array (optional)
-    on_error: fail|ignore           # error strategy (default: fail)
-    retry:                          # retry policy (optional)
-      max: int
-      delay: duration              # e.g. "2s", "500ms"
-      backoff: float
-```
-````
+1. Read the markdown file.
+2. Extract YAML frontmatter (between `---` delimiters).
+3. Extract the first fenced `python` code block (method-body code).
+4. Validate the code against the restricted Python subset.
+5. Generate a complete Python module: preamble (imports + `_WorkflowProxy`) + workflow class wrapping the user code.
+6. Write the generated module to a temporary `.py` file and import it.
+7. Find the class decorated with `@workflow.defn`.
+8. Return a `LoadedSkill` with the workflow class, input metadata, and name.
 
-...
+**`LoadedSkill` fields:**
 
-### Backwards Compatibility
-
-This placement inside SKILL.md is intentional to satisfy **PR5: Backwards Compatibility**. Systems without a WorkflowSkill runtime read the block as documentation. The LLM can interpret the YAML and execute a reasonable approximation of it. Systems with a runtime execute it directly. A single skill file works in both contexts. Adoption is incremental, and no existing skills break.
-
-### Workflow Inputs and Outputs
-
-A workflow should have a defined schema for inputs and outputs. Being able to execute a WorkflowSkill with inputs makes WorkflowSkills vastly more reusable. Furthermore, it enables composability of WorkflowSkills. Being able to validate outputs against a schema gives agents tools to dynamically assess the effectiveness of the workflow and improve it autonomously.
-
-### Step Definition
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| id | yes | Unique identifier within the workflow. Referenced by other steps via `$steps.<id>.output`. |
-| type | yes | One of: `tool`, `transform`, `conditional`, `exit`. |
-| description | no | Human-readable explanation. Displayed in run logs. |
-| inputs | no | Named input schema. Required for tool and transform steps. Not used by exit or conditional steps. |
-| outputs | no | Named output schema. Required for tool and transform steps. Not used by exit or conditional steps. |
-| condition | no | Boolean expression. If false, the step is skipped and its output is null. This is a guard clause. Use it for "run this step only if X." For routing between different paths, use a `conditional` step instead. |
-| each | no | Expression resolving to an array. The step executes once per element; output is an array of results. `$item` and `$index` are available within the step. Not valid on `exit` steps; rejected at validation time. |
-| delay | no | Inter-iteration pause when combined with `each`. Duration string: integer followed by `ms` or `s` (e.g., `"1s"`, `"500ms"`). Only valid when `each` is present; rejected at validation time otherwise. The delay fires between iterations, not after the last one. |
-| on_error | no | Error handling strategy: `fail` (default) or `ignore` (log the error and continue with null output). |
-| retry | no | Retry policy: `{ max: int, delay: duration, backoff: float }`. Duration string: integer followed by `ms` (milliseconds) or `s` (seconds). Examples: `"500ms"`, `"2s"`. |
-
-### Step Inputs and Outputs
-
-Every step declares typed inputs and outputs. This serves three purposes:
-
-**Pre-execution validation.** Before executing any steps, the runtime walks the step graph and verifies that every input resolves to a source with a compatible type. A wiring error like passing a string where an array is expected is caught before anything runs.
-
-**Post-step validation.** After each step executes, the runtime validates its actual output against the declared schema. A step that produces unexpected output fails explicitly rather than silently corrupting downstream steps.
-
-**Composability contracts.** When workflow composition is supported (see Future Work), input and output schemas are validated across the boundary between parent and child workflows.
-
-**Step input `value`** — a `$`-expression that resolves from the runtime context (`$inputs`, `$steps`, `$item`, `$index`). This wires data from earlier steps or workflow inputs into the current step.
-
-```yaml
-inputs:
-  messages:
-    type: array
-    items: { type: object, properties: { from: string, subject: string, body: string } }
-    value: $steps.fetch_emails.output.messages
+```python
+@dataclass
+class LoadedSkill:
+    name: str
+    description: str
+    workflow_class: type
+    inputs: dict[str, InputSpec]   # name → {type, default}
+    outputs: dict[str, OutputSpec]  # name → {type, description}
 ```
 
-**Step output `value`** — a `$`-expression that resolves against the raw executor result using the `$result` reference. This maps fields from the executor's raw response into named output keys. Outputs without `value` pass through from the raw result by key name (backwards compatible).
+**Error conditions:**
 
-```yaml
-outputs:
-  title:
-    type: string
-    value: $result.body.title
+- No `python` code block found → `SkillLoadError`
+- Import statement in code block → `SkillLoadError`
+- Class definition in code block → `SkillLoadError`
+- Blocked callable (`eval`, `exec`, etc.) → `SkillLoadError`
+- Syntax error in the code block → `SkillLoadError` (wraps the `SyntaxError`)
+
+## Runner
+
+The runner provides a high-level function for executing a SKILL.md workflow end-to-end.
+
+```python
+from workflowskill import run_skill, ActionRegistry
+
+registry = ActionRegistry()
+registry.register("web_fetch", web_fetch_handler)
+
+result = await run_skill(
+    skill_path="examples/hello-world.md",
+    inputs={"query": "temporal"},
+    registry=registry,
+)
+# result is the dict returned by the workflow
 ```
 
-**Workflow output `value`** — a `$`-expression that resolves from the final runtime context (`$steps`, `$inputs`). This maps step results into the workflow's declared outputs without requiring exit steps.
+**Execution steps:**
 
-```yaml
-outputs:
-  title:
-    type: string
-    value: $steps.fetch.output.title
+1. Load the SKILL.md via the skill loader.
+2. Merge provided inputs with frontmatter defaults.
+3. Start an embedded Temporal environment via `WorkflowEnvironment.start_local()`.
+4. Register the workflow class and all actions from the registry as worker activities.
+5. Start the worker.
+6. Execute the workflow with the merged inputs.
+7. Shut down the worker and Temporal environment.
+8. Return the workflow result dict.
+
+The embedded Temporal environment (`start_local()`) requires no external Temporal server — it runs in-process. This is the default mode for the CLI and single-workflow execution.
+
+For long-running worker mode (connecting to an external Temporal server), see the CLI documentation below.
+
+## CLI
+
+The CLI is a consumer of the `workflowskill` library. It registers built-in actions and calls `run_skill`.
+
+**Usage:**
+
+```sh
+workflowskill run <file>                     # Run a workflow file
+workflowskill run <file> -i key=value        # Pass an input (repeatable)
+workflowskill run <file> --json-input '{...}' # Pass all inputs as JSON
+workflowskill worker                         # Long-running worker mode
 ```
 
-**Resolution order:**
-1. **Step output `value`**: resolved immediately after the executor returns. A temporary context with `$result` set to the raw executor result is used. The mapped output replaces the raw result in the runtime context.
-2. **Workflow output `value`**: resolved after all steps complete, from the final runtime context. If an exit step fires, exit output takes precedence over `value` resolution.
+**Built-in actions (provided by the CLI, not the library):**
 
-### Expression Language
+| Action | Description | Required env |
+|--------|-------------|-------------|
+| `web_fetch` | Fetch a URL, return markdown or plain text | — |
+| `web_fetch_raw` | Fetch a URL, return raw response body | — |
+| `web_scrape` | Fetch a page and extract data via CSS selectors (text, attributes, or HTML) | — |
+| `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
 
-Expressions appear in `condition` guards, `each` fields, input `value` references, and prompt templates. They are not a programming language. They resolve references and evaluate simple comparisons.
+**Examples:**
 
-**References:**
+```sh
+# Run the hello-world example
+workflowskill run examples/hello-world.md
 
-| Syntax | Resolves To |
-|--------|-------------|
-| `$inputs.<name>` | A workflow input parameter |
-| `$steps.<id>.output` | The full output of a previous step |
-| `$steps.<id>.output.<path>` | A nested field within a step's output (dot notation) |
-| `$item` | The current element when inside an `each` iteration |
-| `$index` | The current index when inside an `each` iteration |
-| `$result` | The raw result of the current step's executor (only valid in step output `value`) |
+# Run with inputs
+workflowskill run examples/llm-haiku.md -i subject="autumn leaves"
 
-**Properties:**
-
-| Syntax | Resolves To |
-|--------|-------------|
-| `<array>.length` | The number of elements in an array |
-| `<array>[<expression>]` | Element at index (0-based). Out-of-bounds → `undefined`. The index is a full expression, enabling both literal (`[0]`) and computed (`[$index]`) access. |
-
-**Operators:**
-
-| Category | Operators |
-|----------|-----------|
-| Comparison | `==`, `!=`, `>`, `<`, `>=`, `<=` |
-| Logical | `&&`, `\|\|`, `!` |
-| String / Array | `contains` |
-
-`contains` is a binary infix operator. For strings, it tests substring inclusion (case-insensitive). For arrays, it tests whether the array includes the right-hand value (primitive equality). Returns `true` or `false`.
-
-**Constraints.** Expressions cannot assign values, call functions, or produce side effects. They are pure references, property accesses (dot notation and bracket indexing), comparisons, and `contains` tests. No function calls, no ternary expressions, no regex. Use `contains` for substring and array membership tests.
-
-**Template interpolation.** String values containing `${...}` are treated as templates. Each `${ref}` block is evaluated as a reference and its result is spliced into the surrounding string. References inside `${...}` omit the leading `$` (e.g., `${inputs.query}`, `${steps.fetch.output.body}`). If the entire value is a single `${ref}` with no surrounding text, the typed result is preserved (not coerced to string). Use `$${` to produce a literal `${`. Template interpolation applies to `value` fields on step inputs, step outputs, and workflow outputs. Primary use case: constructing dynamic URLs in `each` loops (e.g., `"${inputs.base_url}${item}.json"`).
-
-### Step Types
-
-| Type | Description |
-|------|-------------|
-| **Tool** | Invokes a registered tool via the host's ToolAdapter. No LLM involved. Use for any step where the inputs, operation, and expected output shape are known at authoring time. All external calls — including LLM inference — go through a tool step. |
-| **Transform** | Filters, maps, sorts, or reshapes data. Pure data manipulation inside the runtime. Use to prepare the output of one step as input for the next. |
-| **Conditional** | Evaluates a `condition` expression and dispatches to the matching branch. Each branch contains one or more step IDs to execute. Returns the output of the last step in the selected branch. For skipping a single step, use the `condition` common field instead. |
-| **Exit** | Terminates the workflow immediately with a status and optional output. Use inside a conditional branch for early termination, or as a circuit breaker when a critical step fails with `on_error: ignore`. |
-
-#### Tool Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `tool` | yes | Name of the tool to invoke, as registered in the platform's tool registry (MCP server, function, etc.). |
-
-The step's resolved `inputs` are passed as the tool's arguments. The tool's response becomes the step's output. The runtime does not interpret the response.
-
-#### Transform Fields
-
-| Field | Required | Used With | Description |
-|-------|----------|-----------|-------------|
-| `operation` | yes | all | One of: `filter`, `map`, `sort`. |
-| `where` | yes | filter | Expression evaluated per item. Items where the expression is true are kept. |
-| `expression` | yes | map | Object defining the output shape. Each value is an expression resolved per item. |
-| `field` | yes | sort | Dot-notation path to the field to sort by. |
-| `direction` | no | sort | `asc` (default) or `desc`. |
-
-Transform steps operate on the array provided in their input. The output is the transformed array.
-
-The `where` field is deliberately named differently from the common `condition` guard to avoid ambiguity. The guard decides whether the step runs at all. The `where` clause decides which items survive the filter.
-
-#### Conditional Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `condition` | yes | Expression to evaluate. |
-| `then` | yes | Array of step IDs to execute if the condition is true. |
-| `else` | no | Array of step IDs to execute if the condition is false. |
-
-Steps referenced in `then` and `else` are defined in the main steps array but execute only when their branch is selected. They are skipped during normal sequential execution. The conditional step returns the output of the last step executed in the selected branch.
-
-`each` is not valid on `conditional` steps. If you need to branch per-item, use `each` on the individual steps within each branch. This constraint is enforced at validation time, same as `exit` steps.
-
-#### Exit Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `status` | yes | Workflow termination status: `success` or `failed`. |
-| `output` | no | Expression or literal value to return as the workflow's final output. |
-
-### Flow Control
-
-| Mechanism | Kind | Purpose |
-|-----------|------|---------|
-| `condition` | Common field | Guard. Should this step run? Binary skip/execute. |
-| `each` | Common field | Iterate. Run this step for every item in a collection. |
-| `conditional` | Step type | Branch. Route between different step sequences. |
-| `exit` | Step type | Terminate. Stop the workflow early with a status and output. |
-
-## Runtime
-
-A WorkflowSkill runtime is a lightweight execution engine. It reads the workflow YAML, validates the graph, executes each step in sequence, and produces a structured log. It does not reason, plan, or make decisions. Every decision point is resolved by the workflow definition itself: conditions evaluate to true or false, transforms apply declared operations, and tool steps call the host's registered tools.
-
-### Execution Model
-
-Execution proceeds in two phases.
-
-**Phase 1: Validate.** The runtime parses the workflow YAML, resolves all `$steps` references to verify they form a directed acyclic graph, type-checks input wiring between steps, and confirms that all referenced tools are available. If validation fails, the workflow does not execute. The runtime returns a validation error listing every problem found.
-
-**Phase 2: Execute.** Steps run in declaration order. Each step follows the same lifecycle:
-
-1. **Guard.** Evaluate the `condition` field if present. If false, skip the step, record it as skipped in the run log, and set its output to null.
-2. **Resolve inputs.** Evaluate all expression references (`$steps`, `$inputs`) and bind them to the step's declared inputs.
-3. **Iterate.** If `each` is present, the step executes once per element in the resolved array. `$item` and `$index` are available within the step. The step's output is an array of per-element results. If `delay` is present, the runtime pauses for the specified duration between iterations (not after the last).
-4. **Dispatch.** Hand the step to the appropriate executor based on its `type`.
-5. **Map outputs.** If any declared output has a `value` field, resolve it against the raw executor result using a temporary context where `$result` is set to the raw result. Build a mapped output object from the resolved values. Outputs without `value` pass through by key name.
-6. **Validate output.** Check the (mapped) output against the step's declared output schema. If validation fails, treat it as a step failure.
-7. **Retry.** If a retry policy is declared and the failure is retriable, re-enter the lifecycle at step 4. Retry respects `max`, `delay`, and `backoff`.
-8. **Handle errors.** If the step still failed after all retry attempts, apply the `on_error` policy. `fail` halts the workflow. `ignore` logs the error and continues with null output.
-9. **Record.** Write the step's result (status, duration, inputs, outputs, error if any) to the run log.
-
-After the last step completes, the runtime resolves workflow output `value` expressions from the final runtime context. For each declared workflow output with a `value`, the expression is evaluated against the final context. If an exit step fired, exit output takes precedence. The runtime emits the complete run log and returns outputs to the caller.
-
-### Step Executors
-
-Each step type has a dedicated executor. The runtime dispatches to the correct one based on the step's `type` field.
-
-**Tool.** Resolves the tool by name from the host's ToolAdapter. Passes the step's resolved inputs as the tool's arguments. Returns the tool's response as the step's output. The runtime does not interpret the response. All external calls — including LLM inference — are routed through a tool step; the runtime itself has no LLM dependency.
-
-**Transform.** Applies one of three built-in operations to reshape data between steps. No external calls. No LLM. Pure data manipulation inside the runtime.
-
-| Operation | Description |
-|-----------|-------------|
-| `filter` | Keep items matching a `where` expression |
-| `map` | Reshape each item using an `expression` object |
-| `sort` | Order items by a `field` in a given `direction` |
-
-Filter evaluates the `where` expression per item. Items where it returns true are kept:
-
-```yaml
-- id: filter_important
-  type: transform
-  operation: filter
-  where: $item.score >= $inputs.min_score
-  inputs:
-    items: { type: array, value: $steps.score_emails.output }
-  outputs:
-    items: { type: array }
+# Run with JSON inputs
+workflowskill run examples/summarize-hacker-news.md
 ```
 
-Map projects each item into a new shape. Each value in the `expression` object is resolved per item:
+## Eval-Driven Skill Iteration
 
-```yaml
-- id: extract_fields
-  type: transform
-  operation: map
-  expression:
-    repo: $item.repository.name
-    author: $item.author.login
-    deployed_at: $item.created_at
-  inputs:
-    items: { type: array, value: $steps.fetch_deploys.output.deployments }
-  outputs:
-    items: { type: array }
-```
+The authoring guide (`skill/SKILL.md`) is treated as a tool description for an agent.
+Following Anthropic's guidance on building tools for agents, we refine this guide based
+on systematic evaluation rather than intuition.
 
-Values in a map `expression` can be expression references (`$item.field`), literal values (strings, numbers, booleans), or nested objects where each value follows the same rules. Array construction and computed expressions are not supported. For reshaping that requires building arrays, use multiple transform steps.
+### How it works
 
-Sort orders items by a single field. Defaults to ascending:
+The eval suite in `tests/evals/` measures authoring skill performance:
+- Each test provides a task description and checks whether the generated workflow
+  matches the expected structure
+- Tests target specific spec features (loops, error recovery, output threading, etc.)
+  so regressions are caught per-feature
+- Results identify which sections of the authoring guide need improvement
 
-```yaml
-- id: sort_by_score
-  type: transform
-  operation: sort
-  field: score
-  direction: desc
-  inputs:
-    items: { type: array, value: $steps.filter_important.output.items }
-  outputs:
-    items: { type: array }
-```
+### Growth model
 
-**Conditional.** Evaluates the `condition` expression. Executes the steps in the matching branch. Returns the output of the last step executed.
+The eval suite grows alongside the spec:
+- **New language feature** → add a corresponding eval that tests whether the authoring
+  guide teaches the LLM to use it correctly
+- **New action** → add an eval that tests whether the LLM correctly references the
+  action's input/output contract
+- **Bug report** (LLM generates invalid workflow) → add a regression eval that
+  reproduces the failure, then fix the authoring guide until it passes
+- **Spec change** → update affected evals to match new expected structure
 
-**Exit.** Sets the workflow's final status and output. No further steps execute.
+### Reviewing results
 
-### Error Handling
-
-Error handling is per-step, explicit, and declared at authoring time.
-
-When a step fails, the runtime checks its `on_error` field:
-
-- **`fail`** (default): Halt the workflow. The run log records the failure and all subsequent steps are not attempted. This is the right default because silent failures in unattended workflows are worse than loud ones.
-- **`ignore`**: Log the error, set the step's output to null, and continue. Use this for non-critical steps where the workflow can degrade gracefully. Downstream steps that reference the ignored step's output receive null and must handle it (or use a `condition` guard to skip themselves).
-
-When a step declares a `retry` policy, the runtime retries before applying `on_error`. Retries use the step's `max` count, `delay` between attempts, and `backoff` multiplier. Only retriable failures (network errors, rate limits, transient API errors) trigger retries. Validation failures and permanent errors do not.
-
-### Run Log
-
-Every execution produces a structured run log. The log is the primary debugging and observability artifact. It satisfies **PR7: Observability** and **PR8: Traceability**.
-
-The run log contains:
-
-| Field | Description |
-|-------|-------------|
-| `id` | Unique run identifier |
-| `workflow` | Name of the workflow that was executed |
-| `status` | Final status: `success` or `failed` |
-| `started_at` / `completed_at` | ISO 8601 timestamps |
-| `duration_ms` | Total wall-clock time |
-| `inputs` | The workflow inputs that were provided |
-| `outputs` | The workflow outputs that were produced |
-| `steps[]` | Ordered array of step records |
-| `summary` | Aggregate counts: steps executed, steps skipped, total duration |
-
-Each step record contains:
-
-| Field | Description |
-|-------|-------------|
-| `id` | The step's declared identifier |
-| `executor` | Which executor ran: `tool`, `transform`, `conditional`, `exit` |
-| `status` | `success`, `failed`, or `skipped` |
-| `reason` | Why the step was skipped (if applicable) |
-| `duration_ms` | Wall-clock time for this step |
-| `iterations` | Number of iterations (if `each` was used) |
-| `output` | The step's output (truncated) |
-| `error` | Error details (if the step failed) |
-
-Every step is accounted for, including skipped ones. Timing is per-step, so bottlenecks are visible at a glance. When something goes wrong, you look at the run log and see exactly which step failed, what its inputs were, and what error it returned.
-
-### Runtime Boundaries
-
-The runtime executes workflows. Everything else is the platform's responsibility.
-
-| Concern | Handled By |
-|---------|------------|
-| Tool discovery and registration | MCP / platform registry |
-| Model selection defaults | Platform configuration |
-| Skill discovery and activation | Agent / platform |
-| Scheduling and cron triggers | Platform scheduler |
-| Secret management | Platform vault / environment |
-| Notification delivery | Platform channels |
-| Conversation state and memory | Agent |
-| Persistent storage between runs | Platform |
-
-This boundary is deliberate. The runtime stays small by not absorbing platform concerns. Different platforms (OpenClaw, Claude Code, Cursor) can implement the same runtime spec while handling infrastructure differently.
-
-### Conformance
-
-A conformant WorkflowSkill runtime must:
-
-1. Parse and validate workflow YAML before executing any steps.
-2. Execute all four step types: tool, transform, conditional, exit.
-3. Evaluate `condition` guards and `each` iteration on any step that declares them.
-4. Enforce `on_error` semantics: `fail` halts the workflow, `ignore` logs and continues with null output.
-5. Execute retry policies respecting `max`, `delay`, and `backoff`.
-6. Validate step outputs against declared schemas.
-7. Produce a structured run log for every execution, including skipped steps.
-8. Reject workflows containing unrecognized step types rather than silently ignoring them.
-9. Resolve step output `value` expressions using the `$result` reference after each step's executor returns.
-10. Resolve workflow output `value` expressions from the final runtime context after all steps complete, with exit step output taking precedence.
-
-A conformance test suite will accompany the reference implementation (see Adoption Path). The suite provides executable tests for each requirement above, giving platform implementors a concrete target rather than a prose specification to interpret.
+When an eval fails, the assertion message includes the full generated code. Review
+the raw output to understand what the LLM produced vs. what was expected. This is
+the "reviewing raw tool call transcripts" practice — the generated SKILL.md is
+effectively the agent's tool output, and structural analysis reveals where the
+authoring guide's instructions were unclear or missing.
