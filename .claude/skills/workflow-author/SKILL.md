@@ -15,31 +15,9 @@ After generating the workflow, **write it to a file** in the `examples/` directo
 
 When authoring workflows to run via `workflowskill run`, these actions are pre-registered and can be called via `workflow.execute_activity("name", args_dict, start_to_close_timeout=...)`.
 
-### `web_fetch`
+### `api`
 
-Fetch a URL and return its content as markdown or plain text.
-
-| Input | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `url` | `str` | yes | — | URL to fetch |
-| `extract` | `"markdown" \| "text"` | no | `"markdown"` | Output format |
-
-Output: `content` (str), `url` (str)
-
-Example:
-
-```python
-page = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "markdown"},
-    start_to_close_timeout=timedelta(seconds=30),
-)
-content = page["content"]
-```
-
-### `web_fetch_raw`
-
-Fetch a URL and return the raw response body without conversion. Use for API endpoints returning JSON or other structured data.
+Make an HTTP request and return the raw response body. Use for API endpoints returning JSON or other structured data.
 
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -49,6 +27,17 @@ Fetch a URL and return the raw response body without conversion. Use for API end
 | `body` | `str` | no | Request body (not allowed with GET) |
 
 Output: `content` (str), `url` (str), `content_type` (str), `status` (int)
+
+Example:
+
+```python
+result = await workflow.execute_activity(
+    "api",
+    {"url": url},
+    start_to_close_timeout=timedelta(seconds=30),
+)
+data = result["content"]  # parse JSON with json.loads if needed (use pure Python)
+```
 
 ### `web_scrape`
 

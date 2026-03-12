@@ -64,7 +64,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `actions` | ActionRegistry, action handlers |
 | `runner` | run_skill orchestration, Temporal lifecycle |
 | `cli` | Click CLI commands (run, worker) |
-| `builtin` | Built-in CLI actions (web_fetch, llm, etc.) |
+| `builtin` | Built-in CLI actions (api, web_scrape, llm, etc.) |
 | `spec` | SPEC.md specification |
 | `examples` | Example workflow files |
 
@@ -92,9 +92,9 @@ Bad (and how to fix):
 
 ```
 # Bad: no type prefix, past tense
-Added web_fetch action
+Added api action
 # Good:
-feat(builtin): add web_fetch action
+feat(builtin): add api action
 
 # Bad: uppercase after colon, trailing period
 feat: Add new loader module.

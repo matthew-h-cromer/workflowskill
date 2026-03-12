@@ -101,7 +101,7 @@ return {"result": result["output"]}
 
 ## What the Loader Generates
 
-Given `name: fetch-page` and `inputs: {url: {type: str, default: "https://example.com"}}`,
+Given `name: check-status` and `inputs: {url: {type: str, default: "https://example.com"}}`,
 the loader wraps your code into:
 
 ```python
@@ -113,7 +113,7 @@ import asyncio
 workflow = _WorkflowProxy()  # defaults start_to_close_timeout=timedelta(seconds=30)
 
 @workflow.defn
-class FetchPageWorkflow:
+class CheckStatusWorkflow:
     @workflow.run
     async def run(self, url: str = "https://example.com") -> dict:
         # ← your code goes here
@@ -126,7 +126,7 @@ You do not need to specify a timeout unless you want a different value.
 
 ## Workflow Patterns
 
-> **Note:** The action names used in these patterns (`web_fetch`, `web_scrape`, `llm`) are examples from a common runtime configuration. Always check your context for which actions are actually registered — use only those.
+> **Note:** The action names used in these patterns (`api`, `web_scrape`, `llm`) are examples from a common runtime configuration. Always check your context for which actions are actually registered — use only those.
 
 ### No-activity workflow (pure Python logic)
 
@@ -137,11 +137,11 @@ return {"message": f"Hello, {name}!"}
 ### Single activity call (default 30s timeout)
 
 ```python
-page = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "markdown"},
+result = await workflow.execute_activity(
+    "api",
+    {"url": url},
 )
-return {"content": page["content"]}
+return {"status": result["status"], "content": result["content"]}
 ```
 
 ### Single activity call with explicit timeout
@@ -159,14 +159,18 @@ return {"answer": result["answer"]}
 
 ```python
 page = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "text"},
+    "web_scrape",
+    {"url": url, "selectors": {"heading": "h1", "body": "article p"}},
 )
+
+headings = page["results"].get("heading", [])
+body_paragraphs = page["results"].get("body", [])
+content = "\n".join(headings + body_paragraphs)
 
 summary = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Summarize this page:\n\n{page['content']}",
+        "prompt": f"Summarize this page:\n\n{content}",
         "schema": {
             "type": "object",
             "properties": {"summary": {"type": "string"}},
@@ -179,18 +183,14 @@ summary = await workflow.execute_activity(
 return {"summary": summary["summary"]}
 ```
 
-> **Note:** If you only need part of the fetched page (e.g. specific conditions from a
-> weather page), use `web_scrape` with CSS selectors instead of `web_fetch` before the
-> `llm` call. See [Minimize LLM Input](#minimize-llm-input) below.
-
 ### Parallel activities
 
 ```python
-page_a, page_b = await asyncio.gather(
-    workflow.execute_activity("web_fetch", {"url": url_a}),
-    workflow.execute_activity("web_fetch", {"url": url_b}),
+result_a, result_b = await asyncio.gather(
+    workflow.execute_activity("api", {"url": url_a}),
+    workflow.execute_activity("api", {"url": url_b}),
 )
-return {"content_a": page_a["content"], "content_b": page_b["content"]}
+return {"content_a": result_a["content"], "content_b": result_b["content"]}
 ```
 
 ### Loop over items (sequential)
@@ -225,7 +225,7 @@ return {"status": "found", "price": prices[0]}
 
 ```python
 result = await workflow.execute_activity(
-    "web_fetch",
+    "api",
     {"url": url},
     retry_policy=RetryPolicy(
         maximum_attempts=3,
@@ -255,10 +255,13 @@ restructuring dicts, conditional logic on known fields
 
 ```python
 # BAD: using LLM to extract structured data that web_scrape handles deterministically
-page = await workflow.execute_activity("web_fetch", {"url": url})
+page = await workflow.execute_activity(
+    "web_scrape",
+    {"url": url, "selectors": {"raw": "body"}},
+)
 title = await workflow.execute_activity(
     "llm",
-    {"prompt": f"What is the title of this page?\n\n{page['content']}"},
+    {"prompt": f"What is the title of this page?\n\n{page['results'].get('raw', [''])[0]}"},
 )
 ```
 
@@ -279,13 +282,14 @@ return {"title": titles[0] if titles else "Untitled"}
 ```python
 # GOOD: summarization genuinely requires inference
 page = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "text"},
+    "web_scrape",
+    {"url": url, "selectors": {"article": "article p"}},
 )
+content = "\n".join(page["results"].get("article", []))
 summary = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Summarize this article in 2-3 sentences:\n\n{page['content']}",
+        "prompt": f"Summarize this article in 2-3 sentences:\n\n{content}",
         "schema": {
             "type": "object",
             "properties": {"summary": {"type": "string"}},
@@ -318,11 +322,11 @@ means lower cost, faster responses, and better LLM focus.
 ### Don't
 
 ```python
-# BAD: dumps entire page into LLM — wastes tokens, degrades focus
-page = await workflow.execute_activity("web_fetch", {"url": url, "extract": "text"})
+# BAD: dumps entire API response into LLM — wastes tokens, degrades focus
+data = await workflow.execute_activity("api", {"url": url})
 result = await workflow.execute_activity(
     "llm",
-    {"prompt": f"What is the current temperature?\n\n{page['content']}"},
+    {"prompt": f"What is the current temperature?\n\n{data['content']}"},
     start_to_close_timeout=timedelta(seconds=60),
 )
 ```
