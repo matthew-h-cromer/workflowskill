@@ -42,7 +42,7 @@ def test_valid_simple_return():
 def test_valid_activity_call():
     valid("""
 result = await workflow.execute_activity(
-    "web_fetch",
+    "api",
     {"url": "https://example.com", "extract": "markdown"},
 )
 return {"content": result["content"]}
@@ -52,7 +52,7 @@ return {"content": result["content"]}
 def test_valid_explicit_timeout():
     valid("""
 result = await workflow.execute_activity(
-    "web_fetch",
+    "api",
     {"url": url},
     start_to_close_timeout=timedelta(seconds=60),
 )
@@ -63,7 +63,7 @@ return {"content": result["content"]}
 def test_valid_retry_policy():
     valid("""
 result = await workflow.execute_activity(
-    "web_fetch",
+    "api",
     {"url": url},
     retry_policy=RetryPolicy(maximum_attempts=3),
 )
@@ -74,8 +74,8 @@ return {"content": result["content"]}
 def test_valid_asyncio_gather():
     valid("""
 a, b = await asyncio.gather(
-    workflow.execute_activity("web_fetch", {"url": url_a}),
-    workflow.execute_activity("web_fetch", {"url": url_b}),
+    workflow.execute_activity("api", {"url": url_a}),
+    workflow.execute_activity("api", {"url": url_b}),
 )
 return {"a": a["content"], "b": b["content"]}
 """)
@@ -97,7 +97,7 @@ def test_valid_try_except():
     valid("""
 try:
     result = await workflow.execute_activity(
-        "web_fetch",
+        "api",
         {"url": url},
     )
     return {"content": result["content"]}

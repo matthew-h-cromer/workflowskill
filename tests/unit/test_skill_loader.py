@@ -142,8 +142,8 @@ class TestLoadSkill:
 
             ```python
             result = await workflow.execute_activity(
-                "web_fetch",
-                {"url": url, "extract": "markdown"},
+                "api",
+                {"url": url},
             )
             return {"content": result["content"]}
             ```

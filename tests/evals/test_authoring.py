@@ -75,15 +75,15 @@ async def test_pure_logic(generate_skill, parse_skill, extract_code, save_snapsh
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Single activity — web_fetch
+# Test 2: Single activity — api
 # ---------------------------------------------------------------------------
 
 
 async def test_single_activity(generate_skill, parse_skill, extract_code, save_snapshot):
-    """A fetch-URL workflow should call exactly one activity named 'web_fetch'."""
+    """A fetch-URL workflow should call exactly one activity named 'api'."""
     TASK = (
-        "Create a workflow named 'fetch-page' that takes a 'url' string input, "
-        "fetches that URL using the web_fetch action, and returns the result."
+        "Create a workflow named 'check-status' that takes a 'url' string input, "
+        "calls the api action to fetch that URL, and returns the status code and content."
     )
     content = await _generate_with_retries(generate_skill, TASK)
     save_snapshot(content)
@@ -94,11 +94,11 @@ async def test_single_activity(generate_skill, parse_skill, extract_code, save_s
     assert count_execute_activity(code) == 1, (
         f"Expected exactly 1 activity call, got {count_execute_activity(code)}\n\nCode:\n{code}"
     )
-    assert has_activity_named(code, "web_fetch"), (
-        f"Expected activity named 'web_fetch'\n\nCode:\n{code}"
+    assert has_activity_named(code, "api"), (
+        f"Expected activity named 'api'\n\nCode:\n{code}"
     )
     assert not has_explicit_timeout(code), (
-        f"Simple web_fetch should use default timeout, not explicit start_to_close_timeout\n\nCode:\n{code}"
+        f"Simple api call should use default timeout, not explicit start_to_close_timeout\n\nCode:\n{code}"
     )
 
 
@@ -134,10 +134,11 @@ async def test_explicit_timeout(generate_skill, parse_skill, extract_code, save_
 
 
 async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Fetch then summarize should use two activities sequentially, not in parallel."""
+    """Scrape then summarize should use two activities sequentially, not in parallel."""
     TASK = (
-        "Create a workflow named 'fetch-and-summarize' that takes a 'url' string input, "
-        "first fetches the URL with web_fetch, then summarizes the content using the llm action, "
+        "Create a workflow named 'scrape-and-summarize' that takes a 'url' string input, "
+        "first scrapes the URL with web_scrape (extract h1 headings and article paragraphs), "
+        "then summarizes the content using the llm action, "
         "and returns the summary. Steps must run in order."
     )
     content = await _generate_with_retries(generate_skill, TASK)
@@ -149,8 +150,8 @@ async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, sa
     assert count_execute_activity(code) >= 2, (
         f"Expected ≥2 activity calls, got {count_execute_activity(code)}\n\nCode:\n{code}"
     )
-    assert has_activity_named(code, "web_fetch"), (
-        f"Expected web_fetch activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "web_scrape"), (
+        f"Expected web_scrape activity\n\nCode:\n{code}"
     )
     assert has_activity_named(code, "llm"), (
         f"Expected llm activity\n\nCode:\n{code}"
@@ -166,11 +167,11 @@ async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, sa
 
 
 async def test_parallel_execution(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Fetching two URLs concurrently should use asyncio.gather."""
+    """Calling two API endpoints concurrently should use asyncio.gather."""
     TASK = (
         "Create a workflow named 'fetch-two' that takes 'url_a' and 'url_b' string inputs, "
-        "fetches both URLs concurrently using web_fetch, and returns both results. "
-        "The two fetches must run in parallel."
+        "calls both URLs concurrently using the api action, and returns both results. "
+        "The two calls must run in parallel."
     )
     content = await _generate_with_retries(generate_skill, TASK)
     save_snapshot(content)
@@ -198,10 +199,10 @@ async def test_parallel_execution(generate_skill, parse_skill, extract_code, sav
 
 
 async def test_conditional_logic(generate_skill, parse_skill, extract_code, save_snapshot):
-    """A workflow branching on HTTP status code should use web_fetch_raw and an if statement."""
+    """A workflow branching on HTTP status code should use the api action and an if statement."""
     TASK = (
         "Create a workflow named 'check-url' that takes a 'url' string input. "
-        "Use web_fetch_raw to get the response, then check the status_code field. "
+        "Use the api action to get the response, then check the status field. "
         "If the status code is 200, return {'status': 'ok'}. "
         "Otherwise return {'status': 'error', 'code': <status_code>}."
     )
@@ -211,8 +212,8 @@ async def test_conditional_logic(generate_skill, parse_skill, extract_code, save
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_fetch_raw"), (
-        f"Expected web_fetch_raw activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "api"), (
+        f"Expected api activity\n\nCode:\n{code}"
     )
     assert has_if_branch(code), (
         f"Expected if statement for status code branching\n\nCode:\n{code}"
@@ -251,10 +252,10 @@ async def test_loop_handling(generate_skill, parse_skill, extract_code, save_sna
 
 
 async def test_retry_policy(generate_skill, parse_skill, extract_code, save_snapshot):
-    """A fetch with explicit retry config should use RetryPolicy with maximum_attempts."""
+    """An api call with explicit retry config should use RetryPolicy with maximum_attempts."""
     TASK = (
         "Create a workflow named 'retry-fetch' that takes a 'url' string input. "
-        "Fetch the URL using web_fetch with a RetryPolicy of maximum_attempts=3, "
+        "Call the url using the api action with a RetryPolicy of maximum_attempts=3, "
         "backoff_coefficient=2.0, and initial_interval of 2 seconds. Return the result."
     )
     content = await _generate_with_retries(generate_skill, TASK)
@@ -263,8 +264,8 @@ async def test_retry_policy(generate_skill, parse_skill, extract_code, save_snap
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_fetch"), (
-        f"Expected web_fetch activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "api"), (
+        f"Expected api activity\n\nCode:\n{code}"
     )
     assert has_retry_policy(code), (
         f"Expected RetryPolicy(...) call\n\nCode:\n{code}"
@@ -286,10 +287,10 @@ async def test_retry_policy(generate_skill, parse_skill, extract_code, save_snap
 
 
 async def test_error_recovery(generate_skill, parse_skill, extract_code, save_snapshot):
-    """A workflow with try/except around a fetch should have proper error handling."""
+    """A workflow with try/except around an api call should have proper error handling."""
     TASK = (
         "Create a workflow named 'safe-fetch' that takes a 'url' string input. "
-        "Try to fetch the URL using web_fetch. If an exception occurs, return "
+        "Try to call the URL using the api action. If an exception occurs, return "
         "{'success': False, 'error': str(e)}. On success, return {'success': True, 'content': <content>}."
     )
     content = await _generate_with_retries(generate_skill, TASK)
@@ -457,10 +458,10 @@ async def test_web_scrape_object_selector(generate_skill, parse_skill, extract_c
 
 
 async def test_error_recovery_with_retry(generate_skill, parse_skill, extract_code, save_snapshot):
-    """A resilient fetch should combine RetryPolicy and try/except."""
+    """A resilient api call should combine RetryPolicy and try/except."""
     TASK = (
         "Create a workflow named 'resilient-fetch' that takes a 'url' string input. "
-        "Fetch the URL with web_fetch and a RetryPolicy of maximum_attempts=3. "
+        "Call the URL with the api action and a RetryPolicy of maximum_attempts=3. "
         "Wrap the call in try/except — on final failure after retries, return an error dict "
         "with 'success' as False and 'error' with the exception message."
     )
@@ -487,13 +488,13 @@ async def test_error_recovery_with_retry(generate_skill, parse_skill, extract_co
 
 
 async def test_scrape_before_llm(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Extracting structured job data and summarizing should use web_scrape, not web_fetch."""
+    """Extracting structured job data and summarizing should use web_scrape before llm."""
     TASK = (
         "Create a workflow named 'hiring-landscape' that takes a 'url' string input. "
         "The page uses CSS class '.job-title' for job titles and '.company-name' for company names. "
         "Use web_scrape with those selectors to extract the job titles and company names. "
         "Then use the llm action with a JSON schema to summarize the hiring landscape in 2-3 sentences. "
-        "Return the summary. Do not use web_fetch."
+        "Return the summary."
     )
     content = await _generate_with_retries(generate_skill, TASK)
     save_snapshot(content)
@@ -530,7 +531,7 @@ async def test_filter_before_llm(generate_skill, parse_skill, extract_code, save
         "Use web_scrape to extract blog post titles (CSS: '.post-title') and dates (CSS: '.post-date'). "
         "Filter the results in pure Python to only include posts from 2025 (check if '2025' appears in the date string). "
         "Then use the llm action to summarize the themes of the 2025 posts. "
-        "Return the summary. Do not use web_fetch."
+        "Return the summary."
     )
     content = await _generate_with_retries(generate_skill, TASK)
     save_snapshot(content)
