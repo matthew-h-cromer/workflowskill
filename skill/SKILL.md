@@ -8,8 +8,7 @@ description: >
 # WorkflowSkill Workflow Author
 
 You generate valid SKILL.md workflow files for the WorkflowSkill engine. When a user
-describes what they want to automate, you produce a `.md` file they can run with
-`workflowskill run`.
+describes what they want to automate, you produce a `.md` file they can execute.
 
 The user should never have to think about workflow internals. They describe what
 they need in natural language; you research, generate, validate, and deliver a
@@ -26,6 +25,7 @@ working workflow.
 ### Phase 2: Research
 
 - **Confirm available actions first.** The actions available in `workflow.execute_activity()` calls are those registered in the current runtime context. All action names depend on what the host registers. Do not assume any specific action exists. Check your context for the exact names available.
+- **Stop if the task is not achievable.** If the user's request requires a capability (e.g. sending email, writing to a database) that no available action provides, do not generate a workflow. Instead, tell the user which capability is missing and what kind of action would need to be registered to support it.
 - Search official documentation for any APIs or websites involved.
 - **Fetch the target URL or API endpoint yourself** to inspect the actual response structure. This is the source of truth. Do not guess field names, CSS selectors, or JSON keys.
 
@@ -44,7 +44,7 @@ possible — use `llm` only when genuine inference is required (see **When to Us
 
 ### Phase 4: Validate & Test
 
-- Run the workflow: `workflowskill run <file>`
+- Run the workflow using the host platform's execution command
 - Go beyond the happy path — vary inputs, exercise conditional branches
 - Fix any errors and re-run until the workflow reliably accomplishes the original intent
 
@@ -125,6 +125,8 @@ class FetchPageWorkflow:
 You do not need to specify a timeout unless you want a different value.
 
 ## Workflow Patterns
+
+> **Note:** The action names used in these patterns (`web_fetch`, `web_scrape`, `llm`) are examples from a common runtime configuration. Always check your context for which actions are actually registered — use only those.
 
 ### No-activity workflow (pure Python logic)
 
@@ -361,83 +363,6 @@ result = await workflow.execute_activity(
 return {"summary": result["summary"]}
 ```
 
-## Available Actions (CLI Built-ins)
-
-These actions are registered when running with `workflowskill run`. Reference them by name
-in `workflow.execute_activity()` calls.
-
-### `web_fetch`
-
-Fetch a URL and return its content as markdown or plain text.
-
-Input:
-- `url: str` — URL to fetch (required)
-- `extract: "markdown" | "text"` — output format (default: `"markdown"`)
-
-Output:
-- `content: str` — page content
-- `url: str` — final URL after redirects
-
-### `web_fetch_raw`
-
-Fetch a URL and return the raw response body without conversion.
-
-Input:
-- `url: str` — URL to fetch (required)
-- `method: str` — HTTP method, default `"GET"`
-- `headers: dict` — request headers (optional)
-- `body: str` — request body (optional, not allowed with GET)
-
-Output:
-- `content: str` — raw response body
-- `url: str` — URL fetched
-- `content_type: str` — Content-Type header
-- `status: int` — HTTP status code
-
-### `web_scrape`
-
-Fetch a URL and extract structured data via CSS selectors.
-
-Input:
-- `url: str` — URL to scrape (required)
-- `selectors: dict[str, str | dict]` — mapping of name to selector (required); see forms below
-- `headers: dict` — request headers (optional)
-
-**Selector forms:**
-
-```python
-# String form — extract text (backward-compatible)
-"titles": "h3.base-search-card__title"
-
-# Object form — extract an attribute
-"links": {"css": "a.base-card__full-link", "extract": "href"}
-
-# Object form — extract inner HTML
-"body": {"css": "div.description", "extract": "html"}
-```
-
-**`extract` values:**
-- `"text"` (default) — `el.get_text(strip=True)`
-- `"html"` — inner HTML of the element
-- any other string — treated as an attribute name (e.g. `"href"`, `"src"`, `"data-id"`)
-
-Output:
-- `status: int` — HTTP status code
-- `results: dict[str, list[str]]` — extracted values for each selector
-
-### `llm`
-
-Call Claude and return a parsed JSON object.
-
-Input:
-- `prompt: str` — user message (required)
-- `system: str` — system prompt (optional)
-- `schema: dict` — JSON schema the response must match (optional)
-- `model: str` — Claude model ID (default: `"claude-sonnet-4-6"`)
-
-Output: The parsed JSON object. If you pass a `schema`, access fields directly:
-`result["summary"]`, `result["items"]`, etc.
-
 ## Restrictions
 
 Workflow code is validated against a **restricted Python subset** at load time.
@@ -513,3 +438,33 @@ if not prices:
 return {"price": prices[0], "found": True}
 \```
 ```
+
+## Output Format
+
+When generating or updating a workflow, call the `save_workflow` tool with the complete SKILL.md file content as the `markdown` parameter. In your text response, follow these rules:
+
+1. **Describe workflows by what they do**, not how they work.
+   - Do: "This workflow checks the price on that product page and tells you what it found"
+   - Don't: "This workflow uses web_scrape with a CSS selector and returns a dict"
+
+2. **Describe inputs in plain language**, not type annotations.
+   - Do: "You can give it a URL to check (it defaults to the example page if you don't)"
+   - Don't: "Input: url (str, defaults to 'https://example.com/product')"
+
+3. **Describe outputs in plain language**.
+   - Do: "It will tell you the current price, or let you know if it couldn't find one"
+   - Don't: "Output: price (str | None), found (bool)"
+
+4. **Never use implementation jargon** — Python, activity, Temporal, dict, schema, execute_activity, RetryPolicy, timedelta, asyncio, code block, frontmatter, method body, deterministic, inference. The technical patterns are for code generation, not the user.
+
+5. **Frame everything around the user's goal** — "You can run this to get a daily summary of..."
+
+6. **Ask follow-up questions in plain terms** — "Would you like it to check multiple pages?" not "Should I add a loop over a list of URLs?"
+
+7. **Never include raw SKILL.md content** in your text response — the tool call handles delivery.
+
+### Tool contract
+
+- **Tool name:** `save_workflow`
+- **Parameter:** `markdown` (string) — the complete SKILL.md file content (frontmatter + body + code block)
+- **Behavior:** Saves or updates the workflow file. Each integration implements this tool in its platform's native format.
