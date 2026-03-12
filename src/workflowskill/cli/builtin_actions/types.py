@@ -4,24 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# web_fetch
+
+# api
 
 @dataclass
-class WebFetchInput:
-    url: str
-    extract: str = "markdown"  # "markdown" | "text"
-
-
-@dataclass
-class WebFetchOutput:
-    content: str
-    url: str
-
-
-# web_fetch_raw
-
-@dataclass
-class WebFetchRawInput:
+class ApiInput:
     url: str
     method: str = "GET"
     headers: dict[str, str] = field(default_factory=dict)
@@ -29,7 +16,7 @@ class WebFetchRawInput:
 
 
 @dataclass
-class WebFetchRawOutput:
+class ApiOutput:
     content: str
     url: str
     content_type: str
