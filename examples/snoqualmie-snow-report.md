@@ -15,8 +15,8 @@ concise snow report for snowboarders. Flags fog and visibility issues specifical
 
 NWS page uses `web_scrape` with CSS selectors to extract only the relevant conditions fields —
 temperature, visibility, and forecast text — rather than dumping the full page into the LLM
-prompt. NWAC provides a JSON API without zone-level filtering params, so the full response is
-forwarded (tradeoff acknowledged).
+prompt. NWAC provides a JSON API without zone-level filtering params, so `api` is used and
+the full response is forwarded (tradeoff acknowledged).
 
 ```python
 # Fetch NWS current conditions via web_scrape (targeted extraction) and
@@ -36,7 +36,7 @@ nws, nwac = await asyncio.gather(
         },
     ),
     workflow.execute_activity(
-        "web_fetch_raw",
+        "api",
         # NOTE: NWAC API has no zone-filter param — full response required.
         # The LLM prompt scopes it to the Snoqualmie Pass region explicitly.
         {"url": "https://nwac.us/api/v1/mountain-weather-forecast"},
