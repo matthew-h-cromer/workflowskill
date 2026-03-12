@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import textwrap
 import time
 from pathlib import Path
@@ -98,15 +97,26 @@ def _get_skill_md() -> str:
 # generate_skill fixture
 # ---------------------------------------------------------------------------
 
+_SAVE_WORKFLOW_TOOL = {
+    "name": "save_workflow",
+    "description": "Save or update the workflow skill file.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "markdown": {
+                "type": "string",
+                "description": "The complete SKILL.md file content",
+            },
+        },
+        "required": ["markdown"],
+    },
+}
+
+
 @pytest.fixture(scope="session")
 def generate_skill(tmp_path_factory: pytest.TempPathFactory) -> Any:
     """Return an async callable: generate(task) -> raw SKILL.md string."""
     skill_md = _get_skill_md()
-    system = (
-        skill_md
-        + "\n\nGenerate a complete SKILL.md file for the task below. "
-        "Output only the file contents, nothing else."
-    )
 
     async def generate(task: str) -> str:
         global _total_input_tokens, _total_output_tokens
@@ -115,21 +125,21 @@ def generate_skill(tmp_path_factory: pytest.TempPathFactory) -> Any:
             model="claude-sonnet-4-6",
             max_tokens=4096,
             temperature=0,
-            system=system,
+            system=skill_md,
+            tools=[_SAVE_WORKFLOW_TOOL],
             messages=[{"role": "user", "content": task}],
         )
         _total_input_tokens += message.usage.input_tokens
         _total_output_tokens += message.usage.output_tokens
 
-        block = message.content[0] if message.content else None
-        if block is None or block.type != "text":
-            raise ValueError("Unexpected response format from Anthropic API")
+        tool_block = next(
+            (b for b in message.content if b.type == "tool_use" and b.name == "save_workflow"),
+            None,
+        )
+        if tool_block is None:
+            raise ValueError("Claude did not call save_workflow tool")
 
-        raw = block.text.strip()
-        # Strip outer markdown code fences if present
-        raw = re.sub(r"^```(?:markdown)?\s*\n", "", raw)
-        raw = re.sub(r"\n```\s*$", "", raw)
-        return raw.strip()
+        return tool_block.input["markdown"]
 
     return generate
 
