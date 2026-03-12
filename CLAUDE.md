@@ -134,4 +134,7 @@ Workflows are Python code blocks in markdown files with YAML frontmatter. See SP
 
 ## Skill Authoring Guide
 
-`skill/SKILL.md` is the authoring guide for generating Python Temporal workflows in SKILL.md format. It teaches Claude how to author valid workflows.
+There are two skill files with distinct roles:
+
+- **`skill/SKILL.md`** — Platform-agnostic authoring guide. Used as the system prompt by all consumers. Must never contain platform-specific details. All authoring behavior changes go here.
+- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`web_fetch`, `llm`, etc.) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.

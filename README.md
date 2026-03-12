@@ -222,6 +222,21 @@ print(result)
 
 Action handlers have the signature `async def handler(args: dict) -> dict`. The library has no opinion about what tools exist — that's the consumer's job.
 
+### Integrating the workflow-author skill
+
+`skill/SKILL.md` is the authoring guide that teaches Claude to generate workflows. When
+Claude generates or updates a workflow, it calls a `save_workflow` tool to deliver the
+result. **If you surface this skill in your platform, you must provide a `save_workflow`
+tool implementation.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `markdown` | string | Complete SKILL.md file content (frontmatter + body + code block) |
+
+The tool should save the file wherever makes sense for your platform. See
+[SPEC.md § Authoring Skill Integration](SPEC.md#authoring-skill-integration) for the
+full contract.
+
 ---
 
 ## Development

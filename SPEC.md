@@ -413,6 +413,33 @@ workflowskill run examples/llm-haiku.md -i subject="autumn leaves"
 workflowskill run examples/summarize-hacker-news.md
 ```
 
+## Authoring Skill Integration
+
+`skill/SKILL.md` is a workflow authoring guide intended to be loaded as a Claude skill.
+When Claude generates or updates a workflow, it calls the `save_workflow` tool to deliver
+the result. **Consumers who integrate this skill must provide a `save_workflow` tool
+implementation.**
+
+### Tool contract
+
+- **Tool name:** `save_workflow`
+- **Parameter:** `markdown` (string) — the complete SKILL.md file content (frontmatter + body + code block)
+- **Behavior:** Saves or updates the workflow file. Each integration implements this tool in its platform's native format (e.g. a Claude Code tool, an MCP tool, a function tool in an API call).
+
+This is an output-only tool — Claude calls it to deliver the generated workflow. The
+tool should persist the file and may return a confirmation message.
+
+### Example: Claude Code integration
+
+In Claude Code, `save_workflow` is registered as a slash-command tool that writes the
+markdown to a file in the `examples/` directory.
+
+### Why a tool instead of a text response
+
+Having Claude call a tool (rather than writing the file content in its reply) keeps the
+workflow content separate from the conversational response. The consumer controls where
+and how the file is saved, and the authoring conversation remains clean.
+
 ## Eval-Driven Skill Iteration
 
 The authoring guide (`skill/SKILL.md`) is treated as a tool description for an agent.
