@@ -8,7 +8,7 @@ Temporal-based workflow engine where agents author Python workflows from natural
 
 ## Architecture
 
-**Library + CLI** — `workflowskill` is a pure orchestration library; the CLI wraps it with built-in actions (`web_fetch`, `llm`, etc.) for command-line use. An OpenClaw plugin or other consumer would import `workflowskill` and register its own actions instead.
+**Library + CLI** — `workflowskill` is a pure orchestration library; the CLI wraps it with built-in actions (`api`, `web_scrape`, `llm`, etc.) for command-line use. An OpenClaw plugin or other consumer would import `workflowskill` and register its own actions instead.
 
 **Tool-agnostic runtime** — The `workflowskill` library knows nothing about specific tools. Consumers register tools as Temporal activities via the `ActionRegistry`. This keeps the library modular and reusable across platforms.
 
@@ -41,7 +41,7 @@ src/
       builtin_actions/           # Built-in actions provided by CLI (not by library)
         __init__.py
         types.py                 # I/O dataclasses for built-in actions
-        web_fetch.py             # web_fetch + web_fetch_raw actions
+        api.py                   # api action (raw HTTP requests)
         web_scrape.py            # web_scrape action
         llm.py                   # llm action (Anthropic SDK)
 pyproject.toml                   # Python project config (uv, dependencies)
@@ -137,4 +137,4 @@ Workflows are Python code blocks in markdown files with YAML frontmatter. See SP
 There are two skill files with distinct roles:
 
 - **`skill/SKILL.md`** — Platform-agnostic authoring guide. Used as the system prompt by all consumers. Must never contain platform-specific details. All authoring behavior changes go here.
-- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`web_fetch`, `llm`, etc.) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.
+- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`api`, `web_scrape`, `llm`, etc.) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.

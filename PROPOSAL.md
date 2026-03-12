@@ -122,7 +122,7 @@ This format has several advantages:
 
 ## Architecture
 
-WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic — it knows nothing about specific tools like `web_fetch` or `llm`. Consumers (the CLI, OpenClaw plugin, future platforms) import the library and register their own tools as Temporal activities via the **actions** abstraction.
+WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic — it knows nothing about specific tools like `api` or `llm`. Consumers (the CLI, OpenClaw plugin, future platforms) import the library and register their own tools as Temporal activities via the **actions** abstraction.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -130,7 +130,7 @@ WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic —
 │                                                         │
 │  from workflowskill import ActionRegistry, run_skill          │
 │  registry = ActionRegistry()                            │
-│  registry.register("web_fetch", handler, ...)           │
+│  registry.register("api", handler, ...)                 │
 │  result = await run_skill("my-skill.md", inputs, registry) │
 └─────────────────────────────────────────────────────────┘
            │
@@ -151,7 +151,7 @@ WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic —
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Library/consumer separation:** The `workflowskill` library provides the action registration interface and the runner. The CLI registers its built-in tools (`web_fetch`, `llm`, etc.) as actions. An OpenClaw plugin would import `workflowskill` and register OpenClaw's tools instead. The library has no opinion about what tools exist.
+**Library/consumer separation:** The `workflowskill` library provides the action registration interface and the runner. The CLI registers its built-in tools (`api`, `web_scrape`, `llm`, etc.) as actions. An OpenClaw plugin would import `workflowskill` and register OpenClaw's tools instead. The library has no opinion about what tools exist.
 
 ## Security Considerations
 
@@ -159,7 +159,7 @@ Python code is the security boundary, and that's an advantage over natural langu
 
 **Workflows are auditable.** Every action call, every data flow, and every conditional is Python code that can be reviewed before the workflow runs. There is no hidden logic. A security review of a WorkflowSkill workflow is a review of readable code, not an interpretation of what an LLM might decide to do.
 
-**The runtime has no capabilities of its own.** WorkflowSkill can only execute actions that the consumer has explicitly registered. If a consumer registers `web_fetch` but not `shell_exec`, the workflow cannot execute shell commands — even if the Python code tries to import `subprocess`. Actions are the only execution boundary, and consumers control which actions exist.
+**The runtime has no capabilities of its own.** WorkflowSkill can only execute actions that the consumer has explicitly registered. If a consumer registers `api` but not `shell_exec`, the workflow cannot execute shell commands — even if the Python code tries to import `subprocess`. Actions are the only execution boundary, and consumers control which actions exist.
 
 **Python code is more auditable than prose.** A malicious SKILL.md instruction written in natural language can be subtle and hard to detect. Malicious Python code making unexpected network calls is visible as code. Static analysis tools, code review, and sandboxing all apply directly to Python in ways they cannot apply to prose.
 

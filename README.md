@@ -55,8 +55,8 @@ workflowskill run examples/github-activity-summary.md --input username=torvalds
 ```
 Running github-activity-summary username='torvalds'
 Temporal server: 127.0.0.1:55030
-  ⟳ Executing web_fetch_raw...
-  ✓ web_fetch_raw (291ms)
+  ⟳ Executing api...
+  ✓ api (291ms)
   ⟳ Executing llm...
   ✓ llm (3023ms)
 ╭────────────────────────────────── github-activity-summary ───────────────────────────────────╮
@@ -84,7 +84,7 @@ examples/summarize-hacker-news.md
 ```markdown
 ---
 name: summarize-hacker-news
-description: Fetches the Hacker News homepage and returns a concise summary of the top stories. Requires ANTHROPIC_API_KEY.
+description: Scrapes the Hacker News homepage and returns a concise summary of the top stories. Requires ANTHROPIC_API_KEY.
 outputs:
   summary:
     type: str
@@ -92,16 +92,30 @@ outputs:
 
 # Summarize Hacker News
 
-Fetches https://news.ycombinator.com and uses Claude Haiku to produce a concise,
-readable summary of the top stories.
+Scrapes story titles from https://news.ycombinator.com and uses Claude Haiku to
+produce a concise, readable summary of the top stories.
 
 ```python
-# Fetch the Hacker News front page as plain text
+# Scrape story titles from the Hacker News front page
 page = await workflow.execute_activity(
-    "web_fetch",
-    {"url": "https://news.ycombinator.com", "extract": "text"},
+    "web_scrape",
+    {
+        "url": "https://news.ycombinator.com",
+        "selectors": {"titles": ".titleline > a", "scores": ".score"},
+    },
     retry_policy=RetryPolicy(maximum_attempts=3),   # ← retries built in
 )
+
+# Build a compact list of stories (deterministic Python — no LLM needed)
+titles = page["results"].get("titles", [])
+scores = page["results"].get("scores", [])
+stories_parts = []
+for i, title in enumerate(titles):
+    if i < len(scores):
+        stories_parts.append(f"- {title} ({scores[i]})")
+    else:
+        stories_parts.append(f"- {title}")
+stories = "\n".join(stories_parts)
 
 # Summarize with Claude Haiku
 summary = await workflow.execute_activity(
@@ -109,7 +123,7 @@ summary = await workflow.execute_activity(
     {
         "model": "claude-haiku-4-5-20251001",
         "system": "You are a concise tech news summarizer...",
-        "prompt": f"Here is the Hacker News front page:\n\n{page['content']}",
+        "prompt": f"Here are the top Hacker News stories:\n\n{stories}",
         "schema": {                                 # ← structured output
             "type": "object",
             "properties": {"summary": {"type": "string"}},
@@ -137,7 +151,7 @@ A SKILL.md file is a markdown file with YAML frontmatter and a Python code block
 │                                                         │
 │  from workflowskill import ActionRegistry, run_skill          │
 │  registry = ActionRegistry()                            │
-│  registry.register("web_fetch", handler, ...)           │
+│  registry.register("api", handler, ...)                 │
 │  result = await run_skill("my-skill.md", inputs, registry) │
 └─────────────────────────────────────────────────────────┘
            │
@@ -174,9 +188,8 @@ The CLI includes these actions out of the box:
 
 | Action | Description |
 |--------|-------------|
-| `web_fetch` | Fetch a URL as text or markdown |
-| `web_fetch_raw` | Raw HTTP request with method, headers, and body |
-| `web_scrape` | Extract structured data from web pages |
+| `api` | Raw HTTP request with method, headers, and body — use for JSON APIs |
+| `web_scrape` | Extract structured data from web pages via CSS selectors |
 | `llm` | Call Claude with optional structured output schema |
 
 ---
@@ -207,7 +220,7 @@ WorkflowSkill workflows are Python code. The execution path is explicit and audi
 
 ## Using as a library
 
-WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`web_fetch`, `llm`, etc.). Embedding it in your own platform means registering your own:
+WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`api`, `web_scrape`, `llm`, etc.). Embedding it in your own platform means registering your own:
 
 ```python
 import asyncio

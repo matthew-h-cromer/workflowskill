@@ -41,22 +41,22 @@ A workflow that calls an action:
 
 ```
 ---
-name: fetch-page
-description: Fetches a URL and returns its content as markdown.
+name: check-status
+description: Calls a URL and returns the HTTP status code.
 inputs:
   url:
     type: str
     default: "https://example.com"
 ---
 
-# Fetch Page
+# Check Status
 
 \```python
 result = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "markdown"},
+    "api",
+    {"url": url},
 )
-return {"content": result["content"]}
+return {"status": result["status"], "content": result["content"]}
 \```
 ```
 
@@ -103,10 +103,10 @@ The code block contains **only the method body** — no imports, no class, no de
 ````markdown
 ```python
 result = await workflow.execute_activity(
-    "web_fetch",
-    {"url": url, "extract": "markdown"},
+    "api",
+    {"url": url},
 )
-return {"content": result["content"]}
+return {"status": result["status"], "content": result["content"]}
 ```
 ````
 
@@ -129,7 +129,7 @@ class FetchPageWorkflow:
     async def run(self, url: str = "https://example.com") -> dict:
         # ← user code goes here
         result = await workflow.execute_activity(...)
-        return {"content": result["content"]}
+        return {"status": result["status"], "content": result["content"]}
 ```
 
 **What is available in user code:**
@@ -217,9 +217,9 @@ result = await workflow.execute_activity(
 
 ## Actions
 
-Actions are WorkflowSkill's abstraction for platform-provided tools. The `workflowskill` library is tool-agnostic — it knows nothing about `web_fetch`, `llm`, or any specific capability. Consumers (the CLI, plugins, custom runners) register their tools as actions via the `ActionRegistry`.
+Actions are WorkflowSkill's abstraction for platform-provided tools. The `workflowskill` library is tool-agnostic — it knows nothing about `api`, `llm`, or any specific capability. Consumers (the CLI, plugins, custom runners) register their tools as actions via the `ActionRegistry`.
 
-When a workflow calls `workflow.execute_activity("web_fetch", ...)`, Temporal routes that to the registered `web_fetch` action. The action runs as a Temporal activity with full durability, retry, and timeout semantics.
+When a workflow calls `workflow.execute_activity("api", ...)`, Temporal routes that to the registered `api` action. The action runs as a Temporal activity with full durability, retry, and timeout semantics.
 
 ### Action Registration
 
@@ -267,20 +267,21 @@ Action handlers receive a `dict` and return a `dict`. This keeps the interface s
 from dataclasses import dataclass
 
 @dataclass
-class FetchInput:
+class ApiInput:
     url: str
-    extract: str = "markdown"
+    method: str = "GET"
 
 @dataclass
-class FetchOutput:
+class ApiOutput:
     content: str
-    title: str | None = None
-    url: str = ""
+    url: str
+    content_type: str
+    status: int
 
-async def web_fetch_handler(args: dict) -> dict:
-    inp = FetchInput(**args)
+async def api_handler(args: dict) -> dict:
+    inp = ApiInput(**args)
     # ... fetch ...
-    out = FetchOutput(content=content, title=title, url=inp.url)
+    out = ApiOutput(content=content, url=inp.url, content_type=ct, status=status)
     return out.__dict__
 ```
 
@@ -353,7 +354,7 @@ The runner provides a high-level function for executing a SKILL.md workflow end-
 from workflowskill import run_skill, ActionRegistry
 
 registry = ActionRegistry()
-registry.register("web_fetch", web_fetch_handler)
+registry.register("api", api_handler)
 
 result = await run_skill(
     skill_path="examples/hello-world.md",
@@ -395,8 +396,7 @@ workflowskill worker                         # Long-running worker mode
 
 | Action | Description | Required env |
 |--------|-------------|-------------|
-| `web_fetch` | Fetch a URL, return markdown or plain text | — |
-| `web_fetch_raw` | Fetch a URL, return raw response body | — |
+| `api` | Make an HTTP request, return raw response body | — |
 | `web_scrape` | Fetch a page and extract data via CSS selectors (text, attributes, or HTML) | — |
 | `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
 

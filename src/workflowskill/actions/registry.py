@@ -23,7 +23,7 @@ class ActionRegistry:
     Example::
 
         registry = ActionRegistry()
-        registry.register("web_fetch", web_fetch_handler)
+        registry.register("api", api_handler)
         registry.register("llm", llm_handler)
 
         # Then pass to run_skill() or the runner
