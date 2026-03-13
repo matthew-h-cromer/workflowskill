@@ -1,6 +1,6 @@
 {
   "name": "workflowskill",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "WorkflowSkill system prompt and tool contract",
   "main": "index.js",
   "license": "MIT"
