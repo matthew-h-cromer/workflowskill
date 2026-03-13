@@ -1,6 +1,6 @@
 ---
 name: filter-links
-description: Scrapes all anchor hrefs from a URL and returns only those starting with a given prefix.
+description: Scrapes all links from a page and returns only those starting with a given prefix.
 inputs:
   url:
     type: str
@@ -10,26 +10,27 @@ inputs:
 outputs:
   links:
     type: list
-    description: "Filtered list of hrefs that start with the given prefix"
+    description: "Links found on the page that start with the given prefix"
 ---
 
 # Filter Links
 
-Fetches a page, extracts all anchor `href` attributes via CSS selector, then
-filters the results in pure Python to return only links that start with the
-specified prefix.
+Fetches a page, extracts every anchor tag's href, and returns only the links
+that begin with the specified prefix.
 
 ```python
+# Scrape all anchor href attributes from the page
 page = await workflow.execute_activity(
     "scrape",
     {
         "url": url,
         "selectors": {
-            "links": {"css": "a", "extract": "href"},
+            "links": {"selector": "a", "attribute": "href"},
         },
     },
 )
 
+# Filter to only links starting with the prefix
 all_links = page["results"].get("links", [])
 filtered = [link for link in all_links if link.startswith(prefix)]
 

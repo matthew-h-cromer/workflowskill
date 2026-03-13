@@ -1,6 +1,6 @@
 ---
 name: count-headings
-description: Scrapes a page and returns the count and text of all h2 headings.
+description: Scrapes a page and returns all H2 headings and their count.
 inputs:
   url:
     type: str
@@ -8,18 +8,18 @@ inputs:
 outputs:
   count:
     type: int
-    description: "Number of h2 headings found on the page"
+    description: "The number of H2 headings found on the page"
   headings:
     type: list
-    description: "List of h2 heading texts"
+    description: "The list of H2 heading texts found on the page"
 ---
 
 # Count Headings
 
-Fetches a URL and extracts all h2 headings using a CSS selector, returning
-the heading texts and their count.
+Fetches a page and extracts all H2 headings using a CSS selector, then returns the heading texts and a total count.
 
 ```python
+# Scrape all H2 headings from the page
 page = await workflow.execute_activity(
     "scrape",
     {

@@ -1,6 +1,6 @@
 ---
 name: analyze-document
-description: Analyzes a document using an LLM and returns the result.
+description: Analyzes a text document using an LLM and returns the analysis.
 inputs:
   text:
     type: str
@@ -8,14 +8,15 @@ inputs:
 outputs:
   analysis:
     type: str
-    description: "The analysis produced by the LLM"
+    description: "The LLM's analysis of the provided text"
 ---
 
 # Analyze Document
 
-Sends the provided text to the LLM for analysis and returns the result.
+Sends a text document to the LLM for analysis and returns the result.
 
 ```python
+# Analyze the provided document
 result = await workflow.execute_activity(
     "llm",
     {

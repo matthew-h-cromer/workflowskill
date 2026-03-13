@@ -1,6 +1,6 @@
 ---
 name: scrape-urls
-description: Scrapes a list of URLs and returns the combined results.
+description: Scrapes a list of URLs and returns the content from each one.
 inputs:
   urls:
     type: list
@@ -8,28 +8,23 @@ inputs:
 outputs:
   results:
     type: list
-    description: "List of scrape results, one entry per URL."
+    description: "A list of scraped content for each URL"
 ---
 
 # Scrape URLs
 
-Loops over each URL in the input list, calls `scrape` on it, and returns all results.
+Loops over each URL in the provided list, scrapes its content, and returns all results together.
 
 ```python
 results = []
+
+# Scrape each URL
 for url in urls:
     result = await workflow.execute_activity(
         "scrape",
-        {
-            "url": url,
-            "selectors": {
-                "title": "title",
-                "headings": "h1",
-                "text": "p",
-                "links": {"css": "a", "extract": "href"},
-            },
-        },
+        {"url": url},
     )
-    results.append({"url": url, "status": result["status"], "data": result["results"]})
+    results.append(result)
+
 return {"results": results}
 ```

@@ -100,11 +100,9 @@ return {"result": result["output"]}
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
 
-### Code Style for UI Rendering
+### Code Style
 
-These conventions ensure the workflow UI can extract clean step labels and value previews from generated code.
-
-**Comments become step labels.** Write a short descriptive comment above each `execute_activity` call, loop, conditional, and `asyncio.gather` block. Never prefix with "Step N:" — ordering is handled by the renderer. Keep comments under 60 characters.
+**Comments describe each step.** Write a short descriptive comment above each `execute_activity` call, loop, conditional, and `asyncio.gather` block. Never prefix with "Step N:". Keep comments under 60 characters.
 
 ```python
 # Good
@@ -114,29 +112,40 @@ These conventions ensure the workflow UI can extract clean step labels and value
 # Step 1: Fetch current weather data
 ```
 
-**Inline string values in `execute_activity` args.** Always pass string values directly in the argument dict. Do not assign to a variable and pass the reference, unless the value is reused in multiple places. The UI extracts these values to preview what each step does.
+**Inline string values in `execute_activity` args.** Always pass string values directly in the argument dict. Do not assign to a variable and pass the reference, unless the value is reused in multiple places.
 
 ```python
-# Good — UI can preview the prompt
+# Good
 summary = await workflow.execute_activity("llm", {
     "prompt": f"Summarize: {content}",
 })
 
-# Bad — UI sees only the variable name
+# Bad
 prompt = f"Summarize: {content}"
 summary = await workflow.execute_activity("llm", {"prompt": prompt})
 ```
 
-**Triple-quoted f-strings for multi-line strings.** Do not use parenthesized implicit string concatenation.
+**Triple-quoted f-strings for multi-line strings. Single string literals for long URLs.** Do not use parenthesized implicit string concatenation.
 
 ```python
-# Good
+# Good — single string literal
+"url": "https://api.open-meteo.com/v1/forecast?latitude=47.42&longitude=-121.41&daily=snowfall_sum,temperature_2m_max&timezone=America/Los_Angeles"
+
+# Bad — parenthesized concatenation
+"url": (
+    "https://api.open-meteo.com/v1/forecast"
+    "?latitude=47.42&longitude=-121.41"
+    "&daily=snowfall_sum,temperature_2m_max"
+    "&timezone=America/Los_Angeles"
+)
+
+# Good — triple-quoted f-string for multi-line prompt
 "prompt": f"""Summarize the following article in 2-3 sentences.
 Title: {title}
 
 {content}"""
 
-# Bad
+# Bad — parenthesized concatenation
 "prompt": (
     f"Summarize the following article in 2-3 sentences. "
     f"Title: {title}\n\n{content}"

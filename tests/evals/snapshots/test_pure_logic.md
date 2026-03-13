@@ -8,12 +8,12 @@ inputs:
 outputs:
   greeting:
     type: str
-    description: "The greeting message."
+    description: "The personalized greeting message"
 ---
 
 # Greet
 
-Returns a simple greeting message for the provided name using pure Python logic.
+Returns a friendly greeting for whoever you name.
 
 ```python
 return {"greeting": f"Hello, {name}!"}

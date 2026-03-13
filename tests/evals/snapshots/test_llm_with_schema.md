@@ -1,6 +1,6 @@
 ---
 name: extract-info
-description: Extracts a title and summary from the provided text using structured LLM output.
+description: Extracts a title and summary from a given text using structured inference.
 inputs:
   text:
     type: str
@@ -16,24 +16,19 @@ outputs:
 
 # Extract Info
 
-Sends the provided text to the LLM and returns a structured response containing a title and summary.
+Reads a piece of text and pulls out a title and a summary.
 
 ```python
+# Extract title and summary from text
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Analyze the following text and extract a title and summary:\n\n{text}",
+        "prompt": f"Read the following text and extract a short title and a concise summary.\n\nText:\n{text}",
         "schema": {
             "type": "object",
             "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "A short title capturing the main topic of the text",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "A concise summary of the text",
-                },
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
             },
             "required": ["title", "summary"],
         },
