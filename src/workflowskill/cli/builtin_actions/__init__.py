@@ -3,13 +3,13 @@
 from workflowskill.actions.registry import ActionRegistry
 from workflowskill.cli.builtin_actions.api import api
 from workflowskill.cli.builtin_actions.llm import llm
-from workflowskill.cli.builtin_actions.web_scrape import web_scrape
+from workflowskill.cli.builtin_actions.scrape import scrape
 
-__all__ = ["api", "llm", "web_scrape"]
+__all__ = ["api", "llm", "scrape"]
 
 
 def register_builtin_actions(registry: ActionRegistry) -> None:
     """Register all built-in actions into an ActionRegistry."""
     registry.register("api", api)
-    registry.register("web_scrape", web_scrape)
+    registry.register("scrape", scrape)
     registry.register("llm", llm)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 # api
 
 @dataclass
@@ -23,17 +22,17 @@ class ApiOutput:
     status: int
 
 
-# web_scrape
+# scrape
 
 @dataclass
-class WebScrapeInput:
+class ScrapeInput:
     url: str
     selectors: dict[str, str | dict[str, str]]
     headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
-class WebScrapeOutput:
+class ScrapeOutput:
     status: int
     results: dict[str, list[str]]
 

@@ -13,17 +13,17 @@ Fetches current conditions from NOAA/NWS (temperature, visibility, forecast) and
 mountain weather forecast (snowpack, precipitation, wind), then uses Claude to synthesize a
 concise snow report for snowboarders. Flags fog and visibility issues specifically.
 
-NWS page uses `web_scrape` with CSS selectors to extract only the relevant conditions fields —
+NWS page uses `scrape` with CSS selectors to extract only the relevant conditions fields —
 temperature, visibility, and forecast text — rather than dumping the full page into the LLM
 prompt. NWAC provides a JSON API without zone-level filtering params, so `api` is used and
 the full response is forwarded (tradeoff acknowledged).
 
 ```python
-# Fetch NWS current conditions via web_scrape (targeted extraction) and
+# Fetch NWS current conditions via scrape (targeted extraction) and
 # NWAC mountain weather JSON in parallel
 nws, nwac = await asyncio.gather(
     workflow.execute_activity(
-        "web_scrape",
+        "scrape",
         {
             "url": "https://forecast.weather.gov/MapClick.php?CityName=Snoqualmie+Pass&state=WA&site=SEW&textField1=47.4248&textField2=-121.4138",
             "selectors": {
@@ -55,26 +55,17 @@ forecast = ", ".join(forecast_snippets[:4]) if forecast_snippets else "no foreca
 report = await workflow.execute_activity(
     "llm",
     {
-        "system": (
-            "You are an expert snow conditions reporter for Snoqualmie Pass, WA. "
-            "Write a concise 1–3 sentence snow report for a snowboarder. Cover all three: "
-            "(1) how the snow will feel to ride today (e.g. fresh powder, wind-affected slab, "
-            "wet and heavy, icy, groomed hardpack), "
-            "(2) whether it's worth going riding today, and "
-            "(3) visibility — this rider frequently encounters fog at Snoqualmie, so explicitly "
-            "mention whether visibility is good, limited, or poor. "
-            "Base your report strictly on the data provided. Plain prose, no bullet points."
-        ),
-        "prompt": (
-            f"NWS current conditions for Snoqualmie Pass:\n"
-            f"  Temperature: {temperature}\n"
-            f"  Visibility: {visibility}\n"
-            f"  Wind: {wind}\n"
-            f"  Conditions: {conditions}\n"
-            f"  Forecast: {forecast}\n\n"
-            f"NWAC mountain weather forecast JSON (find the Snoqualmie Pass region, "
-            f"field region_name = 'Snoqualmie Pass'):\n\n{nwac['content']}"
-        ),
+        "system": """You are an expert snow conditions reporter for Snoqualmie Pass, WA. Write a concise 1–3 sentence snow report for a snowboarder. Cover all three: (1) how the snow will feel to ride today (e.g. fresh powder, wind-affected slab, wet and heavy, icy, groomed hardpack), (2) whether it's worth going riding today, and (3) visibility — this rider frequently encounters fog at Snoqualmie, so explicitly mention whether visibility is good, limited, or poor. Base your report strictly on the data provided. Plain prose, no bullet points.""",
+        "prompt": f"""NWS current conditions for Snoqualmie Pass:
+  Temperature: {temperature}
+  Visibility: {visibility}
+  Wind: {wind}
+  Conditions: {conditions}
+  Forecast: {forecast}
+
+NWAC mountain weather forecast JSON (find the Snoqualmie Pass region, field region_name = 'Snoqualmie Pass'):
+
+{nwac['content']}""",
         "schema": {
             "type": "object",
             "properties": {"report": {"type": "string"}},

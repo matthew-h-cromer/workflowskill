@@ -13,13 +13,13 @@ outputs:
 
 # Scrape URLs
 
-Loops over each URL in the input list, calls `web_scrape` on it, and returns all results.
+Loops over each URL in the input list, calls `scrape` on it, and returns all results.
 
 ```python
 results = []
 for url in urls:
     result = await workflow.execute_activity(
-        "web_scrape",
+        "scrape",
         {
             "url": url,
             "selectors": {

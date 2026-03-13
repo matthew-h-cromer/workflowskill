@@ -172,10 +172,10 @@ def has_nested_dict_in_activity_args(code: str) -> bool:
     return False
 
 
-def has_web_scrape_feeding_llm(code: str) -> bool:
-    """Return True if a web_scrape call appears before an llm call in statement order.
+def has_scrape_feeding_llm(code: str) -> bool:
+    """Return True if a scrape call appears before an llm call in statement order.
 
-    Checks the top-level statement list of the async function body. A web_scrape
+    Checks the top-level statement list of the async function body. A scrape
     call must appear (by statement index) before an llm call.
     """
     tree = _parse(code)
@@ -191,7 +191,7 @@ def has_web_scrape_feeding_llm(code: str) -> bool:
                             return i
         return None
 
-    scrape_idx = _first_index_of_activity("web_scrape")
+    scrape_idx = _first_index_of_activity("scrape")
     llm_idx = _first_index_of_activity("llm")
     if scrape_idx is None or llm_idx is None:
         return False

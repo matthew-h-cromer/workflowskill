@@ -64,7 +64,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `actions` | ActionRegistry, action handlers |
 | `runner` | run_skill orchestration, Temporal lifecycle |
 | `cli` | Click CLI commands (run, worker) |
-| `builtin` | Built-in CLI actions (api, web_scrape, llm, etc.) |
+| `builtin` | Built-in CLI actions (api, scrape, llm, etc.) |
 | `spec` | SPEC.md specification |
 | `examples` | Example workflow files |
 

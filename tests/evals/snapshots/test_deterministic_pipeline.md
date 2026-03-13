@@ -21,7 +21,7 @@ specified prefix.
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": url,
         "selectors": {

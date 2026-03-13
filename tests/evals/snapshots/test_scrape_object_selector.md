@@ -20,7 +20,7 @@ Scrapes a URL and returns all anchor tag link texts and href attributes using CS
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": url,
         "selectors": {

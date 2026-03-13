@@ -39,7 +39,7 @@ result = await workflow.execute_activity(
 data = result["content"]  # parse JSON with json.loads if needed (use pure Python)
 ```
 
-### `web_scrape`
+### `scrape`
 
 Fetch a web page and extract structured text via CSS selectors.
 
@@ -55,7 +55,7 @@ Example:
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"prices": ".price", "titles": "h2"}},
     start_to_close_timeout=timedelta(seconds=30),
 )

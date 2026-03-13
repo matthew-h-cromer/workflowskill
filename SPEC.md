@@ -397,7 +397,7 @@ workflowskill worker                         # Long-running worker mode
 | Action | Description | Required env |
 |--------|-------------|-------------|
 | `api` | Make an HTTP request, return raw response body | — |
-| `web_scrape` | Fetch a page and extract data via CSS selectors (text, attributes, or HTML) | — |
+| `scrape` | Fetch a page and extract data via CSS selectors (text, attributes, or HTML) | — |
 | `llm` | Call Claude, return a parsed JSON object | `ANTHROPIC_API_KEY` |
 
 **Examples:**

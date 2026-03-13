@@ -95,10 +95,53 @@ return {"result": result["output"]}
 
 - Write **only the method body** — no imports, no class, no decorators
 - All inputs declared in frontmatter are available as local variables
-- `workflow`, `RetryPolicy`, `timedelta`, and `asyncio` are always available
-- **To get the current time, use `workflow.now()`** — returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available and are non-deterministic in Temporal workflows.
+- `workflow`, `RetryPolicy`, `timedelta`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available
+- **To get the current time, use `workflow.now()`** — it returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available and are non-deterministic in Temporal workflows.
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
+
+### Code Style for UI Rendering
+
+These conventions ensure the workflow UI can extract clean step labels and value previews from generated code.
+
+**Comments become step labels.** Write a short descriptive comment above each `execute_activity` call, loop, conditional, and `asyncio.gather` block. Never prefix with "Step N:" — ordering is handled by the renderer. Keep comments under 60 characters.
+
+```python
+# Good
+# Fetch current weather data
+
+# Bad
+# Step 1: Fetch current weather data
+```
+
+**Inline string values in `execute_activity` args.** Always pass string values directly in the argument dict. Do not assign to a variable and pass the reference, unless the value is reused in multiple places. The UI extracts these values to preview what each step does.
+
+```python
+# Good — UI can preview the prompt
+summary = await workflow.execute_activity("llm", {
+    "prompt": f"Summarize: {content}",
+})
+
+# Bad — UI sees only the variable name
+prompt = f"Summarize: {content}"
+summary = await workflow.execute_activity("llm", {"prompt": prompt})
+```
+
+**Triple-quoted f-strings for multi-line strings.** Do not use parenthesized implicit string concatenation.
+
+```python
+# Good
+"prompt": f"""Summarize the following article in 2-3 sentences.
+Title: {title}
+
+{content}"""
+
+# Bad
+"prompt": (
+    f"Summarize the following article in 2-3 sentences. "
+    f"Title: {title}\n\n{content}"
+)
+```
 
 ## What the Loader Generates
 
@@ -127,7 +170,7 @@ You do not need to specify a timeout unless you want a different value.
 
 ## Workflow Patterns
 
-> **Note:** The action names used in these patterns (`api`, `web_scrape`, `llm`) are examples from a common runtime configuration. Always check your context for which actions are actually registered — use only those.
+> **Note:** The action names used in these patterns (`api`, `scrape`, `llm`) are examples from a common runtime configuration. Always check your context for which actions are actually registered — use only those.
 
 ### No-activity workflow (pure Python logic)
 
@@ -142,7 +185,7 @@ result = await workflow.execute_activity(
     "api",
     {"url": url},
 )
-return {"status": result["status"], "content": result["content"]}
+return {"status": result["status"], "body": result["body"]}
 ```
 
 ### Single activity call with explicit timeout
@@ -160,7 +203,7 @@ return {"answer": result["answer"]}
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"heading": "h1", "body": "article p"}},
 )
 
@@ -191,7 +234,7 @@ result_a, result_b = await asyncio.gather(
     workflow.execute_activity("api", {"url": url_a}),
     workflow.execute_activity("api", {"url": url_b}),
 )
-return {"content_a": result_a["content"], "content_b": result_b["content"]}
+return {"body_a": result_a["body"], "body_b": result_b["body"]}
 ```
 
 ### Get the current time
@@ -208,7 +251,7 @@ return {"date": today}
 results = []
 for url in urls:
     result = await workflow.execute_activity(
-        "web_scrape",
+        "scrape",
         {"url": url, "selectors": {"title": "h1"}},
     )
     results.append(result)
@@ -219,7 +262,7 @@ return {"results": results}
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"price": ".price"}},
 )
 
@@ -242,7 +285,7 @@ result = await workflow.execute_activity(
         backoff_coefficient=2.0,
     ),
 )
-return {"content": result["content"]}
+return {"body": result["body"]}
 ```
 
 ## When to Use `llm`
@@ -257,15 +300,15 @@ creative generation, extracting meaning from unstructured text
 **Use pure Python for:** counting items, filtering lists, string formatting, math,
 restructuring dicts, conditional logic on known fields
 
-**Use `web_scrape` (not `llm`) for:** extracting specific elements from HTML
+**Use `scrape` (not `llm`) for:** extracting specific elements from HTML
 (titles, prices, links, headings). CSS selectors are deterministic and free.
 
 ### Don't
 
 ```python
-# BAD: using LLM to extract structured data that web_scrape handles deterministically
+# BAD: using LLM to extract structured data that scrape handles deterministically
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"raw": "body"}},
 )
 title = await workflow.execute_activity(
@@ -277,9 +320,9 @@ title = await workflow.execute_activity(
 ### Do
 
 ```python
-# GOOD: web_scrape for structured extraction, pure Python for transformation
+# GOOD: scrape for structured extraction, pure Python for transformation
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"title": "title", "headings": "h1"}},
 )
 titles = page["results"].get("title", [])
@@ -291,7 +334,7 @@ return {"title": titles[0] if titles else "Untitled"}
 ```python
 # GOOD: summarization genuinely requires inference
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {"url": url, "selectors": {"article": "article p"}},
 )
 content = "\n".join(page["results"].get("article", []))
@@ -317,11 +360,11 @@ means lower cost, faster responses, and better LLM focus.
 
 **Strategy ladder** (use the highest applicable option):
 
-1. **`web_scrape` with CSS selectors** — extracts only relevant elements before the LLM
+1. **`scrape` with CSS selectors** — extracts only relevant elements before the LLM
    sees anything. Deterministic, free, and the best default when the target is HTML.
 2. **Python filtering** — list comprehensions, subscript access, or string slicing between
    the fetch step and the LLM step. Use when data is structured (JSON, CSV) or when
-   `web_scrape` already returned a list you want to narrow.
+   `scrape` already returned a list you want to narrow.
 3. **Targeted API parameters** — query params or path segments that limit what the server
    returns (e.g. `?zone=snoqualmie`, `?limit=10`). Use when the API supports it.
 4. **Full content as last resort** — only when none of the above apply (e.g. a JSON API
@@ -335,7 +378,7 @@ means lower cost, faster responses, and better LLM focus.
 data = await workflow.execute_activity("api", {"url": url})
 result = await workflow.execute_activity(
     "llm",
-    {"prompt": f"What is the current temperature?\n\n{data['content']}"},
+    {"prompt": f"What is the current temperature?\n\n{data['body']}"},
     start_to_close_timeout=timedelta(seconds=60),
 )
 ```
@@ -345,7 +388,7 @@ result = await workflow.execute_activity(
 ```python
 # GOOD: scrape only the relevant elements, then pass the small result to LLM
 conditions = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": url,
         "selectors": {
@@ -388,6 +431,11 @@ from temporalio import workflow as _tw   # available as `workflow`
 from temporalio.common import RetryPolicy
 from datetime import timedelta
 import asyncio
+import json
+import re
+import math
+import collections
+import urllib.parse
 ```
 
 **Never write import statements in the code block.** They will be rejected.
@@ -416,7 +464,7 @@ it must be a registered action.
 2. **Return a `dict`** from the code block — always.
 3. **Match input names** — use variable names that match frontmatter `inputs` keys.
 4. **Default timeout is 30s** — omit `start_to_close_timeout` unless you need more.
-5. **Never import** — `workflow`, `RetryPolicy`, `timedelta`, `asyncio` are always available.
+5. **Never import** — `workflow`, `RetryPolicy`, `timedelta`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available.
 6. **Use `workflow.now()` for the current time** — returns a timezone-aware `datetime`. `datetime.now()` is not available.
 7. **Model names** — use `claude-haiku-4-5-20251001` for fast/cheap, `claude-sonnet-4-6` for quality.
 
@@ -438,7 +486,7 @@ Fetches a product page and extracts the current price via CSS selector.
 
 \```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": url,
         "selectors": {"price": ".price, [data-price], #price"},
@@ -459,7 +507,7 @@ When generating or updating a workflow, call the `save_workflow` tool with the c
 
 1. **Describe workflows by what they do**, not how they work.
    - Do: "This workflow checks the price on that product page and tells you what it found"
-   - Don't: "This workflow uses web_scrape with a CSS selector and returns a dict"
+   - Don't: "This workflow uses scrape with a CSS selector and returns a dict"
 
 2. **Describe inputs in plain language**, not type annotations.
    - Do: "You can give it a URL to check (it defaults to the example page if you don't)"

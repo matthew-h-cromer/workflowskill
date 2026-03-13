@@ -26,7 +26,7 @@ from tests.evals.ast_checks import (
     has_retry_policy_keyword,
     has_schema_arg,
     has_try_except,
-    has_web_scrape_feeding_llm,
+    has_scrape_feeding_llm,
 )
 from workflowskill import SkillLoadError
 
@@ -137,7 +137,7 @@ async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, sa
     """Scrape then summarize should use two activities sequentially, not in parallel."""
     TASK = (
         "Create a workflow named 'scrape-and-summarize' that takes a 'url' string input, "
-        "first scrapes the URL with web_scrape (extract h1 headings and article paragraphs), "
+        "first scrapes the URL with scrape (extract h1 headings and article paragraphs), "
         "then summarizes the content using the llm action, "
         "and returns the summary. Steps must run in order."
     )
@@ -150,8 +150,8 @@ async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, sa
     assert count_execute_activity(code) >= 2, (
         f"Expected ≥2 activity calls, got {count_execute_activity(code)}\n\nCode:\n{code}"
     )
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert has_activity_named(code, "llm"), (
         f"Expected llm activity\n\nCode:\n{code}"
@@ -229,7 +229,7 @@ async def test_loop_handling(generate_skill, parse_skill, extract_code, save_sna
     """Scraping a list of URLs should use a for loop with activity inside."""
     TASK = (
         "Create a workflow named 'scrape-urls' that takes a 'urls' list input. "
-        "Loop over each URL and call web_scrape on it. "
+        "Loop over each URL and call scrape on it. "
         "Return a list of all scraped results."
     )
     content = await _generate_with_retries(generate_skill, TASK)
@@ -334,15 +334,15 @@ async def test_llm_with_schema(generate_skill, parse_skill, extract_code, save_s
 
 
 # ---------------------------------------------------------------------------
-# Test 11: Deterministic transform — web_scrape + Python, no llm
+# Test 11: Deterministic transform — scrape + Python, no llm
 # ---------------------------------------------------------------------------
 
 
 async def test_deterministic_transform(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Counting headings is deterministic — must use web_scrape + Python, not llm."""
+    """Counting headings is deterministic — must use scrape + Python, not llm."""
     TASK = (
         "Create a workflow named 'count-headings' that takes a 'url' string input. "
-        "Use web_scrape to extract all h2 headings from the page. "
+        "Use scrape to extract all h2 headings from the page. "
         "Return a dict with 'count' (the number of headings found) and "
         "'headings' (the list of heading texts). "
         "This is pure data extraction — do not use the llm action."
@@ -353,8 +353,8 @@ async def test_deterministic_transform(generate_skill, parse_skill, extract_code
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert not has_activity_named(code, "llm"), (
         f"Deterministic extraction should not use llm\n\nCode:\n{code}"
@@ -367,11 +367,11 @@ async def test_deterministic_transform(generate_skill, parse_skill, extract_code
 
 
 async def test_deterministic_pipeline(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Filtering links by prefix is deterministic — must use web_scrape + Python, not llm."""
+    """Filtering links by prefix is deterministic — must use scrape + Python, not llm."""
     TASK = (
         "Create a workflow named 'filter-links' that takes a 'url' string input "
         "and a 'prefix' string input (default 'https'). "
-        "Use web_scrape with an object-form selector to extract href attributes from all anchor tags. "
+        "Use scrape with an object-form selector to extract href attributes from all anchor tags. "
         "Filter the list in pure Python to only include links starting with the prefix. "
         "Return the filtered list. Do not use the llm action."
     )
@@ -381,8 +381,8 @@ async def test_deterministic_pipeline(generate_skill, parse_skill, extract_code,
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert not has_activity_named(code, "llm"), (
         f"Deterministic filtering should not use llm\n\nCode:\n{code}"
@@ -423,15 +423,15 @@ async def test_outputs_frontmatter(generate_skill, parse_skill, extract_code, sa
 
 
 # ---------------------------------------------------------------------------
-# Test 14: web_scrape object-form selector
+# Test 14: scrape object-form selector
 # ---------------------------------------------------------------------------
 
 
-async def test_web_scrape_object_selector(generate_skill, parse_skill, extract_code, save_snapshot):
+async def test_scrape_object_selector(generate_skill, parse_skill, extract_code, save_snapshot):
     """Extracting link text and href should use an object-form selector dict."""
     TASK = (
         "Create a workflow named 'extract-links' that takes a 'url' string input. "
-        "Use web_scrape to extract all links from anchor tags — get both the link text "
+        "Use scrape to extract all links from anchor tags — get both the link text "
         "and the href attribute using the appropriate selector forms. "
         "Return the results. Do not use the llm action."
     )
@@ -441,14 +441,14 @@ async def test_web_scrape_object_selector(generate_skill, parse_skill, extract_c
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert not has_activity_named(code, "llm"), (
         f"Deterministic extraction should not use llm\n\nCode:\n{code}"
     )
     assert has_nested_dict_in_activity_args(code), (
-        f"Expected object-form selector (nested dict) in web_scrape args\n\nCode:\n{code}"
+        f"Expected object-form selector (nested dict) in scrape args\n\nCode:\n{code}"
     )
 
 
@@ -488,11 +488,11 @@ async def test_error_recovery_with_retry(generate_skill, parse_skill, extract_co
 
 
 async def test_scrape_before_llm(generate_skill, parse_skill, extract_code, save_snapshot):
-    """Extracting structured job data and summarizing should use web_scrape before llm."""
+    """Extracting structured job data and summarizing should use scrape before llm."""
     TASK = (
         "Create a workflow named 'hiring-landscape' that takes a 'url' string input. "
         "The page uses CSS class '.job-title' for job titles and '.company-name' for company names. "
-        "Use web_scrape with those selectors to extract the job titles and company names. "
+        "Use scrape with those selectors to extract the job titles and company names. "
         "Then use the llm action with a JSON schema to summarize the hiring landscape in 2-3 sentences. "
         "Return the summary."
     )
@@ -502,20 +502,20 @@ async def test_scrape_before_llm(generate_skill, parse_skill, extract_code, save
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert has_activity_named(code, "llm"), (
         f"Expected llm activity\n\nCode:\n{code}"
     )
     assert not has_activity_named(code, "web_fetch"), (
-        f"Should use web_scrape (not web_fetch) to minimize LLM input\n\nCode:\n{code}"
+        f"Should use scrape (not web_fetch) to minimize LLM input\n\nCode:\n{code}"
     )
     assert has_schema_arg(code), (
         f"Expected 'schema' key in llm activity args dict\n\nCode:\n{code}"
     )
-    assert has_web_scrape_feeding_llm(code), (
-        f"Expected web_scrape call before llm call in statement order\n\nCode:\n{code}"
+    assert has_scrape_feeding_llm(code), (
+        f"Expected scrape call before llm call in statement order\n\nCode:\n{code}"
     )
 
 
@@ -528,7 +528,7 @@ async def test_filter_before_llm(generate_skill, parse_skill, extract_code, save
     """Scraping blog posts and filtering to 2025 should use Python between scrape and LLM."""
     TASK = (
         "Create a workflow named 'blog-themes' that takes a 'url' string input. "
-        "Use web_scrape to extract blog post titles (CSS: '.post-title') and dates (CSS: '.post-date'). "
+        "Use scrape to extract blog post titles (CSS: '.post-title') and dates (CSS: '.post-date'). "
         "Filter the results in pure Python to only include posts from 2025 (check if '2025' appears in the date string). "
         "Then use the llm action to summarize the themes of the 2025 posts. "
         "Return the summary."
@@ -539,18 +539,18 @@ async def test_filter_before_llm(generate_skill, parse_skill, extract_code, save
     parse_skill(content)
     code = extract_code(content)
 
-    assert has_activity_named(code, "web_scrape"), (
-        f"Expected web_scrape activity\n\nCode:\n{code}"
+    assert has_activity_named(code, "scrape"), (
+        f"Expected scrape activity\n\nCode:\n{code}"
     )
     assert has_activity_named(code, "llm"), (
         f"Expected llm activity\n\nCode:\n{code}"
     )
     assert not has_activity_named(code, "web_fetch"), (
-        f"Should use web_scrape (not web_fetch) to minimize LLM input\n\nCode:\n{code}"
+        f"Should use scrape (not web_fetch) to minimize LLM input\n\nCode:\n{code}"
     )
     assert has_for_loop(code) or has_list_comprehension(code), (
         f"Expected for loop or list comprehension for Python filtering\n\nCode:\n{code}"
     )
-    assert has_web_scrape_feeding_llm(code), (
-        f"Expected web_scrape call before llm call in statement order\n\nCode:\n{code}"
+    assert has_scrape_feeding_llm(code), (
+        f"Expected scrape call before llm call in statement order\n\nCode:\n{code}"
     )

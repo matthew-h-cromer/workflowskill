@@ -21,7 +21,7 @@ the heading texts and their count.
 
 ```python
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": url,
         "selectors": {"headings": "h2"},

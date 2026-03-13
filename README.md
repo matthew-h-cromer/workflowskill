@@ -98,7 +98,7 @@ produce a concise, readable summary of the top stories.
 ```python
 # Scrape story titles from the Hacker News front page
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": "https://news.ycombinator.com",
         "selectors": {"titles": ".titleline > a", "scores": ".score"},
@@ -189,7 +189,7 @@ The CLI includes these actions out of the box:
 | Action | Description |
 |--------|-------------|
 | `api` | Raw HTTP request with method, headers, and body — use for JSON APIs |
-| `web_scrape` | Extract structured data from web pages via CSS selectors |
+| `scrape` | Extract structured data from web pages via CSS selectors |
 | `llm` | Call Claude with optional structured output schema |
 
 ---
@@ -220,7 +220,7 @@ WorkflowSkill workflows are Python code. The execution path is explicit and audi
 
 ## Using as a library
 
-WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`api`, `web_scrape`, `llm`, etc.). Embedding it in your own platform means registering your own:
+WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`api`, `scrape`, `llm`, etc.). Embedding it in your own platform means registering your own:
 
 ```python
 import asyncio

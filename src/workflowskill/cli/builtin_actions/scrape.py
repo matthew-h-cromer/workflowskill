@@ -1,4 +1,4 @@
-"""web_scrape built-in action — CSS selector extraction."""
+"""scrape built-in action — CSS selector extraction."""
 
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ def _normalize_selector(key: str, val: object) -> tuple[str, str]:
     if isinstance(val, dict):
         css = val.get("css")
         if not isinstance(css, str) or not css:
-            raise ValueError(f'web_scrape: selector "{key}" dict must have a "css" string key')
+            raise ValueError(f'scrape: selector "{key}" dict must have a "css" string key')
         extract = val.get("extract", "text")
         if not isinstance(extract, str):
-            raise ValueError(f'web_scrape: selector "{key}" "extract" must be a string')
+            raise ValueError(f'scrape: selector "{key}" "extract" must be a string')
         return (css, extract)
-    raise ValueError(f'web_scrape: selector "{key}" must be a string or object')
+    raise ValueError(f'scrape: selector "{key}" must be a string or object')
 
 
-async def web_scrape(args: dict[str, Any]) -> dict[str, Any]:
+async def scrape(args: dict[str, Any]) -> dict[str, Any]:
     """Fetch a URL and extract structured data via CSS selectors.
 
     Args:
@@ -57,11 +57,11 @@ async def web_scrape(args: dict[str, Any]) -> dict[str, Any]:
     """
     url = args.get("url")
     if not isinstance(url, str) or not url:
-        raise ValueError('web_scrape: "url" is required and must be a string')
+        raise ValueError('scrape: "url" is required and must be a string')
 
     raw_selectors = args.get("selectors")
     if not isinstance(raw_selectors, dict):
-        raise ValueError('web_scrape: "selectors" is required and must be an object')
+        raise ValueError('scrape: "selectors" is required and must be an object')
 
     normalized: dict[str, tuple[str, str]] = {}
     for key, val in raw_selectors.items():
@@ -81,7 +81,7 @@ async def web_scrape(args: dict[str, Any]) -> dict[str, Any]:
         encoding = response.encoding
 
     if len(content) > MAX_BYTES:
-        raise ValueError(f"web_scrape: response too large for {url}")
+        raise ValueError(f"scrape: response too large for {url}")
 
     html = content.decode(encoding or "utf-8", errors="replace")
     soup = BeautifulSoup(html, "html.parser")

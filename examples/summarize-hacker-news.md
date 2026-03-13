@@ -14,7 +14,7 @@ Claude Haiku to produce a concise, readable summary of the top stories.
 ```python
 # Scrape story titles from the Hacker News front page
 page = await workflow.execute_activity(
-    "web_scrape",
+    "scrape",
     {
         "url": "https://news.ycombinator.com",
         "selectors": {
@@ -41,11 +41,7 @@ summary = await workflow.execute_activity(
     "llm",
     {
         "model": "claude-haiku-4-5-20251001",
-        "system": (
-            "You are a concise tech news summarizer. Return a brief, readable summary "
-            "of the top Hacker News stories — what's trending and why it matters. "
-            "Plain prose, no bullet lists, 3–5 sentences max."
-        ),
+        "system": """You are a concise tech news summarizer. Return a brief, readable summary of the top Hacker News stories — what's trending and why it matters. Plain prose, no bullet lists, 3–5 sentences max.""",
         "prompt": f"Here are the top Hacker News stories:\n\n{stories}",
         "schema": {
             "type": "object",

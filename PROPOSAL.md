@@ -151,7 +151,7 @@ WorkflowSkill is a **Python library** (`workflowskill`). It is tool-agnostic —
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Library/consumer separation:** The `workflowskill` library provides the action registration interface and the runner. The CLI registers its built-in tools (`api`, `web_scrape`, `llm`, etc.) as actions. An OpenClaw plugin would import `workflowskill` and register OpenClaw's tools instead. The library has no opinion about what tools exist.
+**Library/consumer separation:** The `workflowskill` library provides the action registration interface and the runner. The CLI registers its built-in tools (`api`, `scrape`, `llm`, etc.) as actions. An OpenClaw plugin would import `workflowskill` and register OpenClaw's tools instead. The library has no opinion about what tools exist.
 
 ## Security Considerations
 
