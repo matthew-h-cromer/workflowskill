@@ -96,6 +96,7 @@ return {"result": result["output"]}
 - Write **only the method body** — no imports, no class, no decorators
 - All inputs declared in frontmatter are available as local variables
 - `workflow`, `RetryPolicy`, `timedelta`, and `asyncio` are always available
+- **To get the current time, use `workflow.now()`** — returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available and are non-deterministic in Temporal workflows.
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
 
@@ -191,6 +192,14 @@ result_a, result_b = await asyncio.gather(
     workflow.execute_activity("api", {"url": url_b}),
 )
 return {"content_a": result_a["content"], "content_b": result_b["content"]}
+```
+
+### Get the current time
+
+```python
+now = workflow.now()  # timezone-aware datetime (UTC)
+today = now.strftime("%Y-%m-%d")
+return {"date": today}
 ```
 
 ### Loop over items (sequential)
@@ -408,7 +417,8 @@ it must be a registered action.
 3. **Match input names** — use variable names that match frontmatter `inputs` keys.
 4. **Default timeout is 30s** — omit `start_to_close_timeout` unless you need more.
 5. **Never import** — `workflow`, `RetryPolicy`, `timedelta`, `asyncio` are always available.
-6. **Model names** — use `claude-haiku-4-5-20251001` for fast/cheap, `claude-sonnet-4-6` for quality.
+6. **Use `workflow.now()` for the current time** — returns a timezone-aware `datetime`. `datetime.now()` is not available.
+7. **Model names** — use `claude-haiku-4-5-20251001` for fast/cheap, `claude-sonnet-4-6` for quality.
 
 ## Example: Monitor a Product Price
 
