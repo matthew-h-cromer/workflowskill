@@ -28,7 +28,7 @@ from tests.evals.ast_checks import (
     has_try_except,
     has_scrape_feeding_llm,
 )
-from workflowskill import SkillLoadError
+from workflowskill.loader.skill_loader import SkillLoadError
 
 pytestmark = pytest.mark.eval
 

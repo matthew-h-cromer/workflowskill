@@ -147,21 +147,10 @@ A SKILL.md file is a markdown file with YAML frontmatter and a Python code block
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Consumer (CLI / plugin / custom runner)                │
-│                                                         │
-│  from workflowskill import ActionRegistry, run_skill          │
-│  registry = ActionRegistry()                            │
-│  registry.register("api", handler, ...)                 │
-│  result = await run_skill("my-skill.md", inputs, registry) │
-└─────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────┐
-│  workflowskill library                                        │
+│  workflowskill CLI                                      │
 │                                                         │
 │  loader/    — parse SKILL.md, extract workflow class    │
-│  actions/   — ActionRegistry: wrap handlers as          │
-│               Temporal activities                       │
+│  actions/   — wrap handlers as Temporal activities      │
 │  runner/    — start embedded Temporal, run workflow     │
 └─────────────────────────────────────────────────────────┘
            │
@@ -215,40 +204,6 @@ Purely deterministic workflows — backups, aggregation, rule-based handling —
 LLM orchestration improvises. It reads instructions and decides, in that moment, at that temperature, which tools to call and in what order. Most of the time it's right. But "most of the time" is not a property you want in a system running unattended on a schedule.
 
 WorkflowSkill workflows are Python code. The execution path is explicit and auditable. Temporal handles failures: retries with configurable backoff, step-level execution history, and durable state across restarts. Every run follows the same plan. When something goes wrong, you know exactly which step failed and why.
-
----
-
-## Using as a library
-
-WorkflowSkill is a tool-agnostic library. The CLI registers its built-in actions (`api`, `scrape`, `llm`, etc.). Embedding it in your own platform means registering your own:
-
-```python
-import asyncio
-from workflowskill import ActionRegistry, run_skill
-
-registry = ActionRegistry()
-registry.register("my_tool", my_handler)
-
-result = asyncio.run(run_skill("path/to/skill.md", {"query": "hello"}, registry))
-print(result)
-```
-
-Action handlers have the signature `async def handler(args: dict) -> dict`. The library has no opinion about what tools exist — that's the consumer's job.
-
-### Integrating the workflow-author skill
-
-`skill/SKILL.md` is the authoring guide that teaches Claude to generate workflows. When
-Claude generates or updates a workflow, it calls a `save_workflow` tool to deliver the
-result. **If you surface this skill in your platform, you must provide a `save_workflow`
-tool implementation.**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `markdown` | string | Complete SKILL.md file content (frontmatter + body + code block) |
-
-The tool should save the file wherever makes sense for your platform. See
-[SPEC.md § Authoring Skill Integration](SPEC.md#authoring-skill-integration) for the
-full contract.
 
 ---
 

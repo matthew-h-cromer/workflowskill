@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from workflowskill import ActionRegistry, run_skill
+from workflowskill.actions.registry import ActionRegistry
+from workflowskill.runner.runner import run_skill
 
 EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples"
 

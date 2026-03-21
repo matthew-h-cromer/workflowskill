@@ -261,14 +261,14 @@ result = await workflow.execute_activity(
 
 ## Actions
 
-Actions are WorkflowSkill's abstraction for platform-provided tools. The `workflowskill` library is tool-agnostic — it knows nothing about `api`, `llm`, or any specific capability. Consumers (the CLI, plugins, custom runners) register their tools as actions via the `ActionRegistry`.
+Actions are WorkflowSkill's abstraction for platform-provided tools. The core knows nothing about `api`, `llm`, or any specific capability. Actions are registered via the `ActionRegistry`.
 
 When a workflow calls `workflow.execute_activity("api", ...)`, Temporal routes that to the registered `api` action. The action runs as a Temporal activity with full durability, retry, and timeout semantics.
 
 ### Action Registration
 
 ```python
-from workflowskill import ActionRegistry
+from workflowskill.actions.registry import ActionRegistry
 
 registry = ActionRegistry()
 
@@ -396,7 +396,8 @@ class LoadedSkill:
 The runner provides a high-level function for executing a SKILL.md workflow end-to-end.
 
 ```python
-from workflowskill import run_skill, ActionRegistry
+from workflowskill.actions.registry import ActionRegistry
+from workflowskill.runner.runner import run_skill
 
 registry = ActionRegistry()
 registry.register("api", api_handler)

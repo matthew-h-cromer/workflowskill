@@ -8,9 +8,9 @@ Temporal-based workflow engine where agents author Python workflows from natural
 
 ## Architecture
 
-**Library + CLI** — `workflowskill` is a pure orchestration library; the CLI wraps it with built-in actions (`api`, `scrape`, `llm`, etc.) for command-line use. An OpenClaw plugin or other consumer would import `workflowskill` and register its own actions instead.
+**CLI** — `workflowskill` is a CLI tool. The `workflowskill` package is not intended for reuse as a library.
 
-**Tool-agnostic runtime** — The `workflowskill` library knows nothing about specific tools. Consumers register tools as Temporal activities via the `ActionRegistry`. This keeps the library modular and reusable across platforms.
+**Tool-agnostic runtime** — Registered actions (`api`, `scrape`, `llm`, etc.) are Temporal activities. The core knows nothing about specific tools; actions are registered by the CLI.
 
 **Temporal foundation** — Durable execution, retry policies, scheduling, and state persistence are provided by Temporal. We do not implement these ourselves.
 
@@ -22,7 +22,7 @@ PROPOSAL.md                      # Design rationale and problem statement
 examples/                        # Runnable workflow examples (SKILL.md format)
 src/
   workflowskill/
-    __init__.py                  # Public API: ActionRegistry, run_skill, LoadedSkill
+    __init__.py                  # Package init
     config.py                    # Temporal connection config (env vars)
     actions/
       __init__.py
@@ -115,18 +115,6 @@ When adding a new language feature or workflow pattern:
 | Timeout | Default is 30s; override with `start_to_close_timeout` only when needed |
 | I/O dataclasses | Optional inside action handlers; workflow interface uses plain `dict` |
 | Determinism | Prefer pure Python for parsing, transforming, and filtering. Use `llm` only for genuine inference (summarization, classification, generation, translation). |
-
-## Public API
-
-Everything consumed by library users is exported from `src/workflowskill/__init__.py`:
-
-- `ActionRegistry` — register tools as Temporal activities
-- `run_skill(skill_path, inputs, registry)` — load and execute a SKILL.md
-- `load_skill(skill_path)` — parse a SKILL.md and return a `LoadedSkill`
-- `LoadedSkill` — dataclass returned by the skill loader
-- `InputSpec` — dataclass describing a single workflow input parameter
-- `OutputSpec` — dataclass describing a single workflow output
-- `SkillLoadError` — raised when a SKILL.md cannot be loaded
 
 ## SKILL.md Format
 
