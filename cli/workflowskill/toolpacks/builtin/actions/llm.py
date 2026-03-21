@@ -51,7 +51,7 @@ async def llm(args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(prompt, str) or not prompt:
         raise ValueError('llm: "prompt" is required and must be a string')
 
-    system_base = (args.get("system") or "")
+    system_base = args.get("system") or ""
     schema = args.get("schema")
     model = args.get("model") or DEFAULT_MODEL
     if not isinstance(model, str):
@@ -84,13 +84,7 @@ async def llm(args: dict[str, Any]) -> dict[str, Any]:
     text = block.text
 
     # Strip markdown code fences if present
-    stripped = (
-        text.strip()
-        .removeprefix("```json")
-        .removeprefix("```")
-        .removesuffix("```")
-        .strip()
-    )
+    stripped = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
     try:
         parsed: Any = json.loads(stripped)

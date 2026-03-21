@@ -1,21 +1,19 @@
 ---
 type: workflow
 name: fetch-two
-description: Fetches two URLs concurrently and returns both responses.
+description: Fetch two URLs concurrently and return both responses.
 inputs:
   url_a:
     type: str
-    default: "https://example.com"
   url_b:
     type: str
-    default: "https://example.com"
 outputs:
-  body_a:
+  content_a:
     type: str
-    description: "Response body from the first URL"
-  body_b:
+    description: "Response body from url_a"
+  content_b:
     type: str
-    description: "Response body from the second URL"
+    description: "Response body from url_b"
 ---
 
 # Fetch Two
@@ -27,11 +25,14 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Fetch both URLs at the same time
+# Fetch both URLs concurrently
 result_a, result_b = await asyncio.gather(
     workflow.execute_activity("api", {"url": url_a}),
     workflow.execute_activity("api", {"url": url_b}),
 )
 
-return {"body_a": result_a["body"], "body_b": result_b["body"]}
+return {
+    "content_a": result_a["content"],
+    "content_b": result_b["content"],
+}
 ```

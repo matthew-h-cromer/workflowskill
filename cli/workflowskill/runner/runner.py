@@ -155,11 +155,7 @@ def _build_args(workflow_class: type, merged: dict[str, Any]) -> list[Any]:
         if run_method is None:
             return []
         sig = inspect.signature(run_method)
-        params = [
-            (name, p)
-            for name, p in sig.parameters.items()
-            if name not in ("self", "cls")
-        ]
+        params = [(name, p) for name, p in sig.parameters.items() if name not in ("self", "cls")]
     except (ValueError, TypeError):
         return []
 

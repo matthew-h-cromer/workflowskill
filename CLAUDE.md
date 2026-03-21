@@ -34,11 +34,9 @@ cli/
       validator.py                 # AST validator for restricted Python subset
     runner/
       runner.py                    # run_skill() — load → start Temporal → execute → return
-    builtin_actions/
-      types.py                     # I/O dataclasses for built-in actions
-      api.py                       # api action (raw HTTP requests)
-      scrape.py                    # scrape action
-      llm.py                       # llm action (Anthropic SDK)
+    toolpacks/                       # Pluggable action providers
+      builtin/                     # Built-in actions (api, scrape, llm)
+      openclaw/                    # OpenClaw platform actions
   tests/                           # CLI unit & integration tests
     unit/
     integration/

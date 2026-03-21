@@ -8,7 +8,7 @@ inputs:
 outputs:
   summary:
     type: str
-    description: "A summary of the themes found across 2025 blog posts"
+    description: "A summary of the themes found in 2025 blog posts"
 ---
 
 # Blog Themes
@@ -35,7 +35,7 @@ page = await workflow.execute_activity(
 titles = page["results"].get("titles", [])
 dates = page["results"].get("dates", [])
 
-# Pair titles with dates, keep only 2025 posts
+# Filter to only posts from 2025
 posts_2025 = [
     title
     for title, date in zip(titles, dates)
@@ -43,18 +43,16 @@ posts_2025 = [
 ]
 
 if not posts_2025:
-    return {"summary": "No posts from 2025 were found on this page."}
+    return {"summary": "No blog posts from 2025 were found."}
 
-# Format titles as a numbered list for the LLM
-post_list = "\n".join(f"{i + 1}. {title}" for i, title in enumerate(posts_2025))
+# Format titles for the LLM prompt
+post_list = "\n".join(f"- {title}" for title in posts_2025)
 
-# Summarize the themes across 2025 posts
+# Summarize the themes of the 2025 posts
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"""The following are blog post titles from 2025. Summarize the main themes they cover in 2-3 sentences.
-
-{post_list}""",
+        "prompt": f"Here are blog post titles from 2025:\n\n{post_list}\n\nWhat are the main themes across these posts? Provide a concise summary.",
         "schema": {
             "type": "object",
             "properties": {

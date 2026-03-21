@@ -158,8 +158,7 @@ class _WorkflowValidator(ast.NodeVisitor):
         names = ", ".join(alias.name for alias in node.names)
         self._err(
             node,
-            f"Imports are not allowed in workflow code — they are auto-injected: "
-            f"'import {names}'",
+            f"Imports are not allowed in workflow code — they are auto-injected: 'import {names}'",
         )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:

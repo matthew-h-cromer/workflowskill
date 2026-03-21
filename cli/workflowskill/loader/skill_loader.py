@@ -121,6 +121,7 @@ def load_skill(path: str | Path) -> LoadedSkill:
             )
         # Validate input name is a safe Python identifier
         import keyword
+
         if not str(input_name).isidentifier() or keyword.iskeyword(input_name):
             raise SkillLoadError(
                 f"Input name '{input_name}' in {path} is not a valid Python identifier"
@@ -145,9 +146,7 @@ def load_skill(path: str | Path) -> LoadedSkill:
             output_description = spec.get("description", "")
             outputs[output_name] = OutputSpec(type=output_type, description=output_description)
         else:
-            raise SkillLoadError(
-                f"Output '{output_name}' in {path} must be a string or mapping"
-            )
+            raise SkillLoadError(f"Output '{output_name}' in {path} must be a string or mapping")
 
     # Extract Python code block
     code_matches = _CODE_BLOCK_RE.findall(content)

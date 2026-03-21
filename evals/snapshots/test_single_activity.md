@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: check-status
-description: Fetches a URL and returns the HTTP status code and response content.
+description: Fetch a URL and return its HTTP status code and content.
 inputs:
   url:
     type: str
@@ -10,9 +10,9 @@ outputs:
   status:
     type: int
     description: "HTTP status code returned by the URL"
-  body:
+  content:
     type: str
-    description: "Response content returned by the URL"
+    description: "Response body content from the URL"
 ---
 
 # Check Status
@@ -30,5 +30,5 @@ result = await workflow.execute_activity(
     {"url": url},
 )
 
-return {"status": result["status"], "body": result["body"]}
+return {"status": result["status"], "content": result["content"]}
 ```

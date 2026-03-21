@@ -114,17 +114,28 @@ _SAVE_WORKFLOW_TOOL = {
 
 @pytest.fixture(scope="session")
 def generate_skill(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """Return an async callable: generate(task) -> raw SKILL.md string."""
+    """Return an async callable: generate(task, toolpack=None) -> raw SKILL.md string.
+
+    If toolpack is given (e.g. "openclaw"), its authoring context is appended to
+    the system prompt so the model knows which actions are available.
+    """
     skill_md = _get_skill_md()
 
-    async def generate(task: str) -> str:
+    async def generate(task: str, toolpack: str | None = None) -> str:
         global _total_input_tokens, _total_output_tokens
+
+        system = skill_md
+        if toolpack is not None:
+            from workflowskill.toolpacks import load_toolpack
+            pack = load_toolpack(toolpack)
+            system = skill_md + "\n\n" + pack.get_authoring_context()
+
         client = anthropic.AsyncAnthropic()
         message = await client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             temperature=0,
-            system=skill_md,
+            system=system,
             tools=[_SAVE_WORKFLOW_TOOL],
             messages=[{"role": "user", "content": task}],
         )

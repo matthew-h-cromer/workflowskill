@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: classify-text
-description: Classifies the sentiment of a text string as positive, negative, or neutral.
+description: Classifies the sentiment of input text as positive, negative, or neutral
 inputs:
   text:
     type: str
@@ -9,7 +9,7 @@ inputs:
 outputs:
   sentiment:
     type: str
-    description: "The sentiment of the text: positive, negative, or neutral"
+    description: "The sentiment classification: positive, negative, or neutral"
   confidence:
     type: str
     description: "The model's confidence in the classification: high, medium, or low"
@@ -24,21 +24,24 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Classify sentiment using structured LLM output
+# Classify sentiment using LLM inference
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Classify the sentiment of the following text as positive, negative, or neutral. Also rate your confidence as high, medium, or low.\n\nText: {text}",
+        "prompt": f"Classify the sentiment of the following text:\n\n{text}",
+        "system": "You are a sentiment analysis assistant. Classify the sentiment of the given text as exactly one of: positive, negative, or neutral. Also rate your confidence as high, medium, or low.",
         "schema": {
             "type": "object",
             "properties": {
                 "sentiment": {
                     "type": "string",
                     "enum": ["positive", "negative", "neutral"],
+                    "description": "The sentiment classification",
                 },
                 "confidence": {
                     "type": "string",
                     "enum": ["high", "medium", "low"],
+                    "description": "Confidence level in the classification",
                 },
             },
             "required": ["sentiment", "confidence"],

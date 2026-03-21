@@ -1,10 +1,11 @@
-"""I/O dataclasses for built-in CLI actions."""
+"""I/O dataclasses for built-in actions (documentation only — not used at runtime)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 # api
+
 
 @dataclass
 class ApiInput:
@@ -24,6 +25,7 @@ class ApiOutput:
 
 # scrape
 
+
 @dataclass
 class ScrapeInput:
     url: str
@@ -38,6 +40,7 @@ class ScrapeOutput:
 
 
 # llm
+
 
 @dataclass
 class LlmInput:

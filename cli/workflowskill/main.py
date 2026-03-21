@@ -12,7 +12,6 @@ import click
 from dotenv import load_dotenv
 
 from workflowskill.actions.registry import ActionRegistry
-from workflowskill.builtin_actions import register_builtin_actions
 from workflowskill.display import (
     on_activity_complete,
     on_activity_start,
@@ -47,7 +46,20 @@ def cli() -> None:
     default=None,
     help="Pass all workflow inputs as a JSON object string.",
 )
-def run(file: Path, raw_inputs: tuple[str, ...], json_input: str | None) -> None:
+@click.option(
+    "--toolpack",
+    "toolpacks",
+    multiple=True,
+    default=("builtin",),
+    show_default=True,
+    help="Tool pack to load (repeatable). Available: builtin, openclaw.",
+)
+def run(
+    file: Path,
+    raw_inputs: tuple[str, ...],
+    json_input: str | None,
+    toolpacks: tuple[str, ...],
+) -> None:
     """Run a SKILL.md workflow file."""
     # Parse inputs
     inputs: dict[str, Any] = {}
@@ -74,12 +86,20 @@ def run(file: Path, raw_inputs: tuple[str, ...], json_input: str | None) -> None
         except json.JSONDecodeError:
             inputs[key] = value  # treat as plain string
 
-    # Build registry with built-in actions
+    # Build registry and load requested tool packs
+    from workflowskill.toolpacks import load_toolpack
+
     registry = ActionRegistry(
         on_activity_start=on_activity_start,
         on_activity_complete=on_activity_complete,
     )
-    register_builtin_actions(registry)
+    for pack_name in toolpacks:
+        try:
+            pack = load_toolpack(pack_name)
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
+        pack.register(registry)
 
     # Determine skill name for display
     skill_name = file.stem

@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: analyze-document
-description: Analyzes a text document using an LLM and returns the analysis.
+description: Analyzes a text document using an LLM and returns the result.
 inputs:
   text:
     type: str
@@ -9,7 +9,7 @@ inputs:
 outputs:
   analysis:
     type: str
-    description: "The LLM's analysis of the provided text"
+    description: "The analysis produced by the LLM"
 ---
 
 # Analyze Document
@@ -28,7 +28,9 @@ result = await workflow.execute_activity(
         "prompt": f"Analyze the following document:\n\n{text}",
         "schema": {
             "type": "object",
-            "properties": {"analysis": {"type": "string"}},
+            "properties": {
+                "analysis": {"type": "string"},
+            },
             "required": ["analysis"],
         },
     },

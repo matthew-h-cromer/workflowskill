@@ -37,12 +37,14 @@ pytestmark = pytest.mark.eval
 _EVAL_RETRIES = int(os.environ.get("EVAL_RETRIES", "1"))
 
 
-async def _generate_with_retries(generate_skill: object, task: str) -> str:
+async def _generate_with_retries(
+    generate_skill: object, task: str, toolpack: str | None = None
+) -> str:
     """Generate once (or N times if EVAL_RETRIES > 1, returning the last result)."""
     assert callable(generate_skill)
-    last = await generate_skill(task)
+    last = await generate_skill(task, toolpack=toolpack)
     for _ in range(_EVAL_RETRIES - 1):
-        last = await generate_skill(task)
+        last = await generate_skill(task, toolpack=toolpack)
     return last
 
 
@@ -83,7 +85,7 @@ async def test_single_activity(generate_skill, parse_skill, extract_code, save_s
         "Create a workflow named 'check-status' that takes a 'url' string input, "
         "calls the api action to fetch that URL, and returns the status code and content."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -113,7 +115,7 @@ async def test_explicit_timeout(generate_skill, parse_skill, extract_code, save_
         "calls the llm action to analyze it, and returns the result. "
         "The LLM call may take up to 120 seconds."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -140,7 +142,7 @@ async def test_sequential_pipeline(generate_skill, parse_skill, extract_code, sa
         "then summarizes the content using the llm action, "
         "and returns the summary. Steps must run in order."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -172,7 +174,7 @@ async def test_parallel_execution(generate_skill, parse_skill, extract_code, sav
         "calls both URLs concurrently using the api action, and returns both results. "
         "The two calls must run in parallel."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     skill = parse_skill(content)
@@ -205,7 +207,7 @@ async def test_conditional_logic(generate_skill, parse_skill, extract_code, save
         "If the status code is 200, return {'status': 'ok'}. "
         "Otherwise return {'status': 'error', 'code': <status_code>}."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -231,7 +233,7 @@ async def test_loop_handling(generate_skill, parse_skill, extract_code, save_sna
         "Loop over each URL and call scrape on it. "
         "Return a list of all scraped results."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -257,7 +259,7 @@ async def test_retry_policy(generate_skill, parse_skill, extract_code, save_snap
         "Call the url using the api action with a RetryPolicy of maximum_attempts=3, "
         "backoff_coefficient=2.0, and initial_interval of 2 seconds. Return the result."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -293,7 +295,7 @@ async def test_error_recovery(generate_skill, parse_skill, extract_code, save_sn
         "{'success': False, 'error': str(e)}. On success, return"
         " {'success': True, 'content': <content>}."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -319,7 +321,7 @@ async def test_llm_with_schema(generate_skill, parse_skill, extract_code, save_s
         "Call the llm action with a JSON schema constraint requiring the response to have "
         "fields 'title' (string) and 'summary' (string). Return the structured result."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -347,7 +349,7 @@ async def test_deterministic_transform(generate_skill, parse_skill, extract_code
         "'headings' (the list of heading texts). "
         "This is pure data extraction — do not use the llm action."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -375,7 +377,7 @@ async def test_deterministic_pipeline(generate_skill, parse_skill, extract_code,
         "Filter the list in pure Python to only include links starting with the prefix. "
         "Return the filtered list. Do not use the llm action."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -405,7 +407,7 @@ async def test_outputs_frontmatter(generate_skill, parse_skill, extract_code, sa
         "Declare outputs in frontmatter for 'sentiment' (str) and 'confidence' (str). "
         "Return both values."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     skill = parse_skill(content)
@@ -435,7 +437,7 @@ async def test_scrape_object_selector(generate_skill, parse_skill, extract_code,
         "and the href attribute using the appropriate selector forms. "
         "Return the results. Do not use the llm action."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -465,7 +467,7 @@ async def test_error_recovery_with_retry(generate_skill, parse_skill, extract_co
         "Wrap the call in try/except — on final failure after retries, return an error dict "
         "with 'success' as False and 'error' with the exception message."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -498,7 +500,7 @@ async def test_scrape_before_llm(generate_skill, parse_skill, extract_code, save
         " in 2-3 sentences. "
         "Return the summary."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
@@ -537,7 +539,7 @@ async def test_filter_before_llm(generate_skill, parse_skill, extract_code, save
         "Then use the llm action to summarize the themes of the 2025 posts. "
         "Return the summary."
     )
-    content = await _generate_with_retries(generate_skill, TASK)
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
     save_snapshot(content)
 
     parse_skill(content)
