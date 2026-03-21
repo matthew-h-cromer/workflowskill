@@ -14,5 +14,5 @@ def pytest_addoption(parser: Any) -> None:
         "--eval-snapshot",
         action="store_true",
         default=False,
-        help="Save generated SKILL.md outputs to tests/evals/snapshots/",
+        help="Save generated SKILL.md outputs to evals/snapshots/",
     )

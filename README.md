@@ -211,13 +211,13 @@ WorkflowSkill workflows are Python code. The execution path is explicit and audi
 
 ```sh
 uv sync --extra dev   # Install all dependencies including dev tools
-uv run pytest                     # Run tests
-uv run mypy src/                  # Type checking
-uv run ruff check src/            # Linting
-uv run ruff format src/           # Formatting
+uv run pytest cli/tests           # Run CLI tests
+uv run mypy cli/workflowskill/   # Type checking
+uv run ruff check cli/workflowskill/  # Linting
+uv run ruff format cli/workflowskill/ # Formatting
 
 # Run without installing:
-uv run python -m workflowskill.cli.main run examples/hello-world.md
+uv run python -m workflowskill.main run examples/hello-world.md
 ```
 
 ---
@@ -231,7 +231,7 @@ uv run python -m workflowskill.cli.main run examples/hello-world.md
 
 ## Further reading
 
-- [SPEC.md](SPEC.md) — SKILL.md format specification
+- [docs/SPEC.md](docs/SPEC.md) — SKILL.md format specification
 - [skill/SKILL.md](skill/SKILL.md) — Workflow authoring guide (what Claude uses to generate workflows)
-- [PROPOSAL.md](PROPOSAL.md) — Design rationale and architecture
+- [docs/PROPOSAL.md](docs/PROPOSAL.md) — Design rationale and architecture
 - [examples/](examples/) — Runnable example workflows
