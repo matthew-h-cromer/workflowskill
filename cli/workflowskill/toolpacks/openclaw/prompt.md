@@ -33,20 +33,46 @@ log = result["output"]
 
 Control a headless Chromium browser. All browser actions share a single persistent context.
 
-**Key actions:**
+Set `BROWSER_USER_DATA_DIR` to load an existing Chrome profile (e.g., for sites that require login). Set `BROWSER_HEADLESS=false` to show the browser window during development.
+
+### Actions
 
 | `action` value | Required params | Returns |
 |----------------|-----------------|---------|
 | `"navigate"` | `url` (str) | `url`, `status` |
-| `"snapshot"` | — | `snapshot` (text content of page), `url` |
-| `"screenshot"` | — | `path` (local file path) |
-| `"click"` | `ref` (str, CSS selector) | `clicked` |
-| `"type"` | `ref` (str), `text` (str), `submit` (bool) | `typed` |
+| `"snapshot"` | `interactive` (bool, opt) | `snapshot` (accessibility tree with `[ref=eN]`), `url` |
+| `"screenshot"` | `fullPage` (bool, opt) | `path` (local file path) |
+| `"click"` | `ref` (str, ref or CSS selector) | `clicked` |
+| `"type"` | `ref` (str), `text` (str), `submit` (bool, opt) | `typed` |
+| `"fill"` | `fields` (list of `{ref, value, type?}`) | `results`, `filled` |
+| `"select"` | `ref` (str), `values` (list[str]) | `selected`, `values` |
+| `"upload"` | `ref` (str), `path` (str) | `uploaded`, `path` |
 | `"wait"` | `text` or `url` or `timeout_ms` | `waited` |
-| `"tabs"` | — | `tabs` (list) |
+| `"tabs"` | — | `tabs` (list of `{tab_id, url, title}`) |
 | `"open"` | `url` (str) | `tab_id`, `url` |
 | `"close"` | `tab_id` (int) | `closed` |
 | `"status"` | — | `status`, `tabs` |
+| `"evaluate"` | `fn` (str, JS expression) | `result` |
+
+### Snapshot format and refs
+
+`snapshot` returns an accessibility tree with element references. Use `interactive: True` for a compact flat list of just the interactive elements (best for form filling):
+
+```
+[Interactive Elements]
+  [ref=e1] textbox "First Name" (required)
+  [ref=e2] textbox "Last Name" (required)
+  [ref=e3] textbox "Email" type=email (required)
+  [ref=e4] combobox "Country" options: [United States, Canada, United Kingdom, ...]
+  [ref=e5] checkbox "I agree to terms"
+  [ref=e6] button "Next"
+```
+
+**Refs are not stable across navigations** — always re-snapshot after navigating to a new page.
+
+Use refs directly in `click`, `type`, `fill`, `select`, and `upload` actions. CSS selectors also work as a fallback.
+
+### Examples
 
 ```python
 # Navigate and extract page content
@@ -57,27 +83,42 @@ await workflow.execute_activity(
 )
 snap = await workflow.execute_activity(
     "browser",
-    {"action": "snapshot"},
+    {"action": "snapshot", "interactive": True},
     start_to_close_timeout=timedelta(seconds=15),
 )
 content = snap["snapshot"]
 ```
 
 ```python
-# Fill and submit a form
-await workflow.execute_activity(
+# Batch-fill a form using refs from snapshot
+fill_result = await workflow.execute_activity(
     "browser",
-    {"action": "navigate", "url": "https://example.com/search"},
+    {
+        "action": "fill",
+        "fields": [
+            {"ref": "e1", "value": "Jane"},
+            {"ref": "e2", "value": "Doe"},
+            {"ref": "e3", "value": "jane@example.com", "type": "email"},
+        ],
+    },
     start_to_close_timeout=timedelta(seconds=30),
 )
+```
+
+```python
+# Select a dropdown option by label
 await workflow.execute_activity(
     "browser",
-    {"action": "type", "ref": "input[name=q]", "text": query, "submit": True},
-    start_to_close_timeout=timedelta(seconds=15),
+    {"action": "select", "ref": "e4", "values": ["United States"]},
+    start_to_close_timeout=timedelta(seconds=10),
 )
-result = await workflow.execute_activity(
+```
+
+```python
+# Upload a file
+await workflow.execute_activity(
     "browser",
-    {"action": "snapshot"},
+    {"action": "upload", "ref": "e7", "path": "/path/to/resume.pdf"},
     start_to_close_timeout=timedelta(seconds=15),
 )
 ```
