@@ -1,4 +1,5 @@
 ---
+type: workflow
 name: hello-world
 description: Returns "Hello, world!". No API keys or external services required.
 outputs:
@@ -8,7 +9,11 @@ outputs:
 
 # Hello World
 
-The simplest possible workflow — no activities, no external calls.
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 ```python
 return {"message": "Hello, world!"}

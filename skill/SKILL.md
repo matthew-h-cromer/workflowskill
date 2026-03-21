@@ -57,6 +57,7 @@ The loader generates all of that automatically.
 
 ```
 ---
+type: workflow
 name: my-workflow
 description: What this workflow does
 inputs:
@@ -71,7 +72,11 @@ outputs:
 
 # My Workflow
 
-Brief description of what this workflow does.
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 \```python
 result = await workflow.execute_activity(
@@ -84,12 +89,20 @@ return {"result": result["output"]}
 
 ### Frontmatter Rules
 
+- `type`: always `workflow` (required) — machine-readable discriminator for progressive discovery
 - `name`: kebab-case identifier (required)
 - `description`: one sentence (required)
 - `inputs`: each entry has `type` (str/int/float/bool/list/dict) and optional `default`
 - Input names declared in frontmatter become parameters in the generated method signature
 - `outputs`: optional; each entry has `type` and optional `description`. When declared, the runner validates that all output keys are present in the returned dict.
 - Always quote `description` values with double quotes in YAML to avoid parsing issues with special characters (e.g., `description: "Returns ok if successful, error otherwise"`)
+
+### Usage and Workflow Section Rules
+
+Every workflow must include two sections after the document heading:
+
+- **`## Usage`** — always contains exactly: "Run this workflow using the run_workflow tool"
+- **`## Workflow`** — contains the fenced `python` code block (and optionally a brief description above the code)
 
 ### Code Block Rules
 
@@ -476,11 +489,14 @@ it must be a registered action.
 5. **Never import** — `workflow`, `RetryPolicy`, `timedelta`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available.
 6. **Use `workflow.now()` for the current time** — returns a timezone-aware `datetime`. `datetime.now()` is not available.
 7. **Model names** — use `claude-haiku-4-5-20251001` for fast/cheap, `claude-sonnet-4-6` for quality.
+8. **Always include `type: workflow`** in frontmatter as the first field.
+9. **Always include `## Usage` and `## Workflow` sections** — Usage contains "Run this workflow using the run_workflow tool"; Workflow contains the code block.
 
 ## Example: Monitor a Product Price
 
 ```
 ---
+type: workflow
 name: price-monitor
 description: Scrapes a product page and returns the current price.
 inputs:
@@ -491,7 +507,11 @@ inputs:
 
 # Price Monitor
 
-Fetches a product page and extracts the current price via CSS selector.
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 \```python
 page = await workflow.execute_activity(

@@ -11,6 +11,7 @@
 - [Why Temporal](#why-temporal)
 - [Why Python](#why-python)
 - [Authoring Model](#authoring-model)
+- [Progressive Discovery](#progressive-discovery)
 - [Architecture](#architecture)
 - [Security Considerations](#security-considerations)
 - [Vision: Closing the Author/Consumer Gap](#vision-closing-the-authorconsumer-gap)
@@ -119,6 +120,22 @@ This format has several advantages:
 2. **Auditable.** Every action call, every data flow, every conditional is visible as Python code.
 3. **Agent-friendly.** Agents author Python naturally. The SKILL.md format adds minimal overhead — just frontmatter for metadata and a fenced code block.
 4. **Version-controlled.** The workflow is a text file. It diffs cleanly, commits naturally, and can be reviewed like any other code.
+
+## Progressive Discovery
+
+WorkflowSkill workflows are designed to live alongside regular skills in any agent environment — discovered, selected, and invoked through the same progressive discovery mechanisms agents use for all their tools.
+
+The key design goal: **a SKILL.md file should be self-describing enough that any agent encountering it for the first time knows exactly what to do with it** — without prior knowledge of WorkflowSkill, without a human explaining how to run it, and without improvising from its contents.
+
+Every SKILL.md achieves this through two complementary signals:
+
+**`type: workflow` in frontmatter** — a machine-readable discriminator. An agent (or any tool) can scan the first few lines of a SKILL.md and immediately know: this is an executable workflow, not a skill with instructions to follow manually. No full-document parsing required.
+
+**`## Usage` section in the markdown body** — a single line that explicitly tells a discovering agent what to do: "Run this workflow using the run_workflow tool." Followed by a `## Workflow` section containing the code.
+
+The practical consequence: workflow collections can be dropped into any agent's skill directory. The agent discovers them the same way it discovers text-based skills — by reading the directory, scanning file metadata, and inspecting descriptions. When it picks a SKILL.md to use, it knows to execute it deterministically via a tool call rather than interpret it as a prompt.
+
+This is intentional. The moment an agent executes a workflow as a workflow rather than following instructions, it gains all of Temporal's guarantees: deterministic execution, retry on failure, step-level auditability, and zero wasted inference on the orchestration path.
 
 ## Architecture
 

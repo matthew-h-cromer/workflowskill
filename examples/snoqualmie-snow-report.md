@@ -1,4 +1,5 @@
 ---
+type: workflow
 name: snoqualmie-snow-report
 description: "Fetches live weather and snowpack data for Snoqualmie Pass and generates a concise 1-3 sentence snow report for snowboarders."
 outputs:
@@ -8,6 +9,12 @@ outputs:
 ---
 
 # Snoqualmie Snow Report
+
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 Fetches current conditions from NOAA/NWS (temperature, visibility, forecast) and the NWAC
 mountain weather forecast (snowpack, precipitation, wind), then uses Claude to synthesize a

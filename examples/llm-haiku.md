@@ -1,4 +1,5 @@
 ---
+type: workflow
 name: llm-haiku
 description: Generates a haiku on any subject using Claude Haiku. Requires ANTHROPIC_API_KEY.
 inputs:
@@ -12,7 +13,11 @@ outputs:
 
 # LLM Haiku
 
-Generates a traditional 5-7-5 haiku on a given subject using the Claude Haiku model.
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 ```python
 result = await workflow.execute_activity(

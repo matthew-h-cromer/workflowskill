@@ -11,6 +11,7 @@ Read `skill/SKILL.md` for the full authoring guide — it is the single source o
 
 After generating the workflow, **write it to a file** in the `examples/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: github-activity` → `examples/github-activity.md`). Confirm the file path to the user after writing it.
 
+
 ## Available actions (CLI built-ins)
 
 When authoring workflows to run via `workflowskill run`, these actions are pre-registered and can be called via `workflow.execute_activity("name", args_dict, start_to_close_timeout=...)`.

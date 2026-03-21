@@ -132,6 +132,8 @@ Everything consumed by library users is exported from `src/workflowskill/__init_
 
 Workflows are Python code blocks in markdown files with YAML frontmatter. See SPEC.md § SKILL.md Format for the full specification.
 
+WorkflowSkills are designed to live alongside regular skills in agent environments and be picked up by progressive discovery. Every SKILL.md includes `type: workflow` in frontmatter (machine-readable discriminator) and a `## Usage` section in the markdown body that says "Run this workflow using the run_workflow tool". Together these ensure a discovering agent knows to execute the workflow via a tool rather than follow it as instructions.
+
 ## Skill Authoring Guide
 
 There are two skill files with distinct roles:

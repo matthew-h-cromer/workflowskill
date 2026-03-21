@@ -24,13 +24,18 @@ A minimal hello-world workflow in SKILL.md format:
 
 ```
 ---
+type: workflow
 name: hello-world
 description: Returns a greeting. No external services required.
 ---
 
 # Hello World
 
-The simplest possible workflow.
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 \```python
 return {"message": "Hello, world!"}
@@ -41,6 +46,7 @@ A workflow that calls an action:
 
 ```
 ---
+type: workflow
 name: check-status
 description: Calls a URL and returns the HTTP status code.
 inputs:
@@ -50,6 +56,12 @@ inputs:
 ---
 
 # Check Status
+
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 \```python
 result = await workflow.execute_activity(
@@ -72,6 +84,7 @@ The frontmatter block appears at the top of the file between `---` delimiters.
 
 ```yaml
 ---
+type: workflow             # Required. Always "workflow". Identifies this as an executable workflow.
 name: my-workflow          # Required. Identifier for the workflow.
 description: What it does  # Required. Human-readable description.
 inputs:                    # Optional. Workflow inputs with types and defaults.
@@ -88,6 +101,8 @@ outputs:                   # Optional. Declared workflow outputs.
 ---
 ```
 
+**`type: workflow`** is required and must always be the literal string `"workflow"`. It serves as a machine-readable discriminator so agents and tooling can identify SKILL.md files as executable workflows — not instructions to follow manually — without parsing the full document.
+
 **Supported input types:** `str`, `int`, `float`, `bool`, `list`, `dict`
 
 All inputs are optional — they may be overridden at runtime via CLI flags or programmatic invocation. If not provided, the `default` value is used.
@@ -95,6 +110,35 @@ All inputs are optional — they may be overridden at runtime via CLI flags or p
 **`outputs`** is optional. When declared, the runner validates that every declared key is present in the returned dict. Each entry has:
 - `type` — the expected type (informational only; not enforced at runtime)
 - `description` — human-readable description (optional)
+
+### Usage and Workflow Sections
+
+Every SKILL.md file includes two standard sections in the markdown body, after the document heading:
+
+**`## Usage`** — tells any discovering agent that this is an executable workflow and must be run via a tool, not followed as instructions:
+
+```markdown
+## Usage
+
+Run this workflow using the run_workflow tool
+```
+
+This is always exactly one line. It is documentation only — the loader ignores it.
+
+**`## Workflow`** — contains the fenced `python` code block, optionally preceded by a brief description:
+
+```markdown
+## Workflow
+
+\```python
+return {"message": "Hello, world!"}
+\```
+```
+
+**Rules:**
+- `## Usage` always contains exactly: "Run this workflow using the run_workflow tool"
+- `## Workflow` contains the code block (the loader finds the first `python` code block anywhere in the file)
+- These sections appear in order: heading → Usage → Workflow
 
 ### Python Code Block
 
@@ -336,6 +380,7 @@ class LoadedSkill:
     workflow_class: type
     inputs: dict[str, InputSpec]   # name → {type, default}
     outputs: dict[str, OutputSpec]  # name → {type, description}
+    type: str                       # always "workflow"
 ```
 
 **Error conditions:**

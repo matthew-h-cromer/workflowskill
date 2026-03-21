@@ -1,4 +1,5 @@
 ---
+type: workflow
 name: summarize-hacker-news
 description: Scrapes the Hacker News homepage and returns a concise summary of the top stories. Requires ANTHROPIC_API_KEY.
 outputs:
@@ -7,6 +8,12 @@ outputs:
 ---
 
 # Summarize Hacker News
+
+## Usage
+
+Run this workflow using the run_workflow tool
+
+## Workflow
 
 Scrapes story titles from https://news.ycombinator.com using CSS selectors and uses
 Claude Haiku to produce a concise, readable summary of the top stories.

@@ -43,6 +43,7 @@ class LoadedSkill:
     workflow_class: type
     inputs: dict[str, InputSpec] = field(default_factory=dict)
     outputs: dict[str, OutputSpec] = field(default_factory=dict)
+    type: str = "workflow"
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -106,6 +107,7 @@ def load_skill(path: str | Path) -> LoadedSkill:
 
     name: str = frontmatter.get("name", skill_path.stem)
     description: str = frontmatter.get("description", "")
+    skill_type: str = frontmatter.get("type", "workflow")
 
     # Parse input specs from frontmatter
     _ALLOWED_INPUT_TYPES = {"str", "int", "float", "bool", "list", "dict"}
@@ -176,6 +178,7 @@ def load_skill(path: str | Path) -> LoadedSkill:
         workflow_class=workflow_class,
         inputs=inputs,
         outputs=outputs,
+        type=skill_type,
     )
 
 
