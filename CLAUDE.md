@@ -81,16 +81,51 @@ Requires `ANTHROPIC_API_KEY` in the environment. Tests are skipped automatically
 
 Each eval gives Claude a natural-language task and checks whether the generated SKILL.md has the correct structure via AST analysis. Tests target specific language features: pure logic, single/sequential/parallel activities, conditionals, loops, retry policies, error recovery, explicit timeouts, and LLM schema usage.
 
-### When to run evals
+## Improving the Skill
 
-Run evals **before and after** modifying `skill/SKILL.md`. Compare results to confirm your changes improved (or at least didn't regress) generation quality. Use `--eval-snapshot` to save outputs and diff them across changes.
+When making changes to `skill/SKILL.md`, follow this eval-driven workflow:
 
-### Adding new evals
+### Step 1: Baseline
 
-When adding a new language feature or workflow pattern:
-1. Add an AST check function to `evals/ast_checks.py` if needed
-2. Add a test case to `evals/test_authoring.py` with a task description and structural assertions
-3. Run the eval to establish a baseline before updating the authoring guide
+Run evals and note which tests pass:
+
+```sh
+uv run pytest -m eval -v
+```
+
+This tells you the current state so you can distinguish regressions you introduced from pre-existing failures.
+
+### Step 2: Make the change
+
+Edit `skill/SKILL.md`. This is the authoring guide that teaches the model how to generate workflows — changes here affect generation quality.
+
+### Step 3: Run evals
+
+```sh
+uv run pytest -m eval -v
+```
+
+When an eval fails, the assertion message includes the full generated code. Read it to understand what the model got wrong, then go back to Step 2 and adjust SKILL.md accordingly. Repeat until no new regressions — all tests that passed at baseline still pass.
+
+### Adding a new eval
+
+If your change introduces a new pattern that existing evals don't cover:
+
+1. Add an AST check to `evals/ast_checks.py` if needed (follow existing patterns)
+2. Add a test to `evals/test_authoring.py` with a natural-language task and structural assertions
+3. Run it **before** editing SKILL.md to see if the model already handles it
+4. If it fails, edit SKILL.md and iterate per Steps 2–3
+
+### Eval design principles
+
+Each eval tests whether SKILL.md successfully teaches one structural pattern. Follow these principles:
+
+- **One pattern per test.** Isolate the feature you're testing. A test for retry policies shouldn't also require parallel execution.
+- **Task reads like a user request.** The TASK string is what a real user would say. Describe the goal, not the implementation — say "run in parallel" not "use asyncio.gather".
+- **Assert structure via AST, not string matching.** The model may generate valid code that looks different from what you expect. Use `evals/ast_checks.py` helpers to check structural properties.
+- **Assert absence too.** The strongest evals check both what SHOULD be there and what should NOT. For example, a deterministic extraction test asserts `scrape` is present AND `llm` is absent. This catches the model over-reaching.
+- **Include generated code in assertion messages.** Every assertion should embed the generated code in its failure message so the developer can immediately see what the model produced without re-running.
+- **Keep assertions minimal.** Only assert what's structurally necessary for the pattern. Don't assert variable names, string formatting, or style choices.
 
 ## Key Conventions
 
