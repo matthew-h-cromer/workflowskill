@@ -231,7 +231,5 @@ uv run python -m workflowskill.main run examples/hello-world.md
 
 ## Further reading
 
-- [docs/SPEC.md](docs/SPEC.md) — SKILL.md format specification
 - [skill/SKILL.md](skill/SKILL.md) — Workflow authoring guide (what Claude uses to generate workflows)
-- [docs/PROPOSAL.md](docs/PROPOSAL.md) — Design rationale and architecture
 - [examples/](examples/) — Runnable example workflows

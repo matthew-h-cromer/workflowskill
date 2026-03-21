@@ -65,7 +65,6 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `runner` | run_skill orchestration, Temporal lifecycle |
 | `cli` | Click CLI commands (run, worker) |
 | `builtin` | Built-in CLI actions (api, scrape, llm, etc.) |
-| `spec` | SPEC.md specification |
 | `examples` | Example workflow files |
 
 ## Examples

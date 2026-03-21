@@ -10,16 +10,9 @@ A standard for authoring durable Python workflows from natural language descript
 1. **Improve the skill** — An eval-driven test framework (in `evals/`) measures how well `skill/SKILL.md` teaches an LLM to generate valid workflows. Run evals before and after editing the skill.
 2. **Execute workflows locally** — Developers can run workflows on their machine during development.
 
-## Spec
-
-`docs/SPEC.md` is the authoritative language spec. Read the relevant section before modifying any module.
-
 ## Repo Structure
 
 ```
-docs/
-  SPEC.md                          # Language spec (authoritative)
-  PROPOSAL.md                      # Design rationale and problem statement
 skill/
   SKILL.md                         # Workflow-author skill (the main artifact)
 evals/                             # Eval framework for improving skill/SKILL.md
@@ -113,7 +106,7 @@ When adding a new language feature or workflow pattern:
 
 ## SKILL.md Format
 
-Workflows are Python code blocks in markdown files with YAML frontmatter. See `docs/SPEC.md` § SKILL.md Format for the full specification.
+Workflows are Python code blocks in markdown files with YAML frontmatter. See `skill/SKILL.md` for the full format specification.
 
 WorkflowSkills are designed to live alongside regular skills in agent environments and be picked up by progressive discovery. Every SKILL.md includes `type: workflow` in frontmatter (machine-readable discriminator) and a `## Usage` section in the markdown body that says "Run this workflow using the run_workflow tool". Together these ensure a discovering agent knows to execute the workflow via a tool rather than follow it as instructions.
 
