@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -46,3 +47,35 @@ def on_activity_start(name: str) -> None:
 def on_activity_complete(name: str, elapsed_ms: int) -> None:
     """Print a status line when an activity finishes executing."""
     console.print(f"  [green]✓[/green] {name} [dim]({elapsed_ms}ms)[/dim]")
+
+
+def print_workflow_id(workflow_id: str) -> None:
+    """Print the workflow ID so the user can reference it for signal commands."""
+    console.print(f"[dim]Workflow ID:[/dim] [dim cyan]{workflow_id}[/dim cyan]")
+
+
+async def prompt_for_signal(signal_name: str, prompt: str | None) -> Any:
+    """Prompt the user for signal input and return the parsed data.
+
+    If prompt is provided, displays it and reads a text response.
+    If prompt is None, displays a generic 'press Enter to continue' message.
+    Returns parsed JSON if the input is valid JSON, the raw string otherwise,
+    or None for empty input.
+    """
+    if prompt:
+        display_prompt = f"  [cyan]⏳[/cyan] {prompt} "
+    else:
+        display_prompt = (
+            f"  [cyan]⏳[/cyan] Waiting for signal [bold]{signal_name!r}[/bold]"
+            " — press Enter to continue: "
+        )
+
+    loop = asyncio.get_running_loop()
+    raw = await loop.run_in_executor(None, lambda: console.input(display_prompt))
+
+    if not raw.strip():
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw

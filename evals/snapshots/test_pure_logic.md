@@ -21,6 +21,5 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Build and return the greeting
 return {"greeting": f"Hello, {name}!"}
 ```

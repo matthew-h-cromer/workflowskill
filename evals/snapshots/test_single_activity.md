@@ -9,10 +9,10 @@ inputs:
 outputs:
   status:
     type: int
-    description: "HTTP status code returned by the URL"
+    description: "HTTP status code of the response"
   content:
     type: str
-    description: "Response body content from the URL"
+    description: "Response body content"
 ---
 
 # Check Status

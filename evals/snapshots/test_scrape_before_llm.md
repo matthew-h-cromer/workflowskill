@@ -45,7 +45,7 @@ listings = "\n".join(
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Summarize the hiring landscape based on these job listings in 2-3 sentences:\n\n{listings}",
+        "prompt": f"Based on the following job listings, summarize the hiring landscape in 2-3 sentences:\n\n{listings}",
         "schema": {
             "type": "object",
             "properties": {

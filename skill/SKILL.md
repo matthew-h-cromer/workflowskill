@@ -42,6 +42,7 @@ Map the task to workflow building blocks:
 - **Decision points** → `if`/`else` branches
 - **Early exits** → `return` with an appropriate status dict
 - **Error handling** → `RetryPolicy` for transient failures; `try`/`except` where needed
+- **Human input** → `await workflow.wait_for_signal("name")` to pause for a human response
 
 Wire the steps together using result dicts. Keep the workflow as deterministic as
 possible — use LLM actions only when genuine inference is required.
@@ -113,6 +114,7 @@ Every workflow must include two sections after the document heading:
 - Write **only the method body** — no imports, no class, no decorators
 - All inputs declared in frontmatter are available as local variables
 - `workflow`, `RetryPolicy`, `timedelta`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available
+- **`workflow.wait_for_signal(name, *, prompt=None, timeout=None)`** — pauses the workflow until a signal named `name` is received. `prompt` is an optional string shown to the user explaining what input is needed. `timeout` is in seconds; raises `asyncio.TimeoutError` if the deadline passes. Returns the signal data (any JSON-serializable value), or `None` if the signal was sent with no data.
 - **To get the current time, use `workflow.now()`** — it returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available and are non-deterministic in Temporal workflows.
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
@@ -271,6 +273,62 @@ result = await workflow.execute_activity(
 )
 return {"body": result["body"]}
 ```
+
+### Human-in-the-loop (wait for signal)
+
+Use `workflow.wait_for_signal(name)` to pause the workflow until a human provides
+input or approval. The workflow suspends durably — it survives restarts and can
+wait indefinitely.
+
+**Pause and continue (no data needed):**
+
+```python
+# Open browser to the login page
+page = await workflow.execute_activity("browser", {"action": "navigate", "url": login_url})
+
+# Wait for the user to complete login
+await workflow.wait_for_signal("logged_in")
+
+# Continue automation after login
+result = await workflow.execute_activity("browser", {"action": "click", "selector": "#submit"})
+return {"status": "done"}
+```
+
+**Prompt the user for data (e.g. a form value):**
+
+```python
+# Ask the user to provide a value
+salary = await workflow.wait_for_signal("salary", prompt="Enter desired salary:")
+
+# Use the value in the next step
+await workflow.execute_activity("browser", {"action": "fill", "selector": "#salary", "value": salary})
+return {"status": "submitted"}
+```
+
+Multiple sequential signals work naturally — each `wait_for_signal` call suspends
+independently:
+
+```python
+salary = await workflow.wait_for_signal("salary", prompt="Enter desired salary:")
+cover_note = await workflow.wait_for_signal("cover_note", prompt="Any notes for the cover letter?")
+```
+
+**Signal with timeout (fail if no response within N seconds):**
+
+```python
+try:
+    approval = await workflow.wait_for_signal("approval", timeout=3600)
+except asyncio.TimeoutError:
+    return {"status": "timed_out", "message": "No approval within 1 hour"}
+
+if approval and approval.get("approved"):
+    return {"status": "approved"}
+return {"status": "rejected", "reason": approval.get("reason") if approval else None}
+```
+
+- `wait_for_signal` returns the data sent with the signal, or `None` if sent with no data
+- Use `prompt` to tell the user what input is needed (displayed by the CLI runner)
+- Signals sent before the workflow reaches `wait_for_signal` are buffered and delivered immediately
 
 ## Restrictions
 

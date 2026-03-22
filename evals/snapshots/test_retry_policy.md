@@ -8,7 +8,7 @@ inputs:
 outputs:
   content:
     type: str
-    description: "The raw response body from the URL"
+    description: "The response body returned by the URL"
   content_type:
     type: str
     description: "The Content-Type header of the response"

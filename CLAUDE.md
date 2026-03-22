@@ -97,13 +97,15 @@ This tells you the current state so you can distinguish regressions you introduc
 
 Edit `skill/SKILL.md`. This is the authoring guide that teaches the model how to generate workflows — changes here affect generation quality.
 
-### Step 3: Run evals
+### Step 3: Run evals and save snapshots
 
 ```sh
-uv run pytest -m eval -v
+uv run pytest -m eval --eval-snapshot -v
 ```
 
 When an eval fails, the assertion message includes the full generated code. Read it to understand what the model got wrong, then go back to Step 2 and adjust SKILL.md accordingly. Repeat until no new regressions — all tests that passed at baseline still pass.
+
+**Always run with `--eval-snapshot`.** Snapshots in `evals/snapshots/` are the record of what the model actually generated. They must be kept current with every SKILL.md change so regressions are visible as diffs, not just test failures.
 
 ### Adding a new eval
 
@@ -113,6 +115,7 @@ If your change introduces a new pattern that existing evals don't cover:
 2. Add a test to `evals/test_authoring.py` with a natural-language task and structural assertions
 3. Run it **before** editing SKILL.md to see if the model already handles it
 4. If it fails, edit SKILL.md and iterate per Steps 2–3
+5. **Save snapshots** once the test passes: `uv run pytest -m eval -k <test_name> --eval-snapshot -v`
 
 ### Eval design principles
 

@@ -26,6 +26,8 @@ from evals.ast_checks import (
     has_schema_arg,
     has_scrape_feeding_llm,
     has_try_except,
+    has_wait_for_signal,
+    has_wait_for_signal_with_timeout,
 )
 
 pytestmark = pytest.mark.eval
@@ -559,4 +561,66 @@ async def test_filter_before_llm(generate_skill, parse_skill, extract_code, save
     )
     assert has_scrape_feeding_llm(code), (
         f"Expected scrape call before llm call in statement order\n\nCode:\n{code}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 18: Human-in-the-loop — basic signal wait
+# ---------------------------------------------------------------------------
+
+
+async def test_human_in_the_loop(generate_skill, parse_skill, extract_code, save_snapshot):
+    """A workflow requiring human approval should use wait_for_signal."""
+    TASK = (
+        "Create a workflow named 'approval-gate' that takes a 'request' string input. "
+        "Use the api action to submit the request to https://example.com/api/submit. "
+        "Then pause and wait for a human signal named 'approval'. "
+        "If the signal data has 'approved' equal to true, return {'status': 'approved'}. "
+        "Otherwise return {'status': 'rejected'}."
+    )
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
+    save_snapshot(content)
+
+    parse_skill(content)
+    code = extract_code(content)
+
+    assert has_activity_named(code, "api"), (
+        f"Expected api activity\n\nCode:\n{code}"
+    )
+    assert has_wait_for_signal(code), (
+        f"Expected workflow.wait_for_signal() call\n\nCode:\n{code}"
+    )
+    assert has_if_branch(code), (
+        f"Expected if branch for approval check\n\nCode:\n{code}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 19: Signal with timeout
+# ---------------------------------------------------------------------------
+
+
+async def test_signal_with_timeout(generate_skill, parse_skill, extract_code, save_snapshot):
+    """A workflow with a signal deadline should use wait_for_signal with timeout and try/except."""
+    TASK = (
+        "Create a workflow named 'timed-approval' that takes a 'request' string input. "
+        "Wait for a human signal named 'approval' with a 1-hour timeout. "
+        "If the approval times out, return {'status': 'timed_out'}. "
+        "If the signal is received and approved, return {'status': 'approved'}. "
+        "Otherwise return {'status': 'rejected'}."
+    )
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
+    save_snapshot(content)
+
+    parse_skill(content)
+    code = extract_code(content)
+
+    assert has_wait_for_signal(code), (
+        f"Expected workflow.wait_for_signal() call\n\nCode:\n{code}"
+    )
+    assert has_wait_for_signal_with_timeout(code), (
+        f"Expected timeout parameter on wait_for_signal\n\nCode:\n{code}"
+    )
+    assert has_try_except(code), (
+        f"Expected try/except for TimeoutError handling\n\nCode:\n{code}"
     )

@@ -65,13 +65,36 @@ import urllib.parse
 
 
 class _WorkflowProxy:
-    @staticmethod
-    async def execute_activity(*args, start_to_close_timeout=None, **kwargs):
+    def __init__(self):
+        self._signals = {}  # signal_name -> [payloads]
+
+    async def execute_activity(self, *args, start_to_close_timeout=None, **kwargs):
         if start_to_close_timeout is None:
             start_to_close_timeout = timedelta(seconds=30)
         return await _tw.execute_activity(
             *args, start_to_close_timeout=start_to_close_timeout, **kwargs
         )
+
+    async def wait_for_signal(self, name, *, prompt=None, timeout=None):
+        # Notify the runner that we're about to wait so it can prompt the user
+        await _tw.execute_activity(
+            "__signal_notify",
+            {"signal": name, "prompt": prompt},
+            start_to_close_timeout=timedelta(seconds=5),
+        )
+        # Register the Temporal signal handler and wait
+        if name not in self._signals:
+            self._signals[name] = []
+
+            def _handler(data=None):
+                self._signals[name].append(data)
+
+            _tw.set_signal_handler(name, _handler)
+        await _tw.wait_condition(
+            lambda: len(self._signals.get(name, [])) > 0,
+            timeout=timedelta(seconds=timeout) if timeout else None,
+        )
+        return self._signals[name].pop(0)
 
     def __getattr__(self, name):
         return getattr(_tw, name)

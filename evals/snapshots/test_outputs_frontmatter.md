@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: classify-text
-description: Classifies the sentiment of input text as positive, negative, or neutral
+description: Classifies the sentiment of input text as positive, negative, or neutral.
 inputs:
   text:
     type: str
@@ -9,10 +9,10 @@ inputs:
 outputs:
   sentiment:
     type: str
-    description: "The sentiment classification: positive, negative, or neutral"
+    description: "Sentiment classification: positive, negative, or neutral"
   confidence:
     type: str
-    description: "The model's confidence in the classification: high, medium, or low"
+    description: "Confidence level of the classification: high, medium, or low"
 ---
 
 # Classify Text
@@ -24,12 +24,12 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Classify sentiment using LLM inference
+# Classify sentiment using LLM
 result = await workflow.execute_activity(
     "llm",
     {
         "prompt": f"Classify the sentiment of the following text:\n\n{text}",
-        "system": "You are a sentiment analysis assistant. Classify the sentiment of the given text as exactly one of: positive, negative, or neutral. Also rate your confidence as high, medium, or low.",
+        "system": "You are a sentiment analysis expert. Classify text sentiment as exactly one of: positive, negative, or neutral. Also rate your confidence as high, medium, or low.",
         "schema": {
             "type": "object",
             "properties": {
@@ -41,7 +41,7 @@ result = await workflow.execute_activity(
                 "confidence": {
                     "type": "string",
                     "enum": ["high", "medium", "low"],
-                    "description": "Confidence level in the classification",
+                    "description": "Confidence level of the classification",
                 },
             },
             "required": ["sentiment", "confidence"],
@@ -50,8 +50,5 @@ result = await workflow.execute_activity(
     start_to_close_timeout=timedelta(seconds=60),
 )
 
-return {
-    "sentiment": result["sentiment"],
-    "confidence": result["confidence"],
-}
+return {"sentiment": result["sentiment"], "confidence": result["confidence"]}
 ```

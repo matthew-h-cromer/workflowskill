@@ -11,7 +11,7 @@ inputs:
 outputs:
   links:
     type: list
-    description: "Filtered list of hrefs starting with the given prefix"
+    description: "Filtered list of href values starting with the given prefix"
 ---
 
 # Filter Links
@@ -34,7 +34,7 @@ page = await workflow.execute_activity(
     },
 )
 
-# Filter to only hrefs starting with the prefix
+# Filter to only links starting with the prefix
 all_hrefs = page["results"].get("hrefs", [])
 filtered = [href for href in all_hrefs if href.startswith(prefix)]
 

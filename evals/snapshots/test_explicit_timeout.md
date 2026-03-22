@@ -9,7 +9,7 @@ inputs:
 outputs:
   analysis:
     type: str
-    description: "The analysis produced by the LLM"
+    description: "The LLM's analysis of the provided document text"
 ---
 
 # Analyze Document
@@ -21,7 +21,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Analyze the provided text with the LLM
+# Analyze the document text with the LLM
 result = await workflow.execute_activity(
     "llm",
     {

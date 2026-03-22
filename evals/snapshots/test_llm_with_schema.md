@@ -9,10 +9,10 @@ inputs:
 outputs:
   title:
     type: str
-    description: "The extracted title"
+    description: "A short title derived from the text"
   summary:
     type: str
-    description: "The extracted summary"
+    description: "A concise summary of the text"
 ---
 
 # Extract Info

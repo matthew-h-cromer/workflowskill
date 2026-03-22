@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: resilient-fetch
-description: Fetch a URL via the api action with retry and graceful error handling.
+description: Fetch a URL via the api action with retry logic and structured error handling.
 inputs:
   url:
     type: str
@@ -30,7 +30,7 @@ Run this workflow using the run_workflow tool
 
 ```python
 try:
-    # Fetch URL with retry on transient failures
+    # Fetch the URL with up to 3 attempts
     result = await workflow.execute_activity(
         "api",
         {"url": url},
@@ -44,14 +44,11 @@ try:
         "success": True,
         "content": result["content"],
         "status": result["status"],
-        "error": "",
     }
 except Exception as e:
-    # All retry attempts exhausted — return error dict
+    # All retry attempts exhausted — return structured error
     return {
         "success": False,
-        "content": "",
-        "status": 0,
         "error": str(e),
     }
 ```

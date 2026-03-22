@@ -35,7 +35,7 @@ page = await workflow.execute_activity(
 titles = page["results"].get("titles", [])
 dates = page["results"].get("dates", [])
 
-# Filter to only posts from 2025
+# Filter to only posts from 2025 using pure Python
 posts_2025 = [
     title
     for title, date in zip(titles, dates)
@@ -45,14 +45,14 @@ posts_2025 = [
 if not posts_2025:
     return {"summary": "No blog posts from 2025 were found."}
 
-# Format titles for the LLM prompt
-post_list = "\n".join(f"- {title}" for title in posts_2025)
+# Format filtered titles for the LLM prompt
+titles_text = "\n".join(f"- {t}" for t in posts_2025)
 
 # Summarize the themes of the 2025 posts
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Here are blog post titles from 2025:\n\n{post_list}\n\nWhat are the main themes across these posts? Provide a concise summary.",
+        "prompt": f"Here are blog post titles from 2025:\n\n{titles_text}\n\nSummarize the main themes covered across these posts.",
         "schema": {
             "type": "object",
             "properties": {

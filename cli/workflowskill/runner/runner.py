@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import os
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,8 @@ async def run_skill(
     inputs: dict[str, Any] | None = None,
     registry: ActionRegistry | None = None,
     on_server_started: Callable[[str], None] | None = None,
+    on_workflow_started: Callable[[str], None] | None = None,
+    on_signal_waiting: Callable[[str, str | None], Awaitable[Any]] | None = None,
 ) -> dict[str, Any]:
     """Load and execute a SKILL.md workflow end-to-end.
 
@@ -81,6 +84,13 @@ async def run_skill(
                   activity calls).
         on_server_started: Optional callback invoked with the server address
                            string after the embedded Temporal server is ready.
+        on_workflow_started: Optional callback invoked with the workflow ID
+                             string after the workflow starts.
+        on_signal_waiting: Optional async callback invoked when the workflow
+                           calls wait_for_signal. Receives (signal_name, prompt)
+                           and should return signal data (or None). If not
+                           provided, signals must be sent externally via the
+                           `workflowskill signal` CLI command.
 
     Returns:
         The dict returned by the workflow's @workflow.run method.
@@ -102,6 +112,18 @@ async def run_skill(
 
     # Build ordered args list by inspecting run method parameters
     args = _build_args(skill.workflow_class, merged)
+
+    # Register the internal __signal_notify activity only when signal prompting
+    # is enabled. It pushes signal info to a queue so the runner can prompt the
+    # user and send the real Temporal signal via the workflow handle.
+    signal_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    if on_signal_waiting is not None:
+        async def _signal_notify_handler(notify_args: dict[str, Any]) -> dict[str, Any]:
+            await signal_queue.put(notify_args)
+            return {}
+
+        registry.register("__signal_notify", _signal_notify_handler)
 
     # Start embedded Temporal environment (no external server required).
     # Suppress the Temporal CLI subprocess banner at the OS fd level so it
@@ -126,12 +148,46 @@ async def run_skill(
             workflow_runner=UnsandboxedWorkflowRunner(),
         ):
             workflow_id = f"{skill.name}-{uuid.uuid4()}"
-            result: Any = await env.client.execute_workflow(
+            handle: Any = await env.client.start_workflow(
                 skill.workflow_class.run,  # type: ignore[attr-defined]
                 args=args,
                 id=workflow_id,
                 task_queue=TASK_QUEUE,
             )
+
+            if on_workflow_started is not None:
+                on_workflow_started(workflow_id)
+
+            result_task: asyncio.Task[Any] = asyncio.create_task(handle.result())
+
+            if on_signal_waiting is not None:
+                # Run a signal reader concurrently: wait for __signal_notify
+                # events, prompt the user, then send the real Temporal signal.
+                async def _signal_reader() -> None:
+                    while True:
+                        info = await signal_queue.get()
+                        data = await on_signal_waiting(
+                            info["signal"], info.get("prompt")
+                        )
+                        await handle.signal(info["signal"], data)
+
+                reader_task: asyncio.Task[None] = asyncio.create_task(_signal_reader())
+                done, pending = await asyncio.wait(
+                    {result_task, reader_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await t
+                # If the reader finished first (e.g. prompt callback raised),
+                # propagate its exception rather than masking it with CancelledError.
+                if reader_task in done:
+                    reader_task.result()  # raises if reader failed
+            else:
+                await result_task
+
+            result: Any = result_task.result()
 
     if not isinstance(result, dict):
         raise ValueError(

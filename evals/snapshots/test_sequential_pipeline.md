@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: scrape-and-summarize
-description: Scrapes a URL for headings and article text, then summarizes the content using an LLM.
+description: Scrapes a URL for headings and article paragraphs, then summarizes the content using an LLM.
 inputs:
   url:
     type: str
@@ -20,7 +20,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Extract headings and article paragraphs from the page
+# Scrape headings and article paragraphs from the URL
 page = await workflow.execute_activity(
     "scrape",
     {
@@ -32,19 +32,12 @@ page = await workflow.execute_activity(
     },
 )
 
+# Build a focused text block from scraped content
 headings = page["results"].get("headings", [])
 paragraphs = page["results"].get("paragraphs", [])
+content = "\n".join(headings) + "\n\n" + "\n".join(paragraphs)
 
-# Bail early if nothing useful was extracted
-if not headings and not paragraphs:
-    return {"summary": "No content could be extracted from the provided URL."}
-
-# Build a compact content block for the LLM
-heading_text = "\n".join(headings)
-paragraph_text = "\n\n".join(paragraphs)
-content = f"# {heading_text}\n\n{paragraph_text}".strip()
-
-# Summarize the extracted content
+# Summarize the extracted content with the LLM
 result = await workflow.execute_activity(
     "llm",
     {

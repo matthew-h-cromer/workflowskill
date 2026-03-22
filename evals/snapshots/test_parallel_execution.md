@@ -1,7 +1,7 @@
 ---
 type: workflow
 name: fetch-two
-description: Fetch two URLs concurrently and return both responses.
+description: Fetches two URLs concurrently and returns both responses.
 inputs:
   url_a:
     type: str

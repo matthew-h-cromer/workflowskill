@@ -19,6 +19,8 @@ from workflowskill.display import (
     print_result,
     print_running,
     print_server_info,
+    print_workflow_id,
+    prompt_for_signal,
 )
 from workflowskill.loader.skill_loader import SkillLoadError
 from workflowskill.runner.runner import run_skill
@@ -107,7 +109,16 @@ def run(
     print_running(skill_name, inputs)
 
     try:
-        result = asyncio.run(run_skill(file, inputs, registry, on_server_started=print_server_info))
+        result = asyncio.run(
+            run_skill(
+                file,
+                inputs,
+                registry,
+                on_server_started=print_server_info,
+                on_workflow_started=print_workflow_id,
+                on_signal_waiting=prompt_for_signal,
+            )
+        )
     except SkillLoadError as e:
         print_error(str(e))
         sys.exit(1)
@@ -174,6 +185,60 @@ def builtin_action(action_name: str, json_args: str) -> None:
 def openclaw_action(action_name: str, json_args: str) -> None:
     """Invoke a single OpenClaw action (browser, web_search, etc.) directly."""
     _invoke_action("openclaw", action_name, json_args)
+
+
+@cli.command()
+@click.argument("workflow_id")
+@click.argument("signal_name")
+@click.option(
+    "--data",
+    "data",
+    default=None,
+    help="JSON data to send with the signal.",
+)
+@click.option(
+    "--server",
+    "server",
+    default="localhost:7233",
+    show_default=True,
+    help="Temporal server address (host:port).",
+)
+def signal(workflow_id: str, signal_name: str, data: str | None, server: str) -> None:
+    """Send a signal to a running workflow.
+
+    WORKFLOW_ID is the ID printed when the workflow starts.
+    SIGNAL_NAME is the name passed to wait_for_signal() in the workflow.
+
+    Example (send approval with data):
+
+        workflowskill signal approval-gate-abc123 approval --data '{"approved": true}'
+
+    Example (send without data, e.g. to resume after login):
+
+        workflowskill signal apply-to-job-abc123 logged_in
+    """
+    from temporalio.client import Client
+
+    signal_data: Any = None
+    if data is not None:
+        try:
+            signal_data = json.loads(data)
+        except json.JSONDecodeError as e:
+            print_error(f"Invalid JSON in --data: {e}")
+            sys.exit(1)
+
+    async def _send() -> None:
+        client = await Client.connect(server)
+        handle = client.get_workflow_handle(workflow_id)
+        await handle.signal(signal_name, signal_data)
+
+    try:
+        asyncio.run(_send())
+    except Exception as e:
+        print_error(str(e))
+        sys.exit(1)
+
+    click.echo(f"Signal '{signal_name}' sent to {workflow_id}.")
 
 
 @cli.command()

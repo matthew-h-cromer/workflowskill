@@ -198,6 +198,39 @@ def has_scrape_feeding_llm(code: str) -> bool:
     return scrape_idx < llm_idx
 
 
+def has_wait_for_signal(code: str) -> bool:
+    """Return True if the code contains a workflow.wait_for_signal() call."""
+    tree = _parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "wait_for_signal"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "workflow"
+            ):
+                return True
+    return False
+
+
+def has_wait_for_signal_with_timeout(code: str) -> bool:
+    """Return True if any wait_for_signal call has a timeout keyword argument."""
+    tree = _parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "wait_for_signal"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "workflow"
+                and any(kw.arg == "timeout" for kw in node.keywords)
+            ):
+                return True
+    return False
+
+
 def activity_inside_node(code: str, node_type: type) -> bool:
     """Return True if any execute_activity call is nested inside a node of node_type."""
     tree = _parse(code)
