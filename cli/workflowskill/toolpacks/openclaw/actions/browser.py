@@ -134,6 +134,7 @@ async def _get_context() -> Any:
     user_data_dir = os.environ.get("BROWSER_USER_DATA_DIR", "").strip()
     cdp_port = int(os.environ.get("BROWSER_CDP_PORT", "9222"))
 
+    os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
     _playwright_instance = await async_playwright().start()
 
     # --- Try connecting to an existing Chrome via CDP ---
