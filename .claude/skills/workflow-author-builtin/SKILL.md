@@ -11,7 +11,7 @@ Read `cli/workflowskill/toolpacks/builtin/prompt.md` for the available actions a
 
 ## Output
 
-After generating the workflow, **write it to a file** in the `examples/builtin/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: github-activity` → `examples/builtin/github-activity.md`). Confirm the file path to the user after writing it.
+After generating the workflow, **write it to a file** in the `workflows/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: github-activity` → `workflows/github-activity.md`). Confirm the file path to the user after writing it.
 
 ## Describing Workflows to the User
 
@@ -63,11 +63,11 @@ Inspect each result to learn exact field names before wiring steps together. If 
 To run the workflow locally after writing it:
 
 ```sh
-workflowskill run examples/builtin/<name>.md
+workflowskill run workflows/<name>.md
 ```
 
 Or with inputs:
 
 ```sh
-workflowskill run examples/builtin/<name>.md -i key=value
+workflowskill run workflows/<name>.md -i key=value
 ```

@@ -50,11 +50,11 @@ $ claude
   of what they've been working on.
 ```
 
-Claude generates and saves the file to `examples/builtin/`. Run it:
+Claude generates and saves the file to `workflows/`. Run it:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
-workflowskill run examples/builtin/github-activity-summary.md -i username=torvalds
+workflowskill run workflows/github-activity-summary.md -i username=torvalds
 ```
 
 ```

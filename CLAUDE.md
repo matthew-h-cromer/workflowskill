@@ -21,6 +21,7 @@ evals/                             # Eval framework for improving skill/SKILL.md
   test_authoring.py                # Eval test cases
   snapshots/                       # Saved generated outputs for diffing
 examples/                          # Runnable workflow examples (SKILL.md format)
+workflows/                         # Local workflow workspace (gitignored)
 cli/
   workflowskill/                   # Python package
     __init__.py

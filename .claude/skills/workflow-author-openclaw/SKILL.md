@@ -15,7 +15,7 @@ You are generating a workflow for the **OpenClaw** agent platform. The available
 
 ## Output
 
-After generating the workflow, **write it to a file** in the `examples/openclaw/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: search-and-summarize` → `examples/openclaw/search-and-summarize.md`). Confirm the file path and the local test command to the user after writing it.
+After generating the workflow, **write it to a file** in the `workflows/` directory. Derive the filename from the workflow name in the frontmatter (e.g. `name: search-and-summarize` → `workflows/search-and-summarize.md`). Confirm the file path and the local test command to the user after writing it.
 
 ## Describing Workflows to the User
 
@@ -79,10 +79,10 @@ uv sync --extra openclaw
 uv run playwright install chromium  # only if the workflow uses the browser action
 
 # Run the workflow
-workflowskill run examples/openclaw/<name>.md --toolpack openclaw
+workflowskill run workflows/<name>.md --toolpack openclaw
 
 # With inputs
-workflowskill run examples/openclaw/<name>.md --toolpack openclaw -i query="your search"
+workflowskill run workflows/<name>.md --toolpack openclaw -i query="your search"
 ```
 
 Required environment variables:

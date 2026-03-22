@@ -9,3 +9,5 @@ __pycache__/
 .env
 .vscode/
 dist/
+workflows/*
+!workflows/.gitkeep
