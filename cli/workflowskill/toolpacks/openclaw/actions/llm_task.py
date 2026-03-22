@@ -100,6 +100,14 @@ async def llm_task(args: dict[str, Any]) -> dict[str, Any]:
         preview = stripped[:200]
         raise ValueError(f"llm_task: model returned invalid JSON: {e} — got: {preview!r}") from e
 
-    if isinstance(parsed, dict):
-        return parsed
-    return {"result": parsed}
+    result = parsed if isinstance(parsed, dict) else {"result": parsed}
+
+    # Attach usage metadata (prefixed to avoid collisions with schema output)
+    if hasattr(message, "usage") and message.usage:
+        result["__usage"] = {
+            "input_tokens": message.usage.input_tokens,
+            "output_tokens": message.usage.output_tokens,
+            "model": model,
+        }
+
+    return result
