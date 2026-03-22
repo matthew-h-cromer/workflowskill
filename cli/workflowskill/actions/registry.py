@@ -98,6 +98,12 @@ class ActionRegistry:
         """Return all registered activities for worker registration."""
         return list(self._activities)
 
+    def get_handler(self, name: str) -> Handler:
+        """Return the raw handler function for a named action."""
+        if name not in self._handlers:
+            raise KeyError(f"No action registered with name '{name}'")
+        return self._handlers[name]
+
     def has(self, name: str) -> bool:
         """Check if an action is registered."""
         return name in self._handlers

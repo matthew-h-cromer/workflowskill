@@ -22,14 +22,18 @@ working workflow.
 - If the request is ambiguous, ask 2–3 focused clarifying questions before proceeding.
 - If the request is clear, skip directly to Research.
 
-### Phase 2: Research
+### Phase 2: Research & Probe
 
 - **Confirm available actions first.** The actions available in `workflow.execute_activity()` calls are those registered in the current runtime context. All action names depend on what the host registers. Do not assume any specific action exists. Check your context for the exact names available.
 - **Stop if the task is not achievable.** If the user's request requires a capability that no available action provides, do not generate a workflow. Instead, tell the user which capability is missing and what kind of action would need to be registered to support it.
 - Search official documentation for any APIs or websites involved.
 - **Fetch the target URL or API endpoint yourself** to inspect the actual response structure. This is the source of truth. Do not guess field names, CSS selectors, or JSON keys.
+- **Test each action you plan to use.** Invoke each action with real arguments and inspect its output. Verify response structures and field names before using them in a workflow.
+- **Fail fast.** If a probe returns an error or unexpected structure, stop and surface the problem to the user before writing any workflow code. Do not guess past a failed probe.
 
-### Phase 3: Generate
+### Phase 3: Assemble Step-by-Step
+
+Build the workflow incrementally. Start with the first action, verify it produces what you expect using real data, then add the next step using the observed output. Only assemble the final SKILL.md once all steps are individually verified.
 
 Map the task to workflow building blocks:
 

@@ -51,6 +51,16 @@ class TestActionRegistry:
         activities = registry.get_activities()
         assert len(activities) == 1
 
+    def test_get_handler_returns_registered_handler(self) -> None:
+        registry = ActionRegistry()
+        registry.register("double", _double)
+        assert registry.get_handler("double") is _double
+
+    def test_get_handler_raises_for_unknown(self) -> None:
+        registry = ActionRegistry()
+        with pytest.raises(KeyError, match="nope"):
+            registry.get_handler("nope")
+
 
 class TestActionRegistryCallbacks:
     @pytest.mark.asyncio

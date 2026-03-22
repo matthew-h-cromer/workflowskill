@@ -118,6 +118,64 @@ def run(
     print_result(result, skill_name)
 
 
+def _invoke_action(pack_name: str, action_name: str, json_args: str) -> None:
+    """Shared implementation for builtin_action and openclaw_action."""
+    from workflowskill.toolpacks import load_toolpack
+
+    try:
+        args = json.loads(json_args)
+    except json.JSONDecodeError as e:
+        print_error(f"Invalid JSON args: {e}")
+        sys.exit(1)
+    if not isinstance(args, dict):
+        print_error("Args must be a JSON object")
+        sys.exit(1)
+
+    registry = ActionRegistry()
+    try:
+        pack = load_toolpack(pack_name)
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+    pack.register(registry)
+
+    if not registry.has(action_name):
+        available = ", ".join(registry.names())
+        print_error(f"Unknown action '{action_name}'. Available: {available}")
+        sys.exit(1)
+
+    handler = registry.get_handler(action_name)
+
+    try:
+        import inspect
+
+        if inspect.iscoroutinefunction(handler):
+            result = asyncio.run(handler(args))
+        else:
+            result = handler(args)
+    except Exception as e:
+        print_error(str(e))
+        sys.exit(1)
+
+    click.echo(json.dumps(result, indent=2))
+
+
+@cli.command(name="builtin_action")
+@click.argument("action_name")
+@click.argument("json_args")
+def builtin_action(action_name: str, json_args: str) -> None:
+    """Invoke a single builtin action (api, scrape, llm) directly."""
+    _invoke_action("builtin", action_name, json_args)
+
+
+@cli.command(name="openclaw_action")
+@click.argument("action_name")
+@click.argument("json_args")
+def openclaw_action(action_name: str, json_args: str) -> None:
+    """Invoke a single OpenClaw action (browser, web_search, etc.) directly."""
+    _invoke_action("openclaw", action_name, json_args)
+
+
 @cli.command()
 def worker() -> None:
     """Start a long-running worker connected to an external Temporal server.

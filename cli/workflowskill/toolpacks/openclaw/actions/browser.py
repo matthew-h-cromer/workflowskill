@@ -2,10 +2,19 @@
 
 Requires playwright: uv sync --extra openclaw
 
+The browser process persists across CLI invocations via Chrome DevTools Protocol (CDP).
+On the first call, Chrome is launched with --remote-debugging-port and stays alive after
+the Python process exits. Subsequent calls reconnect to the same Chrome instance.
+
+To close Chrome between testing sessions, close the window or run:
+  pkill -f "remote-debugging-port=9222"
+
 Environment variables:
   BROWSER_USER_DATA_DIR  Path to Chrome profile directory to load existing session
                          (e.g., ~/Library/Application Support/Google/Chrome)
-  BROWSER_HEADLESS       "true" (default) or "false" to show browser window
+  BROWSER_HEADLESS       "false" (default) or "true" to run headless
+  BROWSER_CDP_PORT       CDP debugging port (default: 9222)
+  BROWSER_CHROME_PATH    Override Chrome executable path
 """
 
 from __future__ import annotations
@@ -17,8 +26,10 @@ from typing import Any
 
 _browser_context: Any = None  # playwright BrowserContext
 _playwright_instance: Any = None
-_browser_instance: Any = None  # None when using launch_persistent_context
+_browser_instance: Any = None  # Browser (CDP-connected) or None for persistent context
 _ref_map: dict[str, str] = {}  # ref (e.g., "e1") -> CSS selector
+_is_cdp: bool = False  # True when connected via CDP (Chrome is an external process)
+_chrome_pid: int | None = None  # PID of Chrome process we launched
 
 
 def _is_ref(s: str) -> bool:
@@ -71,9 +82,40 @@ def _make_profile_copy(src_dir: str) -> str:
     return tmp_root
 
 
+def _find_chrome() -> str:
+    """Find the Chrome executable. Checks BROWSER_CHROME_PATH, then common locations."""
+    import shutil
+
+    explicit = os.environ.get("BROWSER_CHROME_PATH", "").strip()
+    if explicit and os.path.exists(explicit):
+        return explicit
+
+    candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+        path = shutil.which(name)
+        if path:
+            return path
+
+    raise RuntimeError(
+        "Chrome not found. Install Google Chrome or set BROWSER_CHROME_PATH."
+    )
+
+
 async def _get_context() -> Any:
-    """Get or create the shared Playwright browser context."""
-    global _playwright_instance, _browser_instance, _browser_context
+    """Get or create the shared Playwright browser context.
+
+    Tries to connect to an already-running Chrome via CDP first. If none is found,
+    launches Chrome as an independent process (outlives this Python process) and
+    connects to it. This means the browser persists across separate CLI invocations.
+    """
+    global _playwright_instance, _browser_instance, _browser_context, _is_cdp, _chrome_pid
 
     if _browser_context is not None:
         return _browser_context
@@ -86,70 +128,98 @@ async def _get_context() -> Any:
             "Then: uv run playwright install chromium"
         ) from e
 
-    headless_env = os.environ.get("BROWSER_HEADLESS", "true").lower()
+    # Default to visible browser for interactive testing
+    headless_env = os.environ.get("BROWSER_HEADLESS", "false").lower()
     headless = headless_env not in ("false", "0", "no")
     user_data_dir = os.environ.get("BROWSER_USER_DATA_DIR", "").strip()
+    cdp_port = int(os.environ.get("BROWSER_CDP_PORT", "9222"))
 
     _playwright_instance = await async_playwright().start()
 
-    storage_state_path = os.environ.get("BROWSER_STORAGE_STATE", "").strip()
-    storage_state_path = os.path.expanduser(storage_state_path) if storage_state_path else ""
-
-    if user_data_dir:
-        user_data_dir = os.path.expanduser(user_data_dir)
-        # Copy profile to a temp dir so we can use it while Chrome is already running
-        profile_dir = _make_profile_copy(user_data_dir)
-        # Use persistent context to load existing Chrome profile (e.g., LinkedIn session)
-        _browser_context = await _playwright_instance.chromium.launch_persistent_context(
-            user_data_dir=profile_dir,
-            headless=headless,
-            channel="chrome",
-            viewport={"width": 1280, "height": 900},
-            # Mimic real Chrome user agent to avoid bot detection
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            args=["--disable-blink-features=AutomationControlled"],
+    # --- Try connecting to an existing Chrome via CDP ---
+    try:
+        browser = await _playwright_instance.chromium.connect_over_cdp(
+            f"http://localhost:{cdp_port}"
         )
-        # launch_persistent_context returns a BrowserContext directly — no separate Browser
-    else:
-        _browser_instance = await _playwright_instance.chromium.launch(headless=headless)
-        _browser_context = await _browser_instance.new_context(
+        contexts = browser.contexts
+        _browser_context = contexts[0] if contexts else await browser.new_context(
             viewport={"width": 1280, "height": 900},
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
         )
+        _browser_instance = browser
+        _is_cdp = True
+    except Exception:
+        # No Chrome on this port — launch one as an independent process
+        chrome_exe = _find_chrome()
+        chrome_args = [
+            chrome_exe,
+            f"--remote-debugging-port={cdp_port}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-blink-features=AutomationControlled",
+        ]
+        if headless:
+            chrome_args.append("--headless=new")
+        if user_data_dir:
+            profile_dir = _make_profile_copy(os.path.expanduser(user_data_dir))
+            chrome_args.append(f"--user-data-dir={profile_dir}")
 
-    # Load saved session state if provided (cookies + localStorage)
-    if storage_state_path and os.path.exists(storage_state_path):
-        import json as _json
-        with open(storage_state_path) as f:
-            state = _json.load(f)
-        cookies = state.get("cookies", [])
-        if cookies:
-            await _browser_context.add_cookies(cookies)
+        # Always pass --user-data-dir to force a separate Chrome instance.
+        # Without this, macOS Chrome ignores --remote-debugging-port and opens
+        # a window in the already-running Chrome process instead.
+        if not any(a.startswith("--user-data-dir") for a in chrome_args):
+            default_profile = os.path.expanduser("~/.workflowskill/chrome-profile")
+            os.makedirs(default_profile, exist_ok=True)
+            chrome_args.append(f"--user-data-dir={default_profile}")
+
+        import subprocess
+        proc = subprocess.Popen(
+            chrome_args,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _chrome_pid = proc.pid
+
+        # Wait up to 10s for Chrome to accept CDP connections
+        import asyncio
+        last_exc: Exception = RuntimeError("Chrome did not start in time")
+        for _ in range(20):
+            await asyncio.sleep(0.5)
+            try:
+                browser = await _playwright_instance.chromium.connect_over_cdp(
+                    f"http://localhost:{cdp_port}"
+                )
+                contexts = browser.contexts
+                _browser_context = contexts[0] if contexts else await browser.new_context(
+                    viewport={"width": 1280, "height": 900},
+                )
+                _browser_instance = browser
+                _is_cdp = True
+                break
+            except Exception as exc:
+                last_exc = exc
+        else:
+            raise RuntimeError(f"Chrome failed to start on port {cdp_port}: {last_exc}")
 
     return _browser_context
 
 
 async def close_browser() -> None:
-    """Close the shared browser context. Called at workflow teardown."""
-    global _playwright_instance, _browser_instance, _browser_context, _ref_map
+    """Disconnect from browser. In CDP mode, Chrome stays alive; in-process browser is closed."""
+    global _playwright_instance, _browser_instance, _browser_context, _ref_map, _is_cdp, _chrome_pid
     _ref_map = {}
     if _browser_context is not None:
-        await _browser_context.close()
+        if not _is_cdp:
+            await _browser_context.close()
         _browser_context = None
     if _browser_instance is not None:
-        await _browser_instance.close()
+        await _browser_instance.close()  # disconnects CDP or closes in-process browser
         _browser_instance = None
     if _playwright_instance is not None:
         await _playwright_instance.stop()
         _playwright_instance = None
+    _is_cdp = False
+    _chrome_pid = None
 
 
 # JavaScript that walks the DOM, assigns data-wf-ref attributes to interactive elements,
@@ -292,6 +362,28 @@ async def _build_snapshot(page: Any, interactive_only: bool = False) -> str:
     return "\n".join(lines)
 
 
+_REF_MAP_PATH = os.path.expanduser("~/.workflowskill/ref-map.json")
+
+
+def _save_ref_map() -> None:
+    """Persist ref map to disk so it survives across CLI invocations."""
+    os.makedirs(os.path.dirname(_REF_MAP_PATH), exist_ok=True)
+    with open(_REF_MAP_PATH, "w") as f:
+        json.dump(_ref_map, f)
+
+
+def _load_ref_map() -> None:
+    """Load ref map from disk if present and in-process map is empty."""
+    global _ref_map
+    if _ref_map:
+        return
+    try:
+        with open(_REF_MAP_PATH) as f:
+            _ref_map = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+
 async def browser(args: dict[str, Any]) -> dict[str, Any]:
     """Control a headless Chromium browser.
 
@@ -326,6 +418,9 @@ async def browser(args: dict[str, Any]) -> dict[str, Any]:
     action = args.get("action")
     if not isinstance(action, str) or not action:
         raise ValueError('browser: "action" is required and must be a string')
+
+    # Restore ref map from disk if this is a new process (enables cross-process click/type)
+    _load_ref_map()
 
     ctx = await _get_context()
 
@@ -373,6 +468,7 @@ async def browser(args: dict[str, Any]) -> dict[str, Any]:
         response = await page.goto(url, wait_until="domcontentloaded")
         status = response.status if response else 0
         _ref_map = {}  # refs are stale after navigation
+        _save_ref_map()  # persist cleared map so stale refs don't survive across calls
         return {"url": page.url, "status": status}
 
     elif action == "snapshot":
@@ -386,6 +482,7 @@ async def browser(args: dict[str, Any]) -> dict[str, Any]:
 
         interactive_only = bool(args.get("interactive", False))
         snapshot_text = await _build_snapshot(page, interactive_only=interactive_only)
+        _save_ref_map()  # persist so refs survive across CLI invocations
         return {"snapshot": snapshot_text, "url": page.url}
 
     elif action == "screenshot":
@@ -501,16 +598,6 @@ async def browser(args: dict[str, Any]) -> dict[str, Any]:
             await asyncio.sleep(timeout_ms / 1000)
             return {"waited": True, "condition": "timeout", "ms": timeout_ms}
 
-    elif action == "save_state":
-        # Save session state (cookies + local storage) to a JSON file
-        path = args.get("path")
-        if not isinstance(path, str):
-            raise ValueError('browser save_state: "path" is required')
-        path = os.path.expanduser(path)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        state = await ctx.storage_state(path=path)
-        return {"saved": True, "path": path, "cookies": len(state.get("cookies", []))}
-
     elif action == "evaluate":
         fn = args.get("fn")
         if not isinstance(fn, str):
@@ -522,5 +609,5 @@ async def browser(args: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"browser: unknown action {action!r}. "
             "Valid actions: navigate, snapshot, screenshot, click, type, fill, select, "
-            "upload, save_state, wait, tabs, open, close, status, evaluate"
+            "upload, wait, tabs, open, close, status, evaluate"
         )

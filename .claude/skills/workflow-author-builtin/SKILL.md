@@ -41,6 +41,23 @@ When generating or updating a workflow, call the `save_workflow` tool with the c
 - **Parameter:** `markdown` (string) — the complete SKILL.md file content
 - **Behavior:** Saves or updates the workflow file.
 
+## Testing Actions
+
+Before assembling a workflow, test each action in isolation to verify response structures and field names:
+
+```sh
+# Test an API endpoint
+workflowskill builtin_action api '{"url": "https://api.example.com/endpoint"}'
+
+# Test CSS selectors on a page
+workflowskill builtin_action scrape '{"url": "https://example.com", "selectors": {"title": "h1", "price": ".price"}}'
+
+# Test an LLM call with a schema
+workflowskill builtin_action llm '{"prompt": "Classify: good product", "schema": {"type": "object", "properties": {"sentiment": {"type": "string"}}, "required": ["sentiment"]}}'
+```
+
+Inspect each result to learn exact field names before wiring steps together. If an action returns an error or unexpected structure, stop and surface the problem to the user before writing any workflow code.
+
 ## Running the Workflow
 
 To run the workflow locally after writing it:

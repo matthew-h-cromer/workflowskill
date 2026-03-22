@@ -34,6 +34,41 @@ When generating or updating a workflow, call the `save_workflow` tool with the c
 - **Parameter:** `markdown` (string) — the complete SKILL.md file content
 - **Behavior:** Saves or updates the workflow file.
 
+## Testing Actions
+
+Before assembling a workflow, test each action in isolation to verify response structures and field names.
+
+The browser **persists across CLI calls** — Chrome stays alive after each command returns, so you can do multi-step testing as separate invocations:
+
+```sh
+# Test web search
+workflowskill openclaw_action web_search '{"query": "example query", "count": 3}'
+
+# Test fetching a URL
+workflowskill openclaw_action web_fetch '{"url": "https://example.com"}'
+
+# Test a shell command
+workflowskill openclaw_action exec '{"command": "echo hello"}'
+
+# Browser: navigate (Chrome opens and stays open)
+workflowskill openclaw_action browser '{"action": "navigate", "url": "https://example.com"}'
+
+# Browser: snapshot the page (connects to the same Chrome, same tab)
+workflowskill openclaw_action browser '{"action": "snapshot"}'
+
+# Browser: click something, type, etc.
+workflowskill openclaw_action browser '{"action": "click", "ref": "e3"}'
+workflowskill openclaw_action browser '{"action": "type", "ref": "e5", "text": "hello"}'
+```
+
+**Important browser testing notes:**
+- Always run `snapshot` before `click`/`type` — refs (`e1`, `e2`, ...) are rebuilt on each snapshot call and don't persist across processes.
+- If a login wall appears, the user can log in manually in the open browser window, then continue with the next command.
+- Chrome defaults to visible (not headless). Set `BROWSER_HEADLESS=true` to run headless.
+- To close Chrome between sessions: close the window or run `pkill -f "remote-debugging-port=9222"`.
+
+Inspect each result to learn exact field names before wiring steps together. If an action returns an error or unexpected structure, stop and surface the problem to the user before writing any workflow code.
+
 ## Testing Locally
 
 After writing the workflow, show the user how to test it:
