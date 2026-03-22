@@ -65,15 +65,15 @@ class TestActionRegistry:
 class TestActionRegistryCallbacks:
     @pytest.mark.asyncio
     async def test_on_activity_start_called(self) -> None:
-        started: list[str] = []
-        registry = ActionRegistry(on_activity_start=started.append)
+        started: list[tuple[str, dict]] = []
+        registry = ActionRegistry(on_activity_start=lambda n, a: started.append((n, a)))
         registry.register("double", _double)
 
         # Call the wrapped activity directly (bypassing Temporal)
         activity_fn = registry.get_activities()[0]
         await activity_fn({"value": 5})
 
-        assert started == ["double"]
+        assert started == [("double", {"value": 5})]
 
     @pytest.mark.asyncio
     async def test_on_activity_complete_called(self) -> None:

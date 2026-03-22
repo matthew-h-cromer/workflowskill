@@ -32,7 +32,7 @@ class ActionRegistry:
 
     def __init__(
         self,
-        on_activity_start: Callable[[str], None] | None = None,
+        on_activity_start: Callable[[str, dict[str, Any]], None] | None = None,
         on_activity_complete: Callable[[str, int], None] | None = None,
     ) -> None:
         self._handlers: dict[str, Handler] = {}
@@ -63,7 +63,7 @@ class ActionRegistry:
 
             async def _async_activity(args: dict[str, Any]) -> dict[str, Any]:
                 if on_start:
-                    on_start(name)
+                    on_start(name, args)
                 t0 = time.monotonic()
                 try:
                     result: dict[str, Any] = await _h(args)
@@ -80,7 +80,7 @@ class ActionRegistry:
 
             def _sync_activity(args: dict[str, Any]) -> dict[str, Any]:
                 if on_start:
-                    on_start(name)
+                    on_start(name, args)
                 t0 = time.monotonic()
                 try:
                     return cast(dict[str, Any], _h2(args))

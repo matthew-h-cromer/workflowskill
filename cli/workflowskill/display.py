@@ -39,9 +39,27 @@ def print_running(skill_name: str, inputs: dict[str, Any]) -> None:
         console.print(f"[dim]Running[/dim] [bold]{skill_name}[/bold]")
 
 
-def on_activity_start(name: str) -> None:
+_MAX_VALUE_LEN = 60
+_MAX_LINE_LEN = 120
+
+
+def _format_args(args: dict[str, Any]) -> str:
+    """Format all args as key='value' pairs, truncating long values."""
+    parts: list[str] = []
+    for k, v in args.items():
+        s = repr(v) if not isinstance(v, str) else f"'{v}'"
+        if len(s) > _MAX_VALUE_LEN:
+            s = s[: _MAX_VALUE_LEN - 4] + "...'"
+        parts.append(f"{k}={s}")
+    return " ".join(parts)
+
+
+def on_activity_start(name: str, args: dict[str, Any]) -> None:
     """Print a status line when an activity begins executing."""
-    console.print(f"  [yellow]⟳[/yellow] Executing {name}...")
+    formatted = _format_args(args)
+    line = f"  [yellow]⟳[/yellow] {name} [dim]{formatted}[/dim]"
+    # Truncate the plain-text content if too long (Rich markup doesn't count)
+    console.print(line)
 
 
 def on_activity_complete(name: str, elapsed_ms: int) -> None:
