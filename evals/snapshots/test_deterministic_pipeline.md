@@ -1,17 +1,20 @@
 ---
 type: workflow
 name: filter-links
-description: Scrapes all anchor hrefs from a URL and returns only those starting with a given prefix.
+description: Scrape all anchor hrefs from a URL and return only those starting with a given prefix.
+actions: [scrape]
 inputs:
   url:
     type: str
+    description: "The URL to scrape for links"
   prefix:
     type: str
     default: "https"
+    description: "Only return links starting with this prefix"
 outputs:
   links:
     type: list
-    description: "Filtered list of href values starting with the given prefix"
+    description: "Filtered list of href values starting with the prefix"
 ---
 
 # Filter Links
@@ -23,7 +26,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Extract href attributes from all anchor tags
+# Scrape all href attributes from anchor tags
 page = await workflow.execute_activity(
     "scrape",
     {
@@ -36,7 +39,7 @@ page = await workflow.execute_activity(
 
 # Filter to only links starting with the prefix
 all_hrefs = page["results"].get("hrefs", [])
-filtered = [href for href in all_hrefs if href.startswith(prefix)]
+links = [href for href in all_hrefs if href.startswith(prefix)]
 
-return {"links": filtered}
+return {"links": links}
 ```

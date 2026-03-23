@@ -1,23 +1,25 @@
 ---
 type: workflow
 name: retry-fetch
-description: Fetch a URL via the api action with exponential-backoff retry logic.
+description: Fetch a URL via HTTP with an exponential-backoff retry policy.
+actions: [api]
 inputs:
   url:
     type: str
+    description: "The URL to fetch"
 outputs:
   content:
     type: str
-    description: "The response body returned by the URL"
-  content_type:
-    type: str
-    description: "The Content-Type header of the response"
-  status:
-    type: int
-    description: "The HTTP status code of the response"
+    description: "The response body"
   url:
     type: str
-    description: "The final URL that was fetched"
+    description: "The resolved URL"
+  content_type:
+    type: str
+    description: "The response content type"
+  status:
+    type: int
+    description: "The HTTP status code"
 ---
 
 # Retry Fetch
@@ -29,7 +31,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Fetch the URL with exponential-backoff retry
+# Fetch the URL with exponential-backoff retries
 result = await workflow.execute_activity(
     "api",
     {"url": url},
@@ -42,8 +44,8 @@ result = await workflow.execute_activity(
 
 return {
     "content": result["content"],
+    "url": result["url"],
     "content_type": result["content_type"],
     "status": result["status"],
-    "url": result["url"],
 }
 ```

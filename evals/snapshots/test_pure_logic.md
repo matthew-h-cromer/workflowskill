@@ -1,15 +1,16 @@
 ---
 type: workflow
 name: greet
-description: Returns a greeting message for the given name
+description: Returns a personalized greeting for the given name
 inputs:
   name:
     type: str
     default: "World"
+    description: "The name to greet"
 outputs:
   greeting:
     type: str
-    description: "The greeting message"
+    description: "The personalized greeting message"
 ---
 
 # Greet

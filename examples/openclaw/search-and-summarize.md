@@ -2,6 +2,7 @@
 type: workflow
 name: search-and-summarize
 description: Search the web for a topic and return a concise summary of the top results.
+actions: [web_search, web_fetch, llm_task]
 inputs:
   query:
     type: str

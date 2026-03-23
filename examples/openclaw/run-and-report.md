@@ -2,6 +2,7 @@
 type: workflow
 name: run-and-report
 description: Run a shell command and return a structured report of its output.
+actions: [exec, llm_task]
 inputs:
   command:
     type: str

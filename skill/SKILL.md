@@ -65,10 +65,12 @@ The loader generates all of that automatically.
 type: workflow
 name: my-workflow
 description: What this workflow does
+actions: [some_action]
 inputs:
   query:
     type: str
     default: "default value"
+    description: "What to query for"
 outputs:
   result:
     type: str
@@ -80,6 +82,12 @@ outputs:
 ## Usage
 
 Run this workflow using the run_workflow tool
+
+## Details
+
+What this workflow does and when to use it. Include prerequisites, config files,
+input guidance, or limitations — anything the user needs to know beyond the
+one-line description. Omit this section for simple workflows.
 
 ## Workflow
 
@@ -97,7 +105,8 @@ return {"result": result["output"]}
 - `type`: always `workflow` (required) — machine-readable discriminator for progressive discovery
 - `name`: kebab-case identifier (required)
 - `description`: one sentence (required)
-- `inputs`: each entry has `type` (str/int/float/bool/list/dict) and optional `default`
+- `actions`: list of action names used in `execute_activity` calls (required when the workflow calls any actions; omit for pure-logic workflows). Enables compatibility checking during progressive discovery — e.g. `actions: [browser, llm_task]`
+- `inputs`: each entry has `type` (str/int/float/bool/list/dict), optional `default`, and optional `description`
 - Input names declared in frontmatter become parameters in the generated method signature
 - `outputs`: optional; each entry has `type` and optional `description`. When declared, the runner validates that all output keys are present in the returned dict.
 - Always quote `description` values with double quotes in YAML to avoid parsing issues with special characters
@@ -107,6 +116,7 @@ return {"result": result["output"]}
 Every workflow must include two sections after the document heading:
 
 - **`## Usage`** — always contains exactly: "Run this workflow using the run_workflow tool"
+- **`## Details`** — *(optional)* plain-language documentation for agents and users. Include this section when the workflow has prerequisites, config files, external dependencies, complex inputs, or non-obvious behavior. Omit it for simple workflows where the frontmatter description is sufficient. Write in plain language — describe what the user needs to know, not implementation details. Cover: what this does and when to use it, prerequisites (API keys, config files, browser sessions, required permissions), input guidance beyond name and type, and known limitations.
 - **`## Workflow`** — contains the fenced `python` code block (and optionally a brief description above the code)
 
 ### Code Block Rules

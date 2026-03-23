@@ -1,15 +1,16 @@
 ---
 type: workflow
 name: analyze-document
-description: Analyzes a text document using an LLM and returns the result.
+description: Analyzes a text document using an LLM and returns the analysis.
+actions: [llm]
 inputs:
   text:
     type: str
-    default: ""
+    description: "The document text to analyze"
 outputs:
   analysis:
     type: str
-    description: "The LLM's analysis of the provided document text"
+    description: "The analysis produced by the LLM"
 ---
 
 # Analyze Document
@@ -18,19 +19,25 @@ outputs:
 
 Run this workflow using the run_workflow tool
 
+## Details
+
+Sends a document to the LLM for analysis and returns the result. The LLM call
+is given up to 120 seconds to complete, which accommodates longer documents
+that may require more processing time.
+
+Prerequisites: `ANTHROPIC_API_KEY` environment variable must be set.
+
 ## Workflow
 
 ```python
-# Analyze the document text with the LLM
+# Analyze the document with the LLM
 result = await workflow.execute_activity(
     "llm",
     {
         "prompt": f"Analyze the following document:\n\n{text}",
         "schema": {
             "type": "object",
-            "properties": {
-                "analysis": {"type": "string"},
-            },
+            "properties": {"analysis": {"type": "string"}},
             "required": ["analysis"],
         },
     },

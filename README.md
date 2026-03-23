@@ -90,6 +90,7 @@ You don't write this — Claude does. Each workflow is a markdown file with YAML
 type: workflow
 name: summarize-hacker-news
 description: Scrapes the Hacker News homepage and returns a concise summary.
+actions: [scrape, llm]
 outputs:
   summary:
     type: str

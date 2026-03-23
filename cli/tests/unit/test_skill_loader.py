@@ -60,6 +60,66 @@ class TestLoadSkill:
         assert skill.inputs["subject"] == InputSpec(type="str", default="ocean")
         assert skill.inputs["count"] == InputSpec(type="int", default=5)
 
+    def test_input_description_parsed(self, tmp_path: Path) -> None:
+        p = write_skill(
+            tmp_path,
+            """\
+            ---
+            name: with-described-input
+            description: Has described input
+            inputs:
+              job_url:
+                type: str
+                description: "LinkedIn job posting URL to apply from"
+              config_path:
+                type: str
+                default: "config.json"
+            ---
+
+            ```python
+            return {"url": job_url, "config": config_path}
+            ```
+            """,
+        )
+        skill = load_skill(p)
+        assert skill.inputs["job_url"].description == "LinkedIn job posting URL to apply from"
+        assert skill.inputs["config_path"].description == ""
+
+    def test_actions_parsed(self, tmp_path: Path) -> None:
+        p = write_skill(
+            tmp_path,
+            """\
+            ---
+            name: with-actions
+            description: Uses actions
+            actions: [browser, llm_task]
+            ---
+
+            ```python
+            return {"done": True}
+            ```
+            """,
+        )
+        skill = load_skill(p)
+        assert skill.actions == ["browser", "llm_task"]
+
+    def test_actions_defaults_to_empty(self, tmp_path: Path) -> None:
+        p = write_skill(
+            tmp_path,
+            """\
+            ---
+            name: no-actions
+            description: Pure logic
+            ---
+
+            ```python
+            return {"message": "hello"}
+            ```
+            """,
+        )
+        skill = load_skill(p)
+        assert skill.actions == []
+
     def test_no_code_block_raises(self, tmp_path: Path) -> None:
         p = write_skill(
             tmp_path,

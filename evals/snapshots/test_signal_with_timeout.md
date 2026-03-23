@@ -1,15 +1,15 @@
 ---
 type: workflow
 name: timed-approval
-description: Waits for a human approval signal with a 1-hour timeout, returning approved, rejected, or timed_out.
+description: Submits a request and waits up to 1 hour for a human approval signal.
 inputs:
   request:
     type: str
-    default: ""
+    description: "The request to be approved or rejected"
 outputs:
   status:
     type: str
-    description: "The outcome: approved, rejected, or timed_out"
+    description: "Outcome of the approval: 'approved', 'rejected', or 'timed_out'"
 ---
 
 # Timed Approval
@@ -17,6 +17,20 @@ outputs:
 ## Usage
 
 Run this workflow using the run_workflow tool
+
+## Details
+
+Pauses after receiving a request and waits for a human to send an `approval`
+signal within 1 hour. The signal payload must be a JSON object with an
+`"approved"` boolean field, e.g. `{"approved": true}` or `{"approved": false}`.
+
+If no signal arrives within the timeout window, the workflow returns
+`timed_out` without error. If a signal is received, the workflow returns
+`approved` or `rejected` based on the payload.
+
+**Signal name:** `approval`  
+**Expected payload:** `{"approved": true}` or `{"approved": false}`  
+**Timeout:** 1 hour
 
 ## Workflow
 
@@ -31,7 +45,7 @@ try:
 except asyncio.TimeoutError:
     return {"status": "timed_out"}
 
-# Evaluate the approval response
+# Evaluate the approval payload
 if approval and approval.get("approved"):
     return {"status": "approved"}
 return {"status": "rejected"}

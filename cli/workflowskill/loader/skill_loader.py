@@ -24,6 +24,7 @@ class InputSpec:
 
     type: str
     default: Any = None
+    description: str = ""
 
 
 @dataclass
@@ -44,6 +45,7 @@ class LoadedSkill:
     inputs: dict[str, InputSpec] = field(default_factory=dict)
     outputs: dict[str, OutputSpec] = field(default_factory=dict)
     type: str = "workflow"
+    actions: list[str] = field(default_factory=list)
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -161,7 +163,8 @@ def load_skill(path: str | Path) -> LoadedSkill:
                 f" Allowed types: {sorted(_ALLOWED_INPUT_TYPES)}"
             )
         default = spec.get("default")
-        inputs[input_name] = InputSpec(type=input_type, default=default)
+        input_description = spec.get("description", "")
+        inputs[input_name] = InputSpec(type=input_type, default=default, description=input_description)
 
     # Parse output specs from frontmatter
     outputs: dict[str, OutputSpec] = {}
@@ -175,6 +178,9 @@ def load_skill(path: str | Path) -> LoadedSkill:
             outputs[output_name] = OutputSpec(type=output_type, description=output_description)
         else:
             raise SkillLoadError(f"Output '{output_name}' in {path} must be a string or mapping")
+
+    # Parse actions list from frontmatter
+    actions: list[str] = frontmatter.get("actions") or []
 
     # Extract Python code block
     code_matches = _CODE_BLOCK_RE.findall(content)
@@ -206,6 +212,7 @@ def load_skill(path: str | Path) -> LoadedSkill:
         inputs=inputs,
         outputs=outputs,
         type=skill_type,
+        actions=actions,
     )
 
 

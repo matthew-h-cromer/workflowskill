@@ -2,6 +2,7 @@
 type: workflow
 name: snoqualmie-snow-report
 description: "Fetches live weather and snowpack data for Snoqualmie Pass and generates a concise 1-3 sentence snow report for snowboarders."
+actions: [scrape, api, llm]
 outputs:
   report:
     type: str

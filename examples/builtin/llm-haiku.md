@@ -2,6 +2,7 @@
 type: workflow
 name: llm-haiku
 description: Generates a haiku on any subject using Claude Haiku. Requires ANTHROPIC_API_KEY.
+actions: [llm]
 inputs:
   subject:
     type: str

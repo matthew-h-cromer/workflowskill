@@ -1,14 +1,16 @@
 ---
 type: workflow
 name: hiring-landscape
-description: Scrapes job titles and company names from a page and summarizes the hiring landscape using an LLM.
+description: Scrapes job titles and company names from a page and summarizes the hiring landscape in 2-3 sentences.
+actions: [scrape, llm]
 inputs:
   url:
     type: str
+    description: "URL of the hiring/jobs page to analyze"
 outputs:
   summary:
     type: str
-    description: "A 2-3 sentence summary of the hiring landscape."
+    description: "2-3 sentence summary of the hiring landscape"
 ---
 
 # Hiring Landscape
@@ -20,7 +22,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Scrape job titles and company names from the page
+# Extract job titles and company names from the page
 page = await workflow.execute_activity(
     "scrape",
     {
@@ -45,7 +47,7 @@ listings = "\n".join(
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Based on the following job listings, summarize the hiring landscape in 2-3 sentences:\n\n{listings}",
+        "prompt": f"Here are the current job listings:\n\n{listings}\n\nSummarize the hiring landscape in 2-3 sentences.",
         "schema": {
             "type": "object",
             "properties": {

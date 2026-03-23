@@ -2,6 +2,7 @@
 type: workflow
 name: webpage-monitor
 description: Fetch a webpage and extract key information, using the browser for JavaScript-heavy pages.
+actions: [browser, web_fetch, llm_task]
 inputs:
   url:
     type: str

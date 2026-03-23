@@ -2,13 +2,15 @@
 type: workflow
 name: read-and-search
 description: Lists files in a directory and reads the content of the first file found.
+actions: [list_directory, read_file]
 inputs:
   directory:
     type: str
+    description: "Absolute path to the directory to list and read from"
 outputs:
   content:
     type: str
-    description: "The content of the first file in the directory"
+    description: "Content of the first file found in the directory"
 ---
 
 # Read and Search
@@ -20,7 +22,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# List all files in the given directory
+# List files in the given directory
 listing = await workflow.execute_activity(
     "list_directory",
     {"path": directory},

@@ -1,14 +1,16 @@
 ---
 type: workflow
 name: extract-links
-description: Extracts all link text and href attributes from anchor tags on a given page.
+description: Extracts all anchor link text and href attributes from a given URL.
+actions: [scrape]
 inputs:
   url:
     type: str
+    description: "The URL to extract links from"
 outputs:
   links:
     type: list
-    description: "List of objects with 'text' and 'href' keys for each anchor tag"
+    description: "List of objects with 'text' and 'href' for each anchor tag"
   count:
     type: int
     description: "Total number of links found"
@@ -23,7 +25,7 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Scrape link text and hrefs in a single call
+# Scrape both link text and href in one call
 page = await workflow.execute_activity(
     "scrape",
     {

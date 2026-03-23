@@ -2,13 +2,15 @@
 type: workflow
 name: blog-themes
 description: Scrapes blog post titles and dates, filters to 2025 posts, and summarizes their themes using an LLM.
+actions: [scrape, llm]
 inputs:
   url:
     type: str
+    description: "URL of the blog to analyze"
 outputs:
   summary:
     type: str
-    description: "A summary of the themes found in 2025 blog posts"
+    description: "LLM-generated summary of themes from 2025 blog posts"
 ---
 
 # Blog Themes
@@ -16,6 +18,10 @@ outputs:
 ## Usage
 
 Run this workflow using the run_workflow tool
+
+## Details
+
+Scrapes a blog's post titles and dates using CSS selectors, filters to only posts from 2025, then asks Claude to summarize the recurring themes. Requires the blog to use `.post-title` and `.post-date` CSS classes. If no 2025 posts are found, the workflow exits early with a descriptive message.
 
 ## Workflow
 
@@ -35,28 +41,30 @@ page = await workflow.execute_activity(
 titles = page["results"].get("titles", [])
 dates = page["results"].get("dates", [])
 
-# Filter to only posts from 2025 using pure Python
+# Filter to posts from 2025 using pure Python
 posts_2025 = [
-    title
+    {"title": title, "date": date}
     for title, date in zip(titles, dates)
     if "2025" in date
 ]
 
 if not posts_2025:
-    return {"summary": "No blog posts from 2025 were found."}
+    return {"summary": "No posts from 2025 were found on this blog."}
 
-# Format filtered titles for the LLM prompt
-titles_text = "\n".join(f"- {t}" for t in posts_2025)
+# Format titles for the LLM prompt
+post_list = "\n".join(
+    f"- {p['title']} ({p['date']})" for p in posts_2025
+)
 
 # Summarize the themes of the 2025 posts
 result = await workflow.execute_activity(
     "llm",
     {
-        "prompt": f"Here are blog post titles from 2025:\n\n{titles_text}\n\nSummarize the main themes covered across these posts.",
+        "prompt": f"Here are blog post titles from 2025:\n\n{post_list}\n\nSummarize the main themes covered across these posts.",
         "schema": {
             "type": "object",
             "properties": {
-                "summary": {"type": "string"},
+                "summary": {"type": "string"}
             },
             "required": ["summary"],
         },

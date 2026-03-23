@@ -2,6 +2,7 @@
 type: workflow
 name: summarize-hacker-news
 description: Scrapes the Hacker News homepage and returns a concise summary of the top stories. Requires ANTHROPIC_API_KEY.
+actions: [scrape, llm]
 outputs:
   summary:
     type: str

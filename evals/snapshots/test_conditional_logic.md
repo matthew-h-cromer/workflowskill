@@ -1,17 +1,19 @@
 ---
 type: workflow
 name: check-url
-description: Checks a URL and returns ok if the status is 200, otherwise returns an error with the status code.
+description: Checks a URL and returns ok if the status code is 200, otherwise returns error with the code.
+actions: [api]
 inputs:
   url:
     type: str
+    description: "The URL to check"
 outputs:
   status:
     type: str
-    description: "ok if the URL returned 200, otherwise error"
+    description: "'ok' if the server returned 200, otherwise 'error'"
   code:
     type: int
-    description: "The HTTP status code (only present when status is error)"
+    description: "The HTTP status code (only present when status is 'error')"
 ---
 
 # Check URL
@@ -23,14 +25,14 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Fetch the URL and capture the HTTP response
+# Fetch the URL and inspect the HTTP status code
 result = await workflow.execute_activity(
     "api",
     {"url": url},
 )
 
-# Return ok for 200, otherwise return error with the code
 if result["status"] == 200:
     return {"status": "ok"}
+
 return {"status": "error", "code": result["status"]}
 ```

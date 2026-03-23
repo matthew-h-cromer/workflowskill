@@ -142,10 +142,11 @@ Each eval tests whether SKILL.md successfully teaches one structural pattern. Fo
 | Timeout | Default is 30s; override with `start_to_close_timeout` only when needed |
 | I/O dataclasses | Optional inside action handlers; workflow interface uses plain `dict` |
 | Determinism | Prefer pure Python for parsing, transforming, and filtering. Use `llm` only for genuine inference (summarization, classification, generation, translation). |
+| `actions` field | Required in frontmatter when the workflow calls any actions; lists action names used in `execute_activity` calls. Enables runtime compatibility checking during progressive discovery. |
 
 ## SKILL.md Format
 
-Workflows are Python code blocks in markdown files with YAML frontmatter. See `skill/SKILL.md` for the full format specification.
+Workflows are Python code blocks in markdown files with YAML frontmatter. See `skill/SKILL.md` for the full format specification. Key frontmatter fields: `type`, `name`, `description`, `actions` (list of action names), `inputs` (with `type`, optional `default` and `description`), `outputs`. Optional `## Details` section between Usage and Workflow for prerequisites, config, and limitations.
 
 WorkflowSkills are designed to live alongside regular skills in agent environments and be picked up by progressive discovery. Every SKILL.md includes `type: workflow` in frontmatter (machine-readable discriminator) and a `## Usage` section in the markdown body that says "Run this workflow using the run_workflow tool". Together these ensure a discovering agent knows to execute the workflow via a tool rather than follow it as instructions.
 
