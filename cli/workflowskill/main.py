@@ -187,6 +187,37 @@ def openclaw_action(action_name: str, json_args: str) -> None:
     _invoke_action("openclaw", action_name, json_args)
 
 
+@cli.command(name="mcp_action")
+@click.argument("action_name")
+@click.argument("json_args")
+def mcp_action(action_name: str, json_args: str) -> None:
+    """Invoke a single MCP tool directly for testing."""
+    _invoke_action("mcp", action_name, json_args)
+
+
+@cli.command(name="mcp_list")
+def mcp_list() -> None:
+    """List all tools from configured MCP servers."""
+    from workflowskill.toolpacks import load_toolpack
+
+    try:
+        pack = load_toolpack("mcp")
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+
+    registry = ActionRegistry()
+    pack.register(registry)
+
+    if not registry.names():
+        click.echo("No MCP tools found. Check mcp.json configuration.")
+        return
+
+    click.echo("Available MCP tools:")
+    for name in sorted(registry.names()):
+        click.echo(f"  {name}")
+
+
 @cli.command()
 @click.argument("workflow_id")
 @click.argument("signal_name")

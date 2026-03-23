@@ -626,7 +626,6 @@ async def test_signal_with_timeout(generate_skill, parse_skill, extract_code, sa
     )
 
 
-# ---------------------------------------------------------------------------
 # Test 20: exec action — CLI tool invocation
 # ---------------------------------------------------------------------------
 
@@ -659,4 +658,37 @@ async def test_exec_action(generate_skill, parse_skill, extract_code, save_snaps
     )
     assert not has_activity_named(code, "llm"), (
         f"Simple CLI invocation should not use llm\n\nCode:\n{code}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 21: MCP tool — native tool name
+# ---------------------------------------------------------------------------
+
+
+async def test_mcp_tool(generate_skill, parse_skill, extract_code, save_snapshot):
+    """A workflow using MCP tools should call them by native name, not prefixed."""
+    TASK = (
+        "Create a workflow named 'read-and-search' that takes a 'directory' string input. "
+        "First use list_directory to list files in the directory. "
+        "Then use read_file to read the first file path from the listing. "
+        "Return the file content. Steps must run in order."
+    )
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="mcp")
+    save_snapshot(content)
+
+    parse_skill(content)
+    code = extract_code(content)
+
+    assert count_execute_activity(code) >= 2, (
+        f"Expected >=2 activity calls, got {count_execute_activity(code)}\n\nCode:\n{code}"
+    )
+    assert has_activity_named(code, "list_directory"), (
+        f"Expected activity named 'list_directory' (native MCP name)\n\nCode:\n{code}"
+    )
+    assert has_activity_named(code, "read_file"), (
+        f"Expected activity named 'read_file' (native MCP name)\n\nCode:\n{code}"
+    )
+    assert not has_asyncio_gather(code), (
+        f"Sequential pipeline should not use asyncio.gather\n\nCode:\n{code}"
     )

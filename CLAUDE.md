@@ -37,7 +37,8 @@ cli/
     runner/
       runner.py                    # run_skill() — load → start Temporal → execute → return
     toolpacks/                       # Pluggable action providers
-      builtin/                     # Built-in actions (api, scrape, llm)
+      builtin/                     # Built-in actions (exec, api, scrape, llm)
+      mcp/                         # MCP server tools (dynamic discovery via mcp.json)
       openclaw/                    # OpenClaw platform actions
   tests/                           # CLI unit & integration tests
     unit/
@@ -153,4 +154,5 @@ WorkflowSkills are designed to live alongside regular skills in agent environmen
 There are two skill files with distinct roles:
 
 - **`skill/SKILL.md`** — Platform-agnostic authoring guide. Used as the system prompt by all consumers. Must never contain platform-specific details. All authoring behavior changes go here.
-- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`api`, `scrape`, `llm`, etc.) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.
+- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`exec`, `api`, `scrape`, `llm`) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.
+- **`cli/workflowskill/toolpacks/mcp/`** — MCP toolpack. Dynamically discovers tools from MCP servers configured in `mcp.json` (Claude Desktop format) and registers them as workflow actions. Use `--toolpack mcp` to run workflows with MCP tools.

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 _REGISTRY: dict[str, str] = {
     "builtin": "workflowskill.toolpacks.builtin",
     "openclaw": "workflowskill.toolpacks.openclaw",
+    "mcp": "workflowskill.toolpacks.mcp",
 }
 
 

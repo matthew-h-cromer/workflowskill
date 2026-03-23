@@ -227,6 +227,50 @@ workflowskill run examples/openclaw/search-and-summarize.md --toolpack openclaw
 
 Once the workflow runs locally, copy the generated SKILL.md file to your OpenClaw workspace's `skills/` directory. OpenClaw picks it up automatically on the next session.
 
+### MCP Servers
+
+Use any MCP server's tools as workflow actions. The MCP toolpack dynamically discovers tools from servers configured in `mcp.json` (Claude Desktop format) and registers them by their native names — portable across any MCP-based platform.
+
+**Configure MCP servers:**
+
+Create `mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  }
+}
+```
+
+Supports both `stdio` and `sse` transports.
+
+**Discover available tools:**
+
+```sh
+workflowskill mcp_list
+```
+
+**Author and run a workflow:**
+
+```
+$ claude
+> /workflow-author Create a workflow that reads a file and summarizes its contents.
+```
+
+```sh
+workflowskill run workflows/my-workflow.md --toolpack mcp
+```
+
+**Test a single MCP tool:**
+
+```sh
+workflowskill mcp_action read_file '{"path": "/tmp/test.txt"}'
+```
+
 ---
 
 ## Development
