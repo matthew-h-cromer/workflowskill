@@ -43,6 +43,7 @@ class TestToolPackRegistry:
         registry = ActionRegistry()
         pack = load_toolpack("builtin")
         pack.register(registry)
+        assert registry.has("exec")
         assert registry.has("api")
         assert registry.has("scrape")
         assert registry.has("llm")
@@ -75,20 +76,20 @@ class TestToolPackRegistry:
 
 class TestExecAction:
     async def test_basic_command(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         result = await exec_action({"command": "echo hello"})
         assert "hello" in result["output"]
         assert result["exit_code"] == 0
         assert result["status"] == "done"
 
     async def test_failing_command(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         result = await exec_action({"command": "exit 1", "timeout": 5})
         assert result["exit_code"] != 0
         assert result["status"] == "error"
 
     async def test_env_vars(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         result = await exec_action({
             "command": "echo $MY_TEST_VAR",
             "env": {"MY_TEST_VAR": "hello_from_env"},
@@ -96,18 +97,18 @@ class TestExecAction:
         assert "hello_from_env" in result["output"]
 
     async def test_workdir(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         with tempfile.TemporaryDirectory() as tmpdir:
             result = await exec_action({"command": "pwd", "workdir": tmpdir})
             assert tmpdir in result["output"]
 
     async def test_missing_command_raises(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         with pytest.raises(ValueError, match="command"):
             await exec_action({})
 
     async def test_timeout(self) -> None:
-        from workflowskill.toolpacks.openclaw.actions.exec import exec_action
+        from workflowskill.actions.exec import exec_action
         result = await exec_action({"command": "sleep 10", "timeout": 0.1})
         assert result["status"] == "error"
         assert "timed out" in result["output"]

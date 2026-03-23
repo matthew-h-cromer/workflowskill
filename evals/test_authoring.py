@@ -624,3 +624,39 @@ async def test_signal_with_timeout(generate_skill, parse_skill, extract_code, sa
     assert has_try_except(code), (
         f"Expected try/except for TimeoutError handling\n\nCode:\n{code}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 20: exec action — CLI tool invocation
+# ---------------------------------------------------------------------------
+
+
+async def test_exec_action(generate_skill, parse_skill, extract_code, save_snapshot):
+    """A workflow running a shell command should use the exec action."""
+    TASK = (
+        "Create a workflow named 'disk-usage' that takes a 'path' string input "
+        "(default '.'). Run the 'du -sh' command on that path using the exec action. "
+        "If the command fails (exit_code != 0), return {'status': 'error', 'output': <output>}. "
+        "Otherwise return {'status': 'ok', 'usage': <output>}."
+    )
+    content = await _generate_with_retries(generate_skill, TASK, toolpack="builtin")
+    save_snapshot(content)
+
+    skill = parse_skill(content)
+    code = extract_code(content)
+
+    assert "path" in skill.inputs, (
+        f"Expected 'path' in inputs, got: {list(skill.inputs)}\n\nGenerated:\n{content}"
+    )
+    assert count_execute_activity(code) == 1, (
+        f"Expected exactly 1 activity call, got {count_execute_activity(code)}\n\nCode:\n{code}"
+    )
+    assert has_activity_named(code, "exec"), (
+        f"Expected activity named 'exec'\n\nCode:\n{code}"
+    )
+    assert has_if_branch(code), (
+        f"Expected if branch for exit code check\n\nCode:\n{code}"
+    )
+    assert not has_activity_named(code, "llm"), (
+        f"Simple CLI invocation should not use llm\n\nCode:\n{code}"
+    )

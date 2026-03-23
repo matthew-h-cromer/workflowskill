@@ -4,6 +4,29 @@ When authoring workflows for the builtin runtime (`workflowskill run`), these ac
 
 **Timeouts:** The default timeout is 30 seconds. Only add `start_to_close_timeout=timedelta(seconds=N)` when you need a value other than 30s (e.g., long-running LLM calls or slow scrapes).
 
+## `exec`
+
+Run a shell command and return its output. Use for calling CLI tools, running scripts, or any local system command.
+
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `command` | `str` | yes | — | Shell command to execute |
+| `workdir` | `str` | no | cwd | Working directory |
+| `env` | `dict` | no | — | Additional environment variables |
+| `timeout` | `int` | no | `60` | Kill timeout in seconds |
+
+Output: `output` (str), `exit_code` (int), `status` ("done" \| "error")
+
+```python
+# Run a shell command
+result = await workflow.execute_activity(
+    "exec",
+    {"command": "git log --oneline -10"},
+    start_to_close_timeout=timedelta(seconds=30),
+)
+log = result["output"]
+```
+
 ## `api`
 
 Make an HTTP request and return the raw response body. Use for API endpoints returning JSON or other structured data.

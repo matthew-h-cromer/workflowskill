@@ -160,6 +160,7 @@ workflowskill run my-workflow.md          # uses builtin actions by default
 
 | Action | Description |
 |--------|-------------|
+| `exec` | Run shell commands — call CLI tools, scripts |
 | `api` | Raw HTTP request — use for JSON APIs |
 | `scrape` | Extract structured data via CSS selectors |
 | `llm` | Call Claude with optional JSON schema |

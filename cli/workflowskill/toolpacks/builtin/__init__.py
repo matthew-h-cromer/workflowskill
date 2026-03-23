@@ -13,13 +13,15 @@ _PROMPT_MD = Path(__file__).parent / "prompt.md"
 
 class BuiltinToolPack:
     name = "builtin"
-    description = "Built-in actions for the workflowskill CLI: api, scrape, llm"
+    description = "Built-in actions for the workflowskill CLI: exec, api, scrape, llm"
 
     def register(self, registry: ActionRegistry) -> None:
+        from workflowskill.actions.exec import exec_action
         from workflowskill.toolpacks.builtin.actions.api import api
         from workflowskill.toolpacks.builtin.actions.llm import llm
         from workflowskill.toolpacks.builtin.actions.scrape import scrape
 
+        registry.register("exec", exec_action)
         registry.register("api", api)
         registry.register("scrape", scrape)
         registry.register("llm", llm)

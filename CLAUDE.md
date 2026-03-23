@@ -30,6 +30,7 @@ cli/
     config.py                      # Temporal connection config (env vars)
     actions/
       registry.py                  # ActionRegistry — register tools as Temporal activities
+      exec.py                      # exec action (shared across toolpacks)
     loader/
       skill_loader.py              # Parse SKILL.md → LoadedSkill
       validator.py                 # AST validator for restricted Python subset
