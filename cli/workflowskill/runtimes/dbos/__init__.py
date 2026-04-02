@@ -131,11 +131,13 @@ class DBOSRuntime:
         toolkit: Toolkit | None = None,
         on_activity_start: Callable[[str, dict[str, Any]], None] | None = None,
         on_activity_complete: Callable[[str, int], None] | None = None,
+        on_activity_error: Callable[[str, int, BaseException], None] | None = None,
         on_signal_waiting: Callable[[str, str | None], Awaitable[Any]] | None = None,
     ) -> None:
         self._toolkit = toolkit
         self._on_activity_start = on_activity_start
         self._on_activity_complete = on_activity_complete
+        self._on_activity_error = on_activity_error
         self._on_signal_waiting = on_signal_waiting
         self._dbos: DBOS | None = None
 
@@ -194,10 +196,15 @@ class DBOSRuntime:
             self._on_activity_start(action, args)
         t0 = time.monotonic()
         try:
-            return await self.execute_step(action, args)
-        finally:
+            result = await self.execute_step(action, args)
+        except BaseException as exc:
+            if self._on_activity_error:
+                self._on_activity_error(action, int((time.monotonic() - t0) * 1000), exc)
+            raise
+        else:
             if self._on_activity_complete:
                 self._on_activity_complete(action, int((time.monotonic() - t0) * 1000))
+            return result
 
     async def execute_step(
         self,
@@ -252,6 +259,7 @@ def create_runtime(
     toolkit: Toolkit | None = None,
     on_activity_start: Callable[[str, dict[str, Any]], None] | None = None,
     on_activity_complete: Callable[[str, int], None] | None = None,
+    on_activity_error: Callable[[str, int, BaseException], None] | None = None,
     on_signal_waiting: Callable[[str, str | None], Awaitable[Any]] | None = None,
 ) -> DBOSRuntime:
     """Factory used by :func:`workflowskill.runtimes.load_runtime`."""
@@ -259,5 +267,6 @@ def create_runtime(
         toolkit=toolkit,
         on_activity_start=on_activity_start,
         on_activity_complete=on_activity_complete,
+        on_activity_error=on_activity_error,
         on_signal_waiting=on_signal_waiting,
     )

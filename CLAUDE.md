@@ -53,18 +53,15 @@ pyproject.toml                     # Python project config (uv, dependencies)
 ## Development
 
 ```sh
-uv sync --extra dev          # Install dependencies
-uv run pytest cli/tests      # Run CLI tests
-uv run mypy cli/workflowskill/   # Type checking
-uv run ruff check cli/workflowskill/  # Linting
-uv run ruff format cli/workflowskill/ # Formatting
+uv sync --extra dev                    # Install dependencies
+uv run pytest cli/tests                # Run CLI tests
+uv run mypy cli/workflowskill/         # Type checking
+uv run ruff check cli/workflowskill/   # Linting
+uv run ruff format cli/workflowskill/  # Formatting
 
-# Run CLI directly:
+# Run workflows (always uses current source):
 uv run python -m workflowskill.main run <file>
-
-# Install CLI globally:
-uv tool install .
-workflowskill run examples/weldable/hello-world.md --toolkit weldable
+uv run python -m workflowskill.main run examples/weldable/hello-world.md --toolkit weldable
 ```
 
 ## Eval Suite

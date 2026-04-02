@@ -66,6 +66,18 @@ def on_activity_complete(name: str, elapsed_ms: int) -> None:
     console.print(f"  [green]✓[/green] {name} [dim]({elapsed_ms}ms)[/dim]")
 
 
+def on_activity_error(name: str, elapsed_ms: int, error: BaseException) -> None:
+    """Print a failure line when an activity raises an error."""
+    from workflowskill.errors import IntegrationNotConnectedError
+
+    console.print(f"  [red]✗[/red] {name} [dim]({elapsed_ms}ms)[/dim]")
+    if isinstance(error, IntegrationNotConnectedError) and error.connect_url:
+        console.print(f"    [bold red]Integration not connected.[/bold red]")
+        console.print(f"    Connect at: [bold cyan]{error.connect_url}[/bold cyan]")
+    else:
+        console.print(f"    [red]{error}[/red]")
+
+
 async def prompt_for_signal(signal_name: str, prompt: str | None) -> Any:
     """Prompt the user for signal input and return the parsed data.
 

@@ -7,6 +7,8 @@ from typing import Any, cast
 
 import httpx
 
+from workflowskill.errors import IntegrationNotConnectedError, ToolkitError
+
 
 class WeldableToolkit:
     """Toolkit that routes any ``execute_activity()`` call to Weldable's REST API.
@@ -30,7 +32,11 @@ class WeldableToolkit:
 
     async def execute(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
         """Route an action to Weldable's /api/mcp/act endpoint."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self._api_url)
+        is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        async with httpx.AsyncClient(timeout=60.0, verify=not is_local) as client:
             response = await client.post(
                 f"{self._api_url}/api/mcp/act",
                 headers={
@@ -39,28 +45,36 @@ class WeldableToolkit:
                 },
                 json={"intent": action, "args": args},
             )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise ToolkitError(
+                f"Weldable API returned HTTP {e.response.status_code} for action '{action}'"
+            ) from e
         data = response.json()
         if not isinstance(data, dict):
-            raise RuntimeError(
+            raise ToolkitError(
                 f"Expected dict response from Weldable API, got {type(data).__name__}"
             )
         result: dict[str, Any] = data
 
         status = result.get("status")
-        if status == "complete":
+        if status == "executed":
             return cast(dict[str, Any], result.get("result", {}))
-        elif status == "auth_required":
+        elif status in ("auth_required", "matched"):
             connect_url = result.get("connect_url", f"{self._api_url}/app/integrations")
-            raise RuntimeError(f"Integration not connected. Connect it at: {connect_url}")
+            raise IntegrationNotConnectedError(
+                f"Integration not connected. Connect it at: {connect_url}",
+                connect_url=connect_url,
+            )
         elif status == "needs_args":
             missing = result.get("missing", [])
             names = [p["name"] for p in missing]
-            raise RuntimeError(f"Missing required arguments: {', '.join(names)}")
+            raise ToolkitError(f"Missing required arguments for '{action}': {', '.join(names)}")
         elif status == "error":
-            raise RuntimeError(result.get("message", "Unknown error from Weldable"))
+            raise ToolkitError(result.get("message", "Unknown error from Weldable"))
         else:
-            return result
+            raise ToolkitError(f"Unexpected status '{status}' from Weldable for action '{action}'")
 
     def get_authoring_context(self) -> str:
         """Return the Weldable action catalog for Claude authoring context."""
