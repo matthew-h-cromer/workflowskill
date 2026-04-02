@@ -234,15 +234,19 @@ def load_skill(path: str | Path) -> LoadedSkill:
 
 
 def _name_to_class(name: str) -> str:
-    """Convert a kebab-case or snake_case workflow name to a PascalCase class name.
+    """Convert a workflow name to a PascalCase class name.
+
+    Handles kebab-case, snake_case, and Title Case (with spaces).
 
     Examples:
-        "hello-world"  -> "HelloWorldWorkflow"
-        "fetch-page"   -> "FetchPageWorkflow"
-        "my_workflow"  -> "MyWorkflowWorkflow"
+        "hello-world"        -> "HelloWorldWorkflow"
+        "fetch-page"         -> "FetchPageWorkflow"
+        "my_workflow"        -> "MyWorkflowWorkflow"
+        "Gmail Triage"       -> "GmailTriageWorkflow"
+        "Recipe to Google Tasks" -> "RecipeToGoogleTasksWorkflow"
     """
-    parts = name.replace("_", "-").split("-")
-    return "".join(p.capitalize() for p in parts) + "Workflow"
+    parts = re.split(r"[-_\s]+", name)
+    return "".join(p.capitalize() for p in parts if p) + "Workflow"
 
 
 def _build_method_signature(inputs: dict[str, InputSpec]) -> str:
