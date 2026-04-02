@@ -143,7 +143,7 @@ class DBOSRuntime:
 
     def _ensure_dbos(self) -> None:
         if self._dbos is None:
-            self._dbos = DBOS(config={"name": "workflowskill", "run_admin_server": False})
+            self._dbos = DBOS(config={"name": "workflowskill", "run_admin_server": False, "log_level": "CRITICAL"})
             DBOS.launch()
 
     def destroy(self) -> None:
