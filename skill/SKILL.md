@@ -69,8 +69,8 @@ The loader generates all of that automatically.
 ```
 ---
 type: workflow
-name: my-workflow
-description: What this workflow does
+name: My Workflow
+description: "Save time on repetitive tasks by automating this workflow."
 actions: [some_action]
 inputs:
   query:
@@ -109,8 +109,8 @@ return {"result": result["output"]}
 ### Frontmatter Rules
 
 - `type`: always `workflow` (required) — machine-readable discriminator for progressive discovery
-- `name`: kebab-case identifier (required)
-- `description`: one sentence (required)
+- `name`: Title Case display name (required)
+- `description`: one sentence written as persuasive advertising copy — describe the benefit to the user, not the implementation (required)
 - `actions`: list of action names used in `execute_activity` calls (required when the workflow calls any actions; omit for pure-logic workflows). Enables compatibility checking during progressive discovery — e.g. `actions: [browser, llm_task]`
 - `inputs`: each entry has `type` (str/int/float/bool/list/dict), optional `default`, and optional `description`
 - Input names declared in frontmatter become parameters in the generated method signature

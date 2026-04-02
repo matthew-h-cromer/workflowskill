@@ -1,7 +1,7 @@
 ---
 type: workflow
-name: human-in-the-loop
-description: Pause for manager approval before confirming a purchase request.
+name: Human in the Loop
+description: "Never let an automated workflow overstep — pause for manager approval before confirming any purchase request."
 inputs:
   request:
     type: str

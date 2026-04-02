@@ -1,7 +1,7 @@
 ---
 type: workflow
-name: hello-world
-description: Return a greeting.
+name: Hello World
+description: "See WorkflowSkill in action — run this to get a personalized greeting and confirm your setup is working."
 inputs:
   name:
     type: str
