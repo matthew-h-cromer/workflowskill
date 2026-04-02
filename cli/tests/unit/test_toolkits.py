@@ -96,7 +96,7 @@ class TestWeldableExecute:
     @pytest.mark.asyncio
     async def test_execute_complete(self) -> None:
         toolkit = self._make_toolkit()
-        with self._patch_client({"status": "complete", "result": {"ts": "123"}}):
+        with self._patch_client({"status": "executed", "result": {"ts": "123"}}):
             result = await toolkit.execute("slack.post_message", {"channel": "#test", "text": "hi"})
         assert result == {"ts": "123"}
 
@@ -131,7 +131,7 @@ class TestWeldableExecute:
         toolkit = self._make_toolkit()
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {"status": "complete", "result": {}}
+        mock_response.json.return_value = {"status": "executed", "result": {}}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()

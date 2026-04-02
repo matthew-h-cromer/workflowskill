@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from workflowskill.display import (
     on_activity_complete,
+    on_activity_error,
     on_activity_start,
     print_error,
     print_result,
@@ -21,6 +22,7 @@ from workflowskill.display import (
     print_toolkit,
     prompt_for_signal,
 )
+from workflowskill.errors import ToolkitError
 from workflowskill.loader.skill_loader import SkillLoadError
 from workflowskill.runner.runner import run_skill
 from workflowskill.runtimes import load_runtime
@@ -108,6 +110,7 @@ def run(
             toolkit=toolkit,
             on_activity_start=on_activity_start,
             on_activity_complete=on_activity_complete,
+            on_activity_error=on_activity_error,
             on_signal_waiting=prompt_for_signal,
         )
     except ValueError as e:
@@ -120,6 +123,9 @@ def run(
 
     try:
         result = asyncio.run(run_skill(file, inputs, runtime))
+    except ToolkitError:
+        # on_activity_error callback already displayed the details
+        sys.exit(1)
     except (SkillLoadError, ValueError, RuntimeError) as e:
         print_error(str(e))
         sys.exit(1)
