@@ -123,6 +123,8 @@ def run(
     except (SkillLoadError, ValueError, RuntimeError) as e:
         print_error(str(e))
         sys.exit(1)
+    finally:
+        runtime.destroy()
 
     print_result(result, skill_name)
 
