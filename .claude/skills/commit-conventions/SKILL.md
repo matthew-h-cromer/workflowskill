@@ -60,11 +60,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 | Scope | Covers |
 |-------|--------|
-| `loader` | SKILL.md parsing, frontmatter extraction |
-| `actions` | ActionRegistry, action handlers |
-| `runner` | run_skill orchestration, Temporal lifecycle |
-| `cli` | Click CLI commands (run, worker) |
-| `builtin` | Built-in CLI actions (api, scrape, llm, etc.) |
+| `loader` | SKILL.md parsing, frontmatter extraction, AST validation |
+| `runner` | run_skill orchestration |
+| `cli` | Click CLI commands (run) |
+| `toolkits` | Platform toolkit implementations (weldable, etc.) |
+| `runtimes` | Workflow execution environments (dbos, etc.) |
 | `examples` | Example workflow files |
 
 ## Examples
@@ -93,7 +93,7 @@ Bad (and how to fix):
 # Bad: no type prefix, past tense
 Added api action
 # Good:
-feat(builtin): add api action
+feat(toolkits): add weldable toolkit
 
 # Bad: uppercase after colon, trailing period
 feat: Add new loader module.

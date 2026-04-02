@@ -1,16 +1,16 @@
 ---
 type: workflow
 name: check-status
-description: Fetch a URL and return its HTTP status code and content.
-actions: [api]
+description: Fetches a URL and returns its HTTP status code and content.
+actions: [web.api]
 inputs:
   url:
     type: str
     description: "The URL to fetch"
 outputs:
-  status:
+  status_code:
     type: int
-    description: "HTTP status code returned by the URL"
+    description: "HTTP status code returned by the server"
   content:
     type: str
     description: "Response body content"
@@ -25,10 +25,14 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Fetch the URL and return status and content
-result = await workflow.execute_activity(
-    "api",
-    {"url": url},
+# Fetch the target URL
+response = await workflow.execute_activity(
+    "web.api",
+    {"url": url, "method": "GET"},
 )
-return {"status": result["status"], "content": result["content"]}
+
+return {
+    "status_code": response["status_code"],
+    "content": response["content"],
+}
 ```

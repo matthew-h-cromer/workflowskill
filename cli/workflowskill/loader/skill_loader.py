@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import keyword
 import re
 import sys
 import tempfile
@@ -12,6 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+# Allowed input types for workflow frontmatter.
+_ALLOWED_INPUT_TYPES: frozenset[str] = frozenset({"str", "int", "float", "bool", "list", "dict"})
 
 
 class SkillLoadError(Exception):
@@ -52,58 +56,72 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _CODE_BLOCK_RE = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
 
 # Preamble injected into every generated workflow module.
-# Provides all allowed imports and the _WorkflowProxy that defaults
-# start_to_close_timeout=timedelta(seconds=30) on execute_activity calls.
+# Provides all allowed imports and the _ActionProxy that routes execute_activity()
+# calls through workflowskill.workflow_context (a ContextVar set by the runner).
 _PREAMBLE = """\
-from temporalio import workflow as _tw
-from temporalio.common import RetryPolicy
-from datetime import timedelta
 import asyncio
 import json
 import re
 import math
 import collections
 import urllib.parse
+from dataclasses import dataclass
+from datetime import timedelta, datetime, timezone
 
 
-class _WorkflowProxy:
-    def __init__(self):
-        self._signals = {}  # signal_name -> [payloads]
+@dataclass
+class RetryPolicy:
+    maximum_attempts: int = 1
+    initial_interval: timedelta = timedelta(seconds=1)
+    maximum_interval: timedelta = timedelta(seconds=30)
+    backoff_coefficient: float = 2.0
 
-    async def execute_activity(self, *args, start_to_close_timeout=None, **kwargs):
-        if start_to_close_timeout is None:
-            start_to_close_timeout = timedelta(seconds=30)
-        return await _tw.execute_activity(
-            *args, start_to_close_timeout=start_to_close_timeout, **kwargs
-        )
-
-    async def wait_for_signal(self, name, *, prompt=None, timeout=None):
-        # Notify the runner that we're about to wait so it can prompt the user
-        await _tw.execute_activity(
-            "__signal_notify",
-            {"signal": name, "prompt": prompt},
-            start_to_close_timeout=timedelta(seconds=5),
-        )
-        # Register the Temporal signal handler and wait
-        if name not in self._signals:
-            self._signals[name] = []
-
-            def _handler(data=None):
-                self._signals[name].append(data)
-
-            _tw.set_signal_handler(name, _handler)
-        await _tw.wait_condition(
-            lambda: len(self._signals.get(name, [])) > 0,
-            timeout=timedelta(seconds=timeout) if timeout else None,
-        )
-        return self._signals[name].pop(0)
-
-    def __getattr__(self, name):
-        return getattr(_tw, name)
+import workflowskill.workflow_context as _wf_ctx
 
 
-workflow = _WorkflowProxy()
+class _ActionProxy:
+    \"\"\"Intercepts execute_activity() and wait_for_signal() calls from user workflow code.
 
+    Routes actions through workflowskill.workflow_context, which is set up by
+    the runner before each execution via a ContextVar for async-safe dispatch.
+    \"\"\"
+
+    @staticmethod
+    async def execute_activity(
+        action_name, args=None, *, start_to_close_timeout=None, retry_policy=None, **kwargs
+    ):
+        if args is None:
+            args = {}
+        step_index = _step_counter[0]
+        _step_counter[0] += 1
+        display_label = _format_label(action_name, args)
+        return await _wf_ctx.dispatch_action(action_name, args, step_index, display_label)
+
+    @staticmethod
+    async def wait_for_signal(name, *, prompt=None, timeout=None):
+        return await _wf_ctx.wait_for_signal(name, prompt=prompt, timeout=timeout)
+
+    @staticmethod
+    def now():
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def defn(cls):
+        cls._workflow_definition = True
+        return cls
+
+    @staticmethod
+    def run(fn):
+        return fn
+
+
+def _format_label(action_name, args):
+    if not isinstance(args, dict):
+        return action_name
+    return action_name
+
+
+workflow = _ActionProxy()
 
 """
 
@@ -140,7 +158,6 @@ def load_skill(path: str | Path) -> LoadedSkill:
     skill_type: str = frontmatter.get("type", "workflow")
 
     # Parse input specs from frontmatter
-    _ALLOWED_INPUT_TYPES = {"str", "int", "float", "bool", "list", "dict"}
     inputs: dict[str, InputSpec] = {}
     raw_inputs = frontmatter.get("inputs", {}) or {}
     for input_name, spec in raw_inputs.items():
@@ -150,8 +167,6 @@ def load_skill(path: str | Path) -> LoadedSkill:
                 " 'type' and optional 'default'"
             )
         # Validate input name is a safe Python identifier
-        import keyword
-
         if not str(input_name).isidentifier() or keyword.iskeyword(input_name):
             raise SkillLoadError(
                 f"Input name '{input_name}' in {path} is not a valid Python identifier"
@@ -164,7 +179,9 @@ def load_skill(path: str | Path) -> LoadedSkill:
             )
         default = spec.get("default")
         input_description = spec.get("description", "")
-        inputs[input_name] = InputSpec(type=input_type, default=default, description=input_description)
+        inputs[input_name] = InputSpec(
+            type=input_type, default=default, description=input_description
+        )
 
     # Parse output specs from frontmatter
     outputs: dict[str, OutputSpec] = {}
@@ -252,7 +269,8 @@ def _generate_module_code(class_name: str, method_sig: str, user_code: str) -> s
         body = "pass"
     indented_body = textwrap.indent(body, "        ")
     return (
-        _PREAMBLE
+        "_step_counter = [0]\n\n"
+        + _PREAMBLE
         + "@workflow.defn\n"
         + f"class {class_name}:\n"
         + "    @workflow.run\n"
@@ -301,7 +319,6 @@ def _build_safe_builtins() -> dict[str, Any]:
         "staticmethod",
         "classmethod",
         "hasattr",
-        "getattr",  # needed by _WorkflowProxy.__getattr__
         # Exceptions
         "Exception",
         "KeyError",
@@ -316,7 +333,7 @@ def _build_safe_builtins() -> dict[str, Any]:
         "True",
         "False",
         "None",
-        # Import machinery needed by importlib/temporalio decorators
+        # Import machinery needed by preamble imports and @dataclass
         "__build_class__",
         "__name__",
         "__import__",
@@ -328,7 +345,7 @@ _SAFE_BUILTINS: dict[str, Any] = _build_safe_builtins()
 
 
 def _import_workflow_class(code: str, source_path: str | Path) -> type:
-    """Write generated code to a temp file and import the @workflow.defn class."""
+    """Write generated code to a temp file and import the workflow class."""
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".py",
@@ -386,5 +403,4 @@ def _import_workflow_class(code: str, source_path: str | Path) -> type:
 
 def _is_workflow_defn(cls: type) -> bool:
     """Return True if the class is decorated with @workflow.defn."""
-    # temporalio sets _temporal_workflow_definition on the class
-    return hasattr(cls, "__temporal_workflow_definition")
+    return hasattr(cls, "_workflow_definition")

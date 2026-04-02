@@ -1,8 +1,8 @@
 ---
 type: workflow
 name: approval-gate
-description: Submits a request to an API endpoint and waits for human approval before returning the outcome.
-actions: [api]
+description: Submits a request to an API endpoint, then waits for human approval before returning the outcome.
+actions: [web.api]
 inputs:
   request:
     type: str
@@ -21,35 +21,37 @@ Run this workflow using the run_workflow tool
 
 ## Details
 
-Submits a request string to `https://example.com/api/submit`, then durably
-pauses until a human sends an `approval` signal. The workflow survives
-restarts while waiting — it will resume as soon as the signal arrives.
+Submits the `request` string to `https://example.com/api/submit` as a JSON
+POST body, then pauses and waits for a human to send an `approval` signal.
 
-Send the signal with `{"approved": true}` to approve, or `{"approved": false}`
-(or any other value) to reject.
+The signal data must be a JSON object. If `approved` is `true` the workflow
+returns `{"status": "approved"}`; any other value (or no data) returns
+`{"status": "rejected"}`.
+
+**Prerequisites:** The `web.api` action must be available in the runtime
+context. No OAuth connection is required for this action.
 
 ## Workflow
 
 ```python
-# Submit the request to the API
-await workflow.execute_activity(
-    "api",
+# Submit the request to the API endpoint
+submission = await workflow.execute_activity(
+    "web.api",
     {
         "url": "https://example.com/api/submit",
         "method": "POST",
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"request": request}),
+        "body": {"request": request},
     },
 )
 
-# Pause until a human sends the approval signal
-signal_data = await workflow.wait_for_signal(
+# Pause until a human sends the 'approval' signal
+approval = await workflow.wait_for_signal(
     "approval",
-    prompt="Send approval signal with {\"approved\": true} to approve or {\"approved\": false} to reject.",
+    prompt="Send approval signal with {\"approved\": true} to approve, or {\"approved\": false} to reject.",
 )
 
-# Return outcome based on signal data
-if signal_data and signal_data.get("approved") is True:
+# Evaluate the signal data and return the outcome
+if approval and approval.get("approved") is True:
     return {"status": "approved"}
 return {"status": "rejected"}
 ```

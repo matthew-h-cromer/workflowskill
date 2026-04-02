@@ -1,232 +1,108 @@
-"""High-level runner: load SKILL.md → start Temporal → execute → return result."""
+"""High-level runner: load SKILL.md → execute workflow via a Runtime → return result."""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import inspect
-import os
-import uuid
-from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any
 
-from temporalio.runtime import LoggingConfig, Runtime, TelemetryConfig
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import UnsandboxedWorkflowRunner, Worker
-
-from workflowskill.actions.registry import ActionRegistry
 from workflowskill.loader.skill_loader import load_skill
-
-TASK_QUEUE = "workflowskill-local"
-
-# Suppress benign "transport error" warning during worker shutdown.
-# The default core log filter is WARN for temporalio_sdk_core; we keep
-# that but raise the worker sub-module to ERROR.
-_RUNTIME = Runtime(
-    telemetry=TelemetryConfig(
-        logging=LoggingConfig(
-            filter="ERROR,temporalio_sdk_core=WARN,temporalio_sdk_core::worker=ERROR,temporalio_client=WARN,temporalio_sdk=WARN,temporal_sdk_bridge=WARN"
-        )
-    )
-)
-
-
-@contextlib.contextmanager
-def _suppress_fd_output() -> Generator[None, None, None]:
-    """Temporarily redirect OS-level stdout/stderr (fd 1 and fd 2) to /dev/null."""
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    saved_stdout: int | None = None
-    saved_stderr: int | None = None
-    try:
-        saved_stdout = os.dup(1)
-        saved_stderr = os.dup(2)
-        os.dup2(devnull, 1)
-        os.dup2(devnull, 2)
-        os.close(devnull)
-        devnull = -1
-        yield
-    finally:
-        if devnull != -1:
-            os.close(devnull)
-        if saved_stderr is not None:
-            os.dup2(saved_stderr, 2)
-            os.close(saved_stderr)
-        if saved_stdout is not None:
-            os.dup2(saved_stdout, 1)
-            os.close(saved_stdout)
+from workflowskill.runtimes._protocol import Runtime
 
 
 async def run_skill(
     skill_path: str | Path,
     inputs: dict[str, Any] | None = None,
-    registry: ActionRegistry | None = None,
-    on_server_started: Callable[[str], None] | None = None,
-    on_workflow_started: Callable[[str], None] | None = None,
-    on_signal_waiting: Callable[[str, str | None], Awaitable[Any]] | None = None,
+    runtime: Runtime | None = None,
 ) -> dict[str, Any]:
     """Load and execute a SKILL.md workflow end-to-end.
 
-    This function:
-    1. Loads the SKILL.md via the skill loader.
-    2. Merges provided inputs with frontmatter defaults.
-    3. Starts an embedded Temporal environment (no external server needed).
-    4. Registers the workflow class and all actions from the registry.
-    5. Executes the workflow with the merged inputs.
-    6. Shuts down cleanly and returns the result.
+    Loads the workflow from *skill_path*, merges *inputs* with frontmatter
+    defaults, and delegates execution to *runtime*.
 
     Args:
         skill_path: Path to the SKILL.md file.
-        inputs: Input values to pass to the workflow. Keys not provided fall
-                back to frontmatter defaults.
-        registry: ActionRegistry with registered tool handlers. If None, an
-                  empty registry is used (only works for workflows with no
-                  activity calls).
-        on_server_started: Optional callback invoked with the server address
-                           string after the embedded Temporal server is ready.
-        on_workflow_started: Optional callback invoked with the workflow ID
-                             string after the workflow starts.
-        on_signal_waiting: Optional async callback invoked when the workflow
-                           calls wait_for_signal. Receives (signal_name, prompt)
-                           and should return signal data (or None). If not
-                           provided, signals must be sent externally via the
-                           `workflowskill signal` CLI command.
+        inputs:     Input values to pass to the workflow. Keys not provided
+                    fall back to frontmatter defaults.
+        runtime:    Runtime to use for execution. Defaults to DBOS
+                    if not provided.
 
     Returns:
-        The dict returned by the workflow's @workflow.run method.
+        The dict returned by the workflow's ``run`` method.
 
     Raises:
-        SkillLoadError: If the SKILL.md cannot be parsed.
-        Exception: If the workflow execution fails.
+        SkillLoadError: If the SKILL.md cannot be parsed or is invalid.
+        ValueError:     If the workflow returns a non-dict or is missing
+                        declared output keys.
+        RuntimeError:   If a required toolkit is not configured.
     """
-    skill = load_skill(skill_path)
-    registry = registry or ActionRegistry()
+    skill_path = Path(skill_path)
 
-    # Build merged inputs: start with frontmatter defaults, overlay provided values
+    if runtime is None:
+        from workflowskill.runtimes import load_runtime
+
+        runtime = load_runtime("dbos")
+
+    loaded = load_skill(skill_path)
+
+    # Merge provided inputs with frontmatter defaults.
     merged: dict[str, Any] = {}
-    for input_name, spec in skill.inputs.items():
+    for input_name, spec in loaded.inputs.items():
         if spec.default is not None:
             merged[input_name] = spec.default
-    if inputs:
-        merged.update(inputs)
+    merged.update(inputs or {})
 
-    # Build ordered args list by inspecting run method parameters
-    args = _build_args(skill.workflow_class, merged)
+    # Select the kwargs the workflow run method expects.
+    kwargs = _build_kwargs(loaded.workflow_class, merged)
 
-    # Register the internal __signal_notify activity only when signal prompting
-    # is enabled. It pushes signal info to a queue so the runner can prompt the
-    # user and send the real Temporal signal via the workflow handle.
-    signal_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-    if on_signal_waiting is not None:
-        async def _signal_notify_handler(notify_args: dict[str, Any]) -> dict[str, Any]:
-            await signal_queue.put(notify_args)
-            return {}
-
-        registry.register("__signal_notify", _signal_notify_handler)
-
-    # Start embedded Temporal environment (no external server required).
-    # Suppress the Temporal CLI subprocess banner at the OS fd level so it
-    # never races with our own output, then notify via callback.
-    with _suppress_fd_output():
-        env = await WorkflowEnvironment.start_local(runtime=_RUNTIME)
-
-    if on_server_started is not None:
-        address = env.client.service_client.config.target_host
-        on_server_started(address)
-
-    async with env:
-        activities = registry.get_activities()
-
-        async with Worker(
-            env.client,
-            task_queue=TASK_QUEUE,
-            workflows=[skill.workflow_class],
-            activities=activities,
-            # Workflow code is loaded dynamically from SKILL.md files; the sandbox
-            # cannot re-import classes that don't exist as stable modules on disk.
-            workflow_runner=UnsandboxedWorkflowRunner(),
-        ):
-            workflow_id = f"{skill.name}-{uuid.uuid4()}"
-            handle: Any = await env.client.start_workflow(
-                skill.workflow_class.run,  # type: ignore[attr-defined]
-                args=args,
-                id=workflow_id,
-                task_queue=TASK_QUEUE,
-            )
-
-            if on_workflow_started is not None:
-                on_workflow_started(workflow_id)
-
-            result_task: asyncio.Task[Any] = asyncio.create_task(handle.result())
-
-            if on_signal_waiting is not None:
-                # Run a signal reader concurrently: wait for __signal_notify
-                # events, prompt the user, then send the real Temporal signal.
-                async def _signal_reader() -> None:
-                    while True:
-                        info = await signal_queue.get()
-                        data = await on_signal_waiting(
-                            info["signal"], info.get("prompt")
-                        )
-                        await handle.signal(info["signal"], data)
-
-                reader_task: asyncio.Task[None] = asyncio.create_task(_signal_reader())
-                done, pending = await asyncio.wait(
-                    {result_task, reader_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for t in pending:
-                    t.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await t
-                # If the reader finished first (e.g. prompt callback raised),
-                # propagate its exception rather than masking it with CancelledError.
-                if reader_task in done:
-                    reader_task.result()  # raises if reader failed
-            else:
-                await result_task
-
-            result: Any = result_task.result()
+    # Note: loaded.workflow_class is passed here but DBOS does not use it
+    # directly — it reloads the workflow from workflow_id (the file path) for
+    # replay correctness. The load above is needed for input merging and
+    # output validation only.
+    result = await runtime.run_workflow(
+        loaded.workflow_class().run,
+        kwargs,
+        workflow_id=str(skill_path),
+    )
 
     if not isinstance(result, dict):
         raise ValueError(
-            f"Workflow '{skill.name}' returned {type(result).__name__!r} instead of dict"
+            f"Workflow '{loaded.name}' returned {type(result).__name__!r} instead of dict."
         )
 
-    if skill.outputs:
-        missing = [key for key in skill.outputs if key not in result]
+    if loaded.outputs:
+        missing = [key for key in loaded.outputs if key not in result]
         if missing:
             raise ValueError(
-                f"Workflow '{skill.name}' result is missing declared output keys: {missing}"
+                f"Workflow '{loaded.name}' result is missing declared output keys: {missing}"
             )
 
     return result
 
 
-def _build_args(workflow_class: type, merged: dict[str, Any]) -> list[Any]:
-    """Build positional args list for the workflow run method from a dict of inputs."""
+def _build_kwargs(workflow_class: type, merged: dict[str, Any]) -> dict[str, Any]:
+    """Select the kwargs the workflow run method expects from the merged inputs."""
     try:
         run_method = getattr(workflow_class, "run", None)
         if run_method is None:
-            return []
+            return {}
         sig = inspect.signature(run_method)
         params = [(name, p) for name, p in sig.parameters.items() if name not in ("self", "cls")]
     except (ValueError, TypeError):
-        return []
+        return {}
 
     if not params:
-        return []
+        return {}
 
-    args: list[Any] = []
+    kwargs: dict[str, Any] = {}
     for name, param in params:
         if name in merged:
-            args.append(merged[name])
+            kwargs[name] = merged[name]
         elif param.default is not inspect.Parameter.empty:
-            args.append(param.default)
+            kwargs[name] = param.default
         else:
             raise ValueError(
                 f"Required workflow input '{name}' was not provided and has no default."
             )
 
-    return args
+    return kwargs

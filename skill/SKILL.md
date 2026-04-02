@@ -1,7 +1,7 @@
 ---
 name: workflowskill-workflow-author
 description: >
-  Teaches Claude how to generate Python Temporal workflows in SKILL.md format
+  Teaches Claude how to generate Python workflows in SKILL.md format
   for the WorkflowSkill engine.
 ---
 
@@ -46,6 +46,12 @@ Map the task to workflow building blocks:
 
 Wire the steps together using result dicts. Keep the workflow as deterministic as
 possible — use LLM actions only when genuine inference is required.
+
+**When applying LLM inference to a list, call the LLM once per item — never batch.**
+Pass one item at a time inside a loop. Batching multiple items into a single prompt
+makes each result non-retryable, allows one item's content to influence another's
+output, and degrades reliability at scale. This rule applies to any list-level
+inference: classification, summarization, extraction, translation.
 
 ### Phase 4: Validate & Test
 
@@ -123,9 +129,9 @@ Every workflow must include two sections after the document heading:
 
 - Write **only the method body** — no imports, no class, no decorators
 - All inputs declared in frontmatter are available as local variables
-- `workflow`, `RetryPolicy`, `timedelta`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available
+- `workflow`, `RetryPolicy`, `timedelta`, `datetime`, `timezone`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available
 - **`workflow.wait_for_signal(name, *, prompt=None, timeout=None)`** — pauses the workflow until a signal named `name` is received. `prompt` is an optional string shown to the user explaining what input is needed. `timeout` is in seconds; raises `asyncio.TimeoutError` if the deadline passes. Returns the signal data (any JSON-serializable value), or `None` if the signal was sent with no data.
-- **To get the current time, use `workflow.now()`** — it returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available and are non-deterministic in Temporal workflows.
+- **To get the current time, use `workflow.now()`** — it returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available.
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
 
@@ -143,12 +149,16 @@ Given `name: check-status` and `inputs: {url: {type: str, default: "https://exam
 the loader wraps your code into:
 
 ```python
-from temporalio import workflow as _tw
-from temporalio.common import RetryPolicy
-from datetime import timedelta
 import asyncio
+import json
+import re
+import math
+import collections
+import urllib.parse
+from datetime import timedelta, datetime, timezone
+from dataclasses import dataclass
 
-workflow = _WorkflowProxy()  # defaults start_to_close_timeout=timedelta(seconds=30)
+workflow = _ActionProxy()  # routes execute_activity() calls to registered handlers
 
 @workflow.defn
 class CheckStatusWorkflow:
@@ -254,6 +264,41 @@ for url in urls:
 return {"results": results}
 ```
 
+### Loop over items with LLM (one call per item)
+
+When classifying, summarizing, or extracting from a list, call the LLM **once per item**
+inside the loop. Never pass multiple items in a single prompt.
+
+```python
+results = []
+for email in emails:
+    # Triage each email individually
+    triage = await workflow.execute_activity(
+        "anthropic.llm",
+        {
+            "prompt": f"Triage this email.\n\nSubject: {email['subject']}\n\n{email['snippet']}",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "urgency": {"type": "string"},
+                    "category": {"type": "string"},
+                    "action": {"type": "string"},
+                },
+                "required": ["urgency", "category", "action"],
+            },
+        },
+        start_to_close_timeout=timedelta(seconds=30),
+    )
+    results.append({
+        "id": email["id"],
+        "subject": email["subject"],
+        "urgency": triage["urgency"],
+        "category": triage["category"],
+        "action": triage["action"],
+    })
+return {"results": results}
+```
+
 ### Conditional logic
 
 ```python
@@ -287,8 +332,7 @@ return {"body": result["body"]}
 ### Human-in-the-loop (wait for signal)
 
 Use `workflow.wait_for_signal(name)` to pause the workflow until a human provides
-input or approval. The workflow suspends durably — it survives restarts and can
-wait indefinitely.
+input or approval.
 
 **Pause and continue (no data needed):**
 
@@ -348,15 +392,17 @@ Violations cause a `SkillLoadError` before execution begins.
 ### What is auto-injected (do not write these)
 
 ```python
-from temporalio import workflow as _tw   # available as `workflow`
-from temporalio.common import RetryPolicy
-from datetime import timedelta
 import asyncio
 import json
 import re
 import math
 import collections
 import urllib.parse
+from datetime import timedelta, datetime, timezone
+from dataclasses import dataclass
+
+# workflow   — action proxy (execute_activity, wait_for_signal, now)
+# RetryPolicy — plain dataclass for retry configuration
 ```
 
 **Never write import statements in the code block.** They will be rejected.

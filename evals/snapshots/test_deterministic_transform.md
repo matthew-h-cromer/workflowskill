@@ -1,19 +1,19 @@
 ---
 type: workflow
 name: count-headings
-description: Scrape a page and return all H2 headings with their count.
-actions: [scrape]
+description: Scrapes a URL and returns all h2 heading texts and their count.
+actions: [web.scrape]
 inputs:
   url:
     type: str
-    description: "URL of the page to extract H2 headings from"
+    description: "The URL of the page to scrape"
 outputs:
   count:
     type: int
-    description: "Number of H2 headings found"
+    description: "Number of h2 headings found"
   headings:
     type: list
-    description: "List of H2 heading texts"
+    description: "List of h2 heading text strings"
 ---
 
 # Count Headings
@@ -25,13 +25,14 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Scrape all H2 headings from the page
-page = await workflow.execute_activity(
-    "scrape",
-    {"url": url, "selectors": {"headings": "h2"}},
+# Scrape all h2 elements from the target page
+scraped = await workflow.execute_activity(
+    "web.scrape",
+    {"url": url, "selector": "h2"},
 )
 
-headings = page["results"].get("headings", [])
+# Extract heading texts from the results list
+headings = [item["text"] for item in scraped.get("results", []) if item.get("text", "").strip()]
 
 return {"count": len(headings), "headings": headings}
 ```

@@ -1,8 +1,8 @@
 ---
 type: workflow
 name: extract-info
-description: Extracts a title and summary from the provided text using an LLM.
-actions: [llm]
+description: Extracts a title and summary from input text using a structured LLM call.
+actions: [anthropic.llm]
 inputs:
   text:
     type: str
@@ -10,10 +10,10 @@ inputs:
 outputs:
   title:
     type: str
-    description: "The extracted title"
+    description: "Extracted title from the text"
   summary:
     type: str
-    description: "The extracted summary"
+    description: "Extracted summary from the text"
 ---
 
 # Extract Info
@@ -22,20 +22,14 @@ outputs:
 
 Run this workflow using the run_workflow tool
 
-## Details
-
-Sends the provided text to an LLM and returns a structured result containing a
-`title` and `summary`. Requires the `ANTHROPIC_API_KEY` environment variable to
-be set.
-
 ## Workflow
 
 ```python
-# Extract title and summary from the input text
+# Extract structured title and summary from the input text
 result = await workflow.execute_activity(
-    "llm",
+    "anthropic.llm",
     {
-        "prompt": f"Extract a concise title and summary from the following text:\n\n{text}",
+        "prompt": f"Extract a title and summary from the following text:\n\n{text}",
         "schema": {
             "type": "object",
             "properties": {
@@ -45,7 +39,6 @@ result = await workflow.execute_activity(
             "required": ["title", "summary"],
         },
     },
-    start_to_close_timeout=timedelta(seconds=60),
 )
 
 return {"title": result["title"], "summary": result["summary"]}

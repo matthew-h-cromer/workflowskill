@@ -111,45 +111,172 @@ _SAVE_WORKFLOW_TOOL = {
     },
 }
 
+# Stub weldable_act tool so the model can probe actions during authoring.
+# The eval fixture handles tool calls by returning needs_args responses.
+_WELDABLE_ACT_TOOL = {
+    "name": "weldable_act",
+    "description": "Probe or execute a Weldable action. Returns parameter schemas for action discovery.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "description": "Natural language description of the action to perform.",
+            },
+            "args": {
+                "type": "object",
+                "description": "Arguments for the action.",
+            },
+        },
+        "required": ["intent"],
+    },
+}
+
+
+def _stub_weldable_response(intent: str) -> str:
+    """Return a stub needs_args JSON string for a weldable_act probe.
+
+    Maps common action intents to their slug and parameter schema so the
+    model can proceed to generate the workflow without a live Weldable API.
+    """
+    import json
+
+    intent_lower = intent.lower()
+
+    # Common action mappings for eval tasks.
+    _STUBS: dict[str, dict[str, Any]] = {
+        "web.api": {
+            "status": "needs_args",
+            "action": "web.api",
+            "missing": [
+                {"name": "url", "type": "string", "required": True, "description": "URL to fetch"},
+                {"name": "method", "type": "string", "required": False, "description": "HTTP method (GET, POST, etc.)"},
+                {"name": "headers", "type": "object", "required": False, "description": "HTTP headers"},
+                {"name": "body", "type": "object", "required": False, "description": "Request body"},
+            ],
+        },
+        "web.scrape": {
+            "status": "needs_args",
+            "action": "web.scrape",
+            "missing": [
+                {"name": "url", "type": "string", "required": True, "description": "URL to scrape"},
+                {"name": "selector", "type": "string", "required": False, "description": "CSS selector to extract"},
+            ],
+        },
+        "anthropic.llm": {
+            "status": "needs_args",
+            "action": "anthropic.llm",
+            "missing": [
+                {"name": "prompt", "type": "string", "required": True, "description": "The prompt text"},
+                {"name": "model", "type": "string", "required": False, "description": "Model name"},
+                {"name": "max_tokens", "type": "integer", "required": False, "description": "Max tokens"},
+                {"name": "schema", "type": "object", "required": False, "description": "JSON schema for structured output"},
+            ],
+        },
+        "slack.post_message": {
+            "status": "needs_args",
+            "action": "slack.post_message",
+            "missing": [
+                {"name": "channel", "type": "string", "required": True, "description": "Channel name or ID"},
+                {"name": "text", "type": "string", "required": True, "description": "Message text"},
+            ],
+        },
+    }
+
+    # Match intent to an action.
+    for action, stub in _STUBS.items():
+        if action.replace(".", " ") in intent_lower or action in intent_lower:
+            return json.dumps(stub)
+
+    # Fuzzy matching for natural language intents.
+    if "scrape" in intent_lower or "extract" in intent_lower:
+        return json.dumps(_STUBS["web.scrape"])
+    if "fetch" in intent_lower or "api" in intent_lower or "http" in intent_lower:
+        return json.dumps(_STUBS["web.api"])
+    if "llm" in intent_lower or "summar" in intent_lower or "classify" in intent_lower or "generat" in intent_lower:
+        return json.dumps(_STUBS["anthropic.llm"])
+    if "slack" in intent_lower or "message" in intent_lower:
+        return json.dumps(_STUBS["slack.post_message"])
+
+    # Generic fallback.
+    return json.dumps({
+        "status": "needs_args",
+        "action": intent.replace(" ", "_").lower(),
+        "missing": [{"name": "input", "type": "string", "required": True, "description": "Primary input"}],
+    })
+
 
 @pytest.fixture(scope="session")
 def generate_skill(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """Return an async callable: generate(task, toolpack=None) -> raw SKILL.md string.
+    """Return an async callable: generate(task, toolkit=None) -> raw SKILL.md string.
 
-    If toolpack is given (e.g. "openclaw"), its authoring context is appended to
+    If toolkit is given (e.g. "weldable"), its authoring context is appended to
     the system prompt so the model knows which actions are available.
     """
     skill_md = _get_skill_md()
 
-    async def generate(task: str, toolpack: str | None = None) -> str:
+    async def generate(task: str, toolkit: str | None = None) -> str:
         global _total_input_tokens, _total_output_tokens
 
         system = skill_md
-        if toolpack is not None:
-            from workflowskill.toolpacks import load_toolpack
-            pack = load_toolpack(toolpack)
-            system = skill_md + "\n\n" + pack.get_authoring_context()
+        tools = [_SAVE_WORKFLOW_TOOL]
+        if toolkit is not None:
+            # Only need the authoring context (prompt.md), not a live API connection.
+            # Instantiate with a dummy key to avoid requiring WELDABLE_API_KEY for evals.
+            from workflowskill.toolkits.weldable import WeldableToolkit
+
+            kit = WeldableToolkit(api_key="eval-dummy")
+            system = skill_md + "\n\n" + kit.get_authoring_context()
+            tools.append(_WELDABLE_ACT_TOOL)
 
         client = anthropic.AsyncAnthropic()
-        message = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=4096,
-            temperature=0,
-            system=system,
-            tools=[_SAVE_WORKFLOW_TOOL],
-            messages=[{"role": "user", "content": task}],
-        )
-        _total_input_tokens += message.usage.input_tokens
-        _total_output_tokens += message.usage.output_tokens
+        messages: list[dict[str, Any]] = [{"role": "user", "content": task}]
 
-        tool_block = next(
-            (b for b in message.content if b.type == "tool_use" and b.name == "save_workflow"),
-            None,
-        )
-        if tool_block is None:
-            raise ValueError("Claude did not call save_workflow tool")
+        # Multi-turn loop: respond to weldable_act probes until save_workflow is called.
+        max_turns = 6
+        for _ in range(max_turns):
+            message = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=4096,
+                temperature=0,
+                system=system,
+                tools=tools,
+                messages=messages,
+            )
+            _total_input_tokens += message.usage.input_tokens
+            _total_output_tokens += message.usage.output_tokens
 
-        return tool_block.input["markdown"]
+            # Check for save_workflow call.
+            tool_block = next(
+                (b for b in message.content if b.type == "tool_use" and b.name == "save_workflow"),
+                None,
+            )
+            if tool_block is not None:
+                return tool_block.input["markdown"]
+
+            # Handle weldable_act probe calls — return stub needs_args responses.
+            probe_blocks = [b for b in message.content if b.type == "tool_use" and b.name == "weldable_act"]
+            if not probe_blocks:
+                # No tool calls at all — model responded with text only.
+                text_blocks = [b.text for b in message.content if hasattr(b, "text")]
+                detail = f" (text: {text_blocks[0][:200]}...)" if text_blocks else ""
+                raise ValueError(f"Claude did not call save_workflow tool{detail}")
+
+            # Append assistant message and tool results to continue the conversation.
+            messages.append({"role": "assistant", "content": message.content})
+            tool_results = []
+            for probe in probe_blocks:
+                intent = probe.input.get("intent", "")
+                # Return a stub response that tells the model the action slug and
+                # common parameters, so it can proceed to generate the workflow.
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": probe.id,
+                    "content": _stub_weldable_response(intent),
+                })
+            messages.append({"role": "user", "content": tool_results})
+
+        raise ValueError("Claude did not call save_workflow after max probe turns")
 
     return generate
 

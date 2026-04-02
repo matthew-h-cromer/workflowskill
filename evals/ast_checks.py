@@ -191,8 +191,8 @@ def has_scrape_feeding_llm(code: str) -> bool:
                         return i
         return None
 
-    scrape_idx = _first_index_of_activity("scrape")
-    llm_idx = _first_index_of_activity("llm")
+    scrape_idx = _first_index_of_activity("web.scrape")
+    llm_idx = _first_index_of_activity("anthropic.llm")
     if scrape_idx is None or llm_idx is None:
         return False
     return scrape_idx < llm_idx

@@ -1,8 +1,8 @@
 ---
 type: workflow
 name: scrape-urls
-description: Scrape a list of URLs and return all results.
-actions: [scrape]
+description: Scrapes each URL in a list and returns all results.
+actions: [web.scrape]
 inputs:
   urls:
     type: list
@@ -10,7 +10,7 @@ inputs:
 outputs:
   results:
     type: list
-    description: "List of scrape results, one per URL"
+    description: "Scraped content for each URL, in input order"
 ---
 
 # Scrape URLs
@@ -22,21 +22,14 @@ Run this workflow using the run_workflow tool
 ## Workflow
 
 ```python
-# Scrape each URL and collect results
+# Scrape each URL sequentially
 results = []
 for url in urls:
     result = await workflow.execute_activity(
-        "scrape",
-        {
-            "url": url,
-            "selectors": {
-                "headings": "h1, h2, h3",
-                "paragraphs": "p",
-                "links": {"css": "a", "extract": "href"},
-            },
-        },
+        "web.scrape",
+        {"url": url},
     )
-    results.append({"url": url, "data": result["results"]})
+    results.append(result)
 
 return {"results": results}
 ```

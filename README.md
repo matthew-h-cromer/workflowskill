@@ -2,314 +2,179 @@
 
 [![npm](https://img.shields.io/npm/v/workflowskill)](https://www.npmjs.com/package/workflowskill)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)](https://github.com/matthew-h-cromer/workflowskill)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Describe what you want. Claude writes the workflow. Temporal runs it forever.**
+> **Agents improvise. Workflows deliver.**
 
-WorkflowSkill turns natural language descriptions into durable Python workflows backed by Temporal. Instead of an agent improvising every run, a workflow is authored once — readable Python code — and Temporal executes it with built-in retries, scheduling, and state persistence. Deterministic steps cost nothing; only steps that genuinely need judgment invoke a model.
-
-That daily email triage costing $4.50/month in inference? With WorkflowSkill it's $0.09.
-
----
-
-## Quickstart
-
-### 1. Install
-
-```sh
-uv tool install .
-```
-
-### 2. Run the hello-world example
-
-```sh
-workflowskill run examples/builtin/hello-world.md
-```
-
-```
-Running hello-world
-Temporal server: 127.0.0.1:54215
-╭──────── hello-world ─────────╮
-│ {                            │
-│   "message": "Hello, world!" │
-│ }                            │
-╰──────────────────────────────╯
-```
-
-No API key needed. This proves the engine works.
-
-### 3. Author your first workflow
-
-Open Claude Code in this directory and describe what you want:
+An open standard for turning agent skills into durable, deterministic workflows that run on any platform.
 
 ```
 $ claude
-> /workflow-author Create a workflow that takes a GitHub username as input,
-  fetches their recent public activity, and returns a one-paragraph summary
-  of what they've been working on.
-```
-
-Claude generates and saves the file to `workflows/`. Run it:
-
-```sh
-export ANTHROPIC_API_KEY=sk-ant-...
-workflowskill run workflows/github-activity-summary.md -i username=torvalds
+> /workflow-author Write me a workflow that fetches my last 10 Gmail messages,
+  summarizes them, and posts the summary to #daily-digest in Slack.
 ```
 
 ```
-Running github-activity-summary username='torvalds'
-  ✓ api (291ms)
-  ✓ llm (3023ms)
-╭─────────────────────────────────╮
-│ {                               │
-│   "summary": "Torvalds has..."  │
-│ }                               │
+$ workflowskill run workflows/gmail-to-slack.md --toolkit weldable
+
+Running gmail-to-slack
+  toolkit: weldable (https://weldable.ai)
+  ⟳ gmail.search_messages
+  ✓ gmail.search_messages (441ms)
+  ⟳ anthropic.llm
+  ✓ anthropic.llm (2890ms)
+  ⟳ slack.post_message
+  ✓ slack.post_message (198ms)
+╭──────── gmail-to-slack ─────────╮
+│ { "message_ts": "172..." }      │
 ╰─────────────────────────────────╯
 ```
 
 ---
 
-## Core Examples
+## Why WorkflowSkill?
 
-| File | What it does |
-|------|-------------|
-| `examples/builtin/hello-world.md` | Minimal workflow, no activities |
-| `examples/builtin/llm-haiku.md` | Single `llm` call, generates a haiku |
-| `examples/builtin/summarize-hacker-news.md` | `scrape` → Python → `llm` pipeline |
-| `examples/builtin/snoqualmie-snow-report.md` | Parallel `scrape` + `api` → `llm` |
+Agents are great at reasoning, but not every task needs reasoning. When an agent fetches your emails, summarizes them, and posts to Slack — that's a predictable sequence of actions. Running an agent through it every time means paying for inference, waiting on model calls, and hoping it doesn't hallucinate a step. The tasks where this hurts most are:
 
----
+- **Structured** — the work is predictable and can be defined ahead of time
+- **Multi-step** — useful automation chains together multiple actions
+- **Repetitive** — they run on a schedule or in response to a trigger, not just once
+- **Action-oriented** — the value comes from doing something (fetching a page, comparing prices, sending an email), not from open-ended reasoning
 
-## What a workflow looks like
+WorkflowSkill lets agents delegate these tasks to a runtime instead of improvising them. A workflow is authored once, then runs as deterministic code — no inference on every execution, no token burn, no drift. LLM calls only happen where you actually need intelligence.
 
-You don't write this — Claude does. Each workflow is a markdown file with YAML frontmatter and a Python code block:
+Because the logic is code — not a prompt being re-interpreted — the runtime can offer capabilities that agents can't: durable execution that survives failures, automatic retries, timeouts, pausing and resuming, human-in-the-loop approvals, deterministic outcomes, and scheduling on a timer or triggering from external events.
 
-```yaml
----
-type: workflow
-name: summarize-hacker-news
-description: Scrapes the Hacker News homepage and returns a concise summary.
-actions: [scrape, llm]
-outputs:
-  summary:
-    type: str
----
-```
+Workflow Skills are portable across any platform that implements the WorkflowSkill standard, and they're built on the open [Agent Skills](https://agentskills.io/) spec. A workflow authored for one platform runs on any other that supports the same actions — no rewriting, no lock-in. The goal is to do for durable execution what Agent Skills did for skills — an open ecosystem of workflows where the whole community moves forward together.
 
-```python
-# examples/builtin/summarize-hacker-news.md  (the ## Workflow code block)
-
-# Scrape story titles
-page = await workflow.execute_activity(
-    "scrape",
-    {"url": "https://news.ycombinator.com", "selectors": {"titles": ".titleline > a"}},
-    retry_policy=RetryPolicy(maximum_attempts=3),
-)
-
-titles = page["results"].get("titles", [])
-stories = "\n".join(f"- {t}" for t in titles)
-
-# Summarize with Claude Haiku
-result = await workflow.execute_activity(
-    "llm",
-    {
-        "model": "claude-haiku-4-5-20251001",
-        "prompt": f"Summarize these Hacker News stories:\n\n{stories}",
-        "schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
-    },
-    start_to_close_timeout=timedelta(seconds=60),
-)
-
-return {"summary": result["summary"]}
-```
-
-**Frontmatter** declares inputs and outputs. The **Python code block** is the logic. **Activities** are external calls — each gets Temporal's retry and timeout semantics automatically.
+To support WorkflowSkill, a platform implements two things: a [**toolkit**](#toolkits) (which handles action execution — routing `execute_activity()` calls to the platform's integrations) and a [**runtime**](#runtimes) (which handles orchestration — durability, checkpointing, retries, and pause/resume). These are independent extension points: any toolkit works with any runtime.
 
 ---
 
-## How it works
+## Quickstart
 
-```
-workflowskill run examples/builtin/my-workflow.md
-         │
-         ▼
-  loader/ — parse SKILL.md, build workflow class
-  actions/ — wrap handlers as @activity.defn
-  runner/ — start embedded Temporal, execute workflow
-         │
-         ▼
-  Temporal (temporalio SDK)
-  Durable execution · retries · scheduling · state
-```
+**Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) · [Claude Code](https://claude.ai/code)
 
-Built-in workflow capabilities:
-
-- **Retries** — `retry_policy=RetryPolicy(maximum_attempts=3)` on any activity
-- **Parallel execution** — `asyncio.gather()` across multiple activities
-- **Timeouts** — `start_to_close_timeout=timedelta(seconds=60)`
-- **Structured LLM output** — pass a JSON schema; get back typed fields
-- **Determinism** — pure Python logic is free; `llm` calls only when needed
-
----
-
-## Built-in actions
+### 1. Install
 
 ```sh
-workflowskill run my-workflow.md          # uses builtin actions by default
+git clone https://github.com/matthew-h-cromer/workflowskill.git
+cd workflowskill
+uv tool install .
 ```
 
-| Action | Description |
-|--------|-------------|
-| `exec` | Run shell commands — call CLI tools, scripts |
-| `api` | Raw HTTP request — use for JSON APIs |
-| `scrape` | Extract structured data via CSS selectors |
-| `llm` | Call Claude with optional JSON schema |
+### 2. Run the hello-world example
 
----
-
-## Ecosystem Tool Packs
-
-Tool packs let you author and test workflows that target a specific platform's native tools. When you run locally with `--toolpack`, the CLI uses Python implementations that match the platform's interfaces exactly — so you can develop and iterate without deploying.
+No toolkit needed — this workflow is pure Python:
 
 ```sh
-workflowskill run my-workflow.md --toolpack openclaw
+workflowskill run examples/hello-world.md
 ```
 
-### OpenClaw
+```
+╭──────── hello-world ────────╮
+│ {                           │
+│   "message": "Hello, World!"│
+│ }                           │
+╰─────────────────────────────╯
+```
 
-[OpenClaw](https://docs.openclaw.ai) is an AI agent platform with a rich set of native tools. WorkflowSkill lets you author OpenClaw workflows locally using Claude Code, test them with the CLI, and deploy them directly to your OpenClaw instance.
+### 3. Author your own
 
-**Available actions:**
+Open Claude Code in this directory and use the `/workflow-author` skill:
 
-| Action | Description |
-|--------|-------------|
-| `exec` | Run shell commands |
-| `browser` | Headless Chromium — navigate, snapshot, click, type |
-| `web_search` | Search the web (requires `BRAVE_API_KEY`) |
-| `web_fetch` | Fetch and extract page content as markdown or text |
-| `llm_task` | Structured LLM call with JSON output |
-| `read` | Read a file |
-| `write` | Write a file |
-| `edit` | Replace text in a file |
+```
+> /workflow-author Write me a workflow that takes a name as input and returns a greeting.
+```
 
-**Author an OpenClaw workflow:**
+This works because the workflow is pure Python — no external tools needed. For workflows that call real services, you'll need to specify a toolkit so the authoring agent knows what actions are available. See [Connect a toolkit](#connect-a-toolkit) below.
+
+Claude generates the file and saves it to `workflows/`. Run it:
+
+```sh
+workflowskill run workflows/greeting.md -i name=Linus
+```
+
+```
+╭───────── greeting ──────────╮
+│ {                           │
+│   "message": "Hello, Linus!"│
+│ }                           │
+╰─────────────────────────────╯
+```
+
+### 4. Connect a toolkit
+
+Workflows become powerful when they can call external services. **Toolkits** connect workflows to real integrations — each toolkit brings its own actions, authentication, and infrastructure.
+
+This example uses [Weldable](https://weldable.ai), which provides hundreds of integrations across Slack, Gmail, Google Sheets, GitHub, and more. Sign up at [weldable.ai](https://weldable.ai), then run:
+
+```sh
+workflowskill login --toolkit weldable
+```
+
+This opens your browser to authorize your Weldable account. Your API key is saved to `.env` automatically.
+
+Now you can author workflows that use real services:
 
 ```
 $ claude
-> /workflow-author-openclaw Search the web for recent AI agent news,
-  fetch the top 3 articles, and return a summary.
-```
-
-Claude injects OpenClaw tool definitions into context and generates the workflow.
-
-**Test it locally:**
-
-```sh
-# First-time setup
-uv sync --extra dev --extra openclaw
-uv run playwright install chromium  # only if using browser action
-
-# Run with OpenClaw tools
-export ANTHROPIC_API_KEY=sk-ant-...
-export BRAVE_API_KEY=...  # only if using web_search
-workflowskill run examples/openclaw/search-and-summarize.md --toolpack openclaw
-```
-
-**Example OpenClaw workflows:**
-
-| File | What it does |
-|------|-------------|
-| `examples/openclaw/search-and-summarize.md` | Search → fetch → summarize |
-| `examples/openclaw/run-and-report.md` | Run a shell command, summarize output |
-| `examples/openclaw/webpage-monitor.md` | Fetch a page (browser or web_fetch) + extract info |
-
-**Deploy to OpenClaw:**
-
-Once the workflow runs locally, copy the generated SKILL.md file to your OpenClaw workspace's `skills/` directory. OpenClaw picks it up automatically on the next session.
-
-### MCP Servers
-
-Use any MCP server's tools as workflow actions. The MCP toolpack dynamically discovers tools from servers configured in `mcp.json` (Claude Desktop format) and registers them by their native names — portable across any MCP-based platform.
-
-**Configure MCP servers:**
-
-Create `mcp.json` in the project root:
-
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-    }
-  }
-}
-```
-
-Supports both `stdio` and `sse` transports.
-
-**Discover available tools:**
-
-```sh
-workflowskill mcp_list
-```
-
-**Author and run a workflow:**
-
-```
-$ claude
-> /workflow-author Create a workflow that reads a file and summarizes its contents.
+> /workflow-author Write me a workflow that fetches my last 10 Gmail messages,
+  summarizes them, and posts the summary to #daily-digest in Slack.
 ```
 
 ```sh
-workflowskill run workflows/my-workflow.md --toolpack mcp
+workflowskill run workflows/gmail-to-slack.md --toolkit weldable
 ```
 
-**Test a single MCP tool:**
-
-```sh
-workflowskill mcp_action read_file '{"path": "/tmp/test.txt"}'
 ```
+Running gmail-to-slack
+  toolkit: weldable (https://weldable.ai)
+  ⟳ gmail.search_messages
+  ✓ gmail.search_messages (441ms)
+  ⟳ anthropic.llm
+  ✓ anthropic.llm (2890ms)
+  ⟳ slack.post_message
+  ✓ slack.post_message (198ms)
+╭──────── gmail-to-slack ─────────╮
+│ { "message_ts": "172..." }      │
+╰─────────────────────────────────╯
+```
+
+With Weldable, authentication is handled for you — connect services once at weldable.ai and workflows use them automatically. See the [full action catalog](cli/workflowskill/toolkits/weldable/prompt.md) for every available action and its parameters.
 
 ---
 
-## Development
+## Toolkits
+
+A toolkit handles **action execution** — it routes each `workflow.execute_activity()` call to the right API, SDK, or service. Toolkit authors implement a single method: `execute(action, args) -> dict`. The workflow code is unchanged regardless of which toolkit runs it.
+
+| Toolkit | Platform | Actions |
+|---------|----------|---------|
+| `weldable` | [Weldable](https://weldable.ai) | 264+ authenticated integrations (Slack, Gmail, GitHub, and more) |
+
+Run a workflow with a toolkit:
 
 ```sh
-uv sync --extra dev              # Install dev dependencies
-uv run pytest cli/tests          # Run CLI tests (80 tests)
-uv run mypy cli/workflowskill/   # Type checking
-uv run ruff check cli/workflowskill/   # Linting
-uv run ruff format cli/workflowskill/ # Formatting
-
-# Run without installing:
-uv run python -m workflowskill.main run examples/builtin/hello-world.md
+workflowskill run workflow.md --toolkit weldable
 ```
 
-### Eval suite
-
-The eval suite measures how well `skill/SKILL.md` teaches Claude to generate correct workflows. Evals call the Anthropic API and cost money — run them on demand.
-
-```sh
-uv run pytest -m eval -v                     # Run all evals
-uv run pytest -m eval -k test_loop -v        # Run one eval
-EVAL_RETRIES=5 uv run pytest -m eval -v      # Multi-trial stability check
-uv run pytest -m eval --eval-snapshot -v     # Save outputs for diffing
-```
-
-Requires `ANTHROPIC_API_KEY`. Run evals **before and after** editing `skill/SKILL.md` to confirm your changes improved generation quality.
+[→ Implement a toolkit](CONTRIBUTING.md#toolkits)
 
 ---
 
-## Requirements
+## Runtimes
 
-- Python >= 3.12
-- [uv](https://docs.astral.sh/uv/) recommended
+A runtime handles **workflow orchestration** — durability, checkpointing, retries, pause/resume, and signals. The same workflow code runs on any runtime; only the execution guarantees differ.
 
----
+| Runtime | Description |
+|---------|-------------|
+| `dbos` *(default)* | Durable execution via [DBOS](https://dbos.dev). Each action is checkpointed to SQLite; crash recovery resumes from the last completed step. |
 
-## Further reading
+Override the runtime:
 
-- [`skill/SKILL.md`](skill/SKILL.md) — Workflow authoring guide
-- [`examples/`](examples/) — Runnable example workflows
+```sh
+workflowskill run workflow.md --toolkit weldable --runtime dbos
+```
+
+[→ Implement a runtime](CONTRIBUTING.md#runtimes)

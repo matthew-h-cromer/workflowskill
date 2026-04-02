@@ -1,8 +1,8 @@
 ---
 type: workflow
 name: safe-fetch
-description: Fetch a URL via the api action and return success/failure with content or error message.
-actions: [api]
+description: Fetches a URL via web.api and returns success/failure without raising.
+actions: [web.api]
 inputs:
   url:
     type: str
@@ -10,7 +10,7 @@ inputs:
 outputs:
   success:
     type: bool
-    description: "Whether the request succeeded"
+    description: "Whether the fetch succeeded"
   content:
     type: str
     description: "Response content on success"
@@ -29,9 +29,9 @@ Run this workflow using the run_workflow tool
 
 ```python
 try:
-    # Fetch the URL
+    # Fetch the target URL
     result = await workflow.execute_activity(
-        "api",
+        "web.api",
         {"url": url},
     )
     return {"success": True, "content": result["content"]}

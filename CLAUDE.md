@@ -4,7 +4,7 @@ A standard for authoring durable Python workflows from natural language descript
 
 ## Purpose
 
-**The standard** — `skill/SKILL.md` is the main artifact: a platform-agnostic authoring guide published via npm. Other ecosystems implement their own WorkflowSkill runtimes independently; this repo does not provide one.
+**The standard** — `skill/SKILL.md` is the main artifact: a platform-agnostic authoring guide published via npm.
 
 **The CLI** serves two purposes:
 1. **Improve the skill** — An eval-driven test framework (in `evals/`) measures how well `skill/SKILL.md` teaches an LLM to generate valid workflows. Run evals before and after editing the skill.
@@ -20,26 +20,30 @@ evals/                             # Eval framework for improving skill/SKILL.md
   conftest.py                      # Fixtures: LLM caller, skill parser, score report
   test_authoring.py                # Eval test cases
   snapshots/                       # Saved generated outputs for diffing
-examples/                          # Runnable workflow examples (SKILL.md format)
+examples/
+  hello-world.md                   # Pure Python example (no toolkit)
+  weldable/                        # Weldable toolkit examples
 workflows/                         # Local workflow workspace (gitignored)
 cli/
   workflowskill/                   # Python package
     __init__.py
-    main.py                        # Click CLI: run, worker commands
+    _plugin_loader.py              # Shared dynamic loader for toolkits/runtimes
+    main.py                        # Click CLI: run command
     display.py                     # Rich console output
-    config.py                      # Temporal connection config (env vars)
-    actions/
-      registry.py                  # ActionRegistry — register tools as Temporal activities
-      exec.py                      # exec action (shared across toolpacks)
+    workflow_context.py            # ContextVar-based dispatch for action routing
     loader/
       skill_loader.py              # Parse SKILL.md → LoadedSkill
       validator.py                 # AST validator for restricted Python subset
     runner/
-      runner.py                    # run_skill() — load → start Temporal → execute → return
-    toolpacks/                       # Pluggable action providers
-      builtin/                     # Built-in actions (exec, api, scrape, llm)
-      mcp/                         # MCP server tools (dynamic discovery via mcp.json)
-      openclaw/                    # OpenClaw platform actions
+      runner.py                    # run_skill() — load → execute directly → return
+    toolkits/                      # Platform-specific execution integrations
+      _protocol.py                 # Toolkit protocol definition
+      weldable/                    # Weldable cloud platform toolkit
+        README.md                  # Platform docs and setup steps
+        prompt.md                  # Action catalog for authoring context
+    runtimes/                      # Workflow execution environments
+      _protocol.py                 # Runtime protocol definition
+      dbos/                        # DBOS-backed durable runtime (SQLite/Postgres)
   tests/                           # CLI unit & integration tests
     unit/
     integration/
@@ -60,7 +64,7 @@ uv run python -m workflowskill.main run <file>
 
 # Install CLI globally:
 uv tool install .
-workflowskill run examples/hello-world.md
+workflowskill run examples/weldable/hello-world.md --toolkit weldable
 ```
 
 ## Eval Suite
@@ -152,8 +156,9 @@ WorkflowSkills are designed to live alongside regular skills in agent environmen
 
 ## Skill Authoring Guide
 
-There are two skill files with distinct roles:
+Two skill files with distinct roles:
 
 - **`skill/SKILL.md`** — Platform-agnostic authoring guide. Used as the system prompt by all consumers. Must never contain platform-specific details. All authoring behavior changes go here.
-- **`.claude/skills/workflow-author/SKILL.md`** — The WorkflowSkill CLI's consumer integration. Registers the CLI's built-in actions (`exec`, `api`, `scrape`, `llm`) so workflows can be authored and tested locally. This is the reference example that all other consumers should follow — it demonstrates the action registration and skill integration pattern.
-- **`cli/workflowskill/toolpacks/mcp/`** — MCP toolpack. Dynamically discovers tools from MCP servers configured in `mcp.json` (Claude Desktop format) and registers them as workflow actions. Use `--toolpack mcp` to run workflows with MCP tools.
+- **`.claude/skills/workflow-author/SKILL.md`** — Entry point for Claude Code. Reads `skill/SKILL.md` (authoring guide) + `cli/workflowskill/toolkits/weldable/prompt.md` (Weldable-specific context). Contains output/UX rules (save_workflow tool, file paths, how to describe workflows to users).
+- **`cli/workflowskill/toolkits/weldable/prompt.md`** — Weldable-specific authoring context: routing, auth, and progressive discovery protocol using `weldable_act`. Served programmatically via `get_authoring_context()` for CLI and evals.
+- **`cli/workflowskill/toolkits/weldable/`** — Weldable toolkit. Registers a catch-all HTTP handler that routes any action name to Weldable's REST API via BM25 catalog search. Use `--toolkit weldable` to run workflows with Weldable.

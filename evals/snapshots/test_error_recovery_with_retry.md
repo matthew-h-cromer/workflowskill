@@ -1,8 +1,8 @@
 ---
 type: workflow
 name: resilient-fetch
-description: Fetch a URL via the api action with retry logic and graceful error handling.
-actions: [api]
+description: Fetches a URL via web.api with up to 3 attempts, returning a structured error dict on final failure.
+actions: [web.api]
 inputs:
   url:
     type: str
@@ -10,19 +10,13 @@ inputs:
 outputs:
   success:
     type: bool
-    description: "Whether the fetch succeeded"
-  content:
-    type: str
-    description: "Response body on success"
-  content_type:
-    type: str
-    description: "Content-Type header value on success"
-  status:
-    type: int
-    description: "HTTP status code on success"
+    description: "Whether the request succeeded"
+  data:
+    type: dict
+    description: "Response payload on success"
   error:
     type: str
-    description: "Error message on failure"
+    description: "Error message on failure (only present when success is false)"
 ---
 
 # Resilient Fetch
@@ -33,9 +27,10 @@ Run this workflow using the run_workflow tool
 
 ## Details
 
-Fetches a URL using the `api` action with up to 3 attempts (exponential backoff:
-2 s → 4 s). If all attempts fail, returns `success: false` and an `error`
-message instead of raising — so callers always receive a well-formed dict.
+Fetches a URL using the `web.api` action with a retry policy of up to 3 attempts
+(exponential backoff: 2 s → 4 s). If all attempts are exhausted, the workflow
+returns gracefully with `success: false` and an `error` message rather than
+raising an exception to the caller.
 
 ## Workflow
 
@@ -43,7 +38,7 @@ message instead of raising — so callers always receive a well-formed dict.
 try:
     # Fetch the URL with automatic retries
     result = await workflow.execute_activity(
-        "api",
+        "web.api",
         {"url": url},
         retry_policy=RetryPolicy(
             maximum_attempts=3,
@@ -51,20 +46,8 @@ try:
             backoff_coefficient=2.0,
         ),
     )
-    return {
-        "success": True,
-        "content": result["content"],
-        "content_type": result["content_type"],
-        "status": result["status"],
-        "error": None,
-    }
+    return {"success": True, "data": result}
 except Exception as e:
-    # All retry attempts exhausted — return a safe error dict
-    return {
-        "success": False,
-        "content": None,
-        "content_type": None,
-        "status": None,
-        "error": str(e),
-    }
+    # All retry attempts exhausted — return structured error
+    return {"success": False, "data": {}, "error": str(e)}
 ```

@@ -25,11 +25,6 @@ def print_error(message: str) -> None:
     console.print(f"[bold red]Error:[/bold red] {message}")
 
 
-def print_server_info(address: str) -> None:
-    """Print the embedded Temporal server address."""
-    console.print(f"[dim]Temporal server:[/dim] [dim cyan]{address}[/dim cyan]")
-
-
 def print_running(skill_name: str, inputs: dict[str, Any]) -> None:
     """Print a 'running' status line before execution."""
     if inputs:
@@ -39,15 +34,19 @@ def print_running(skill_name: str, inputs: dict[str, Any]) -> None:
         console.print(f"[dim]Running[/dim] [bold]{skill_name}[/bold]")
 
 
+def print_toolkit(name: str, homepage: str) -> None:
+    """Print which toolkit is active for this workflow run."""
+    console.print(f"  [dim]toolkit:[/dim] [bold]{name}[/bold] [dim]({homepage})[/dim]")
+
+
 _MAX_VALUE_LEN = 60
-_MAX_LINE_LEN = 120
 
 
 def _format_args(args: dict[str, Any]) -> str:
     """Format all args as key='value' pairs, truncating long values."""
     parts: list[str] = []
     for k, v in args.items():
-        s = repr(v) if not isinstance(v, str) else f"'{v}'"
+        s = repr(v)
         if len(s) > _MAX_VALUE_LEN:
             s = s[: _MAX_VALUE_LEN - 4] + "...'"
         parts.append(f"{k}={s}")
@@ -65,11 +64,6 @@ def on_activity_start(name: str, args: dict[str, Any]) -> None:
 def on_activity_complete(name: str, elapsed_ms: int) -> None:
     """Print a status line when an activity finishes executing."""
     console.print(f"  [green]✓[/green] {name} [dim]({elapsed_ms}ms)[/dim]")
-
-
-def print_workflow_id(workflow_id: str) -> None:
-    """Print the workflow ID so the user can reference it for signal commands."""
-    console.print(f"[dim]Workflow ID:[/dim] [dim cyan]{workflow_id}[/dim cyan]")
 
 
 async def prompt_for_signal(signal_name: str, prompt: str | None) -> Any:
