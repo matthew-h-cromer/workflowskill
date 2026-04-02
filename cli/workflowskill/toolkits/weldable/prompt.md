@@ -22,6 +22,8 @@ curl -s -X POST "${WELDABLE_API_URL:-https://weldable.ai}/api/mcp/act" \
 
 **Response statuses:**
 
+**If the curl returns HTTP 401:** `WELDABLE_API_KEY` is missing or invalid. Stop immediately — do not attempt to write a workflow. Tell the user to get a valid API key at https://weldable.ai/app/agent-setup and set it in their `.env` file.
+
 - `matched` — Action matched but could not execute. Check two sub-cases:
   - `connected: false` — Integration not connected. `connect_url` contains the OAuth link to share with the user. Do not proceed with this action.
   - `connected: true` with `missing_inputs` non-empty — Required arguments are missing. `missing_inputs` lists them; `input_schema` has the full parameter spec. Use these exact parameter names in `execute_activity()`.
