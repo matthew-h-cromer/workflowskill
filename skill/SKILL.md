@@ -42,7 +42,7 @@ Map the task to workflow building blocks:
 - **Decision points** → `if`/`else` branches
 - **Early exits** → `return` with an appropriate status dict
 - **Error handling** → `RetryPolicy` for transient failures; `try`/`except` where needed
-- **Human input** → `await workflow.wait_for_signal("name")` to pause for a human response
+- **Human input** → `workflow.wait_for_signal()` to pause for a human response (buttons, free-text, or both)
 
 Wire the steps together using result dicts. Keep the workflow as deterministic as
 possible — use LLM actions only when genuine inference is required.
@@ -71,7 +71,7 @@ The loader generates all of that automatically.
 type: workflow
 name: My Workflow
 description: "Save time on repetitive tasks by automating this workflow."
-actions: [some_action]
+actions: [web.fetch, anthropic.llm]
 inputs:
   query:
     type: str
@@ -99,8 +99,8 @@ one-line description. Omit this section for simple workflows.
 
 \```python
 result = await workflow.execute_activity(
-    "some_action",
-    {"query": query},
+    "web.fetch",
+    {"url": url},
 )
 return {"result": result["output"]}
 \```
@@ -111,7 +111,7 @@ return {"result": result["output"]}
 - `type`: always `workflow` (required) — machine-readable discriminator for progressive discovery
 - `name`: Title Case display name (required)
 - `description`: one sentence written as persuasive advertising copy — describe the benefit to the user, not the implementation (required)
-- `actions`: list of action names used in `execute_activity` calls (required when the workflow calls any actions; omit for pure-logic workflows). Enables compatibility checking during progressive discovery — e.g. `actions: [browser, llm_task]`
+- `actions`: list of action ids used in `execute_activity` calls (required when the workflow calls any actions; omit for pure-logic workflows). Enables compatibility checking during progressive discovery — e.g. `actions: [web.fetch, anthropic.llm]`
 - `inputs`: each entry has `type` (str/int/float/bool/list/dict), optional `default`, and optional `description`
 - Input names declared in frontmatter become parameters in the generated method signature
 - `outputs`: optional; each entry has `type` and optional `description`. When declared, the runner validates that all output keys are present in the returned dict.
@@ -130,7 +130,7 @@ Every workflow must include two sections after the document heading:
 - Write **only the method body** — no imports, no class, no decorators
 - All inputs declared in frontmatter are available as local variables
 - `workflow`, `RetryPolicy`, `timedelta`, `datetime`, `timezone`, `asyncio`, `json`, `re`, `math`, `collections`, and `urllib.parse` are always available
-- **`workflow.wait_for_signal(name, *, prompt=None, timeout=None)`** — pauses the workflow until a signal named `name` is received. `prompt` is an optional string shown to the user explaining what input is needed. `timeout` is in seconds; raises `asyncio.TimeoutError` if the deadline passes. Returns the signal data (any JSON-serializable value), or `None` if the signal was sent with no data.
+- **`workflow.wait_for_signal(name, *, prompt=None, choices=None, text_input=None, timeout=None)`** — pauses the workflow until a human responds in the UI. `prompt` is the display text shown to the human. `choices` is a list of button labels. `text_input` renders a free-text textarea: pass `True` for no placeholder, or `{"placeholder": "..."}` to set one. `timeout` is in seconds; raises `asyncio.TimeoutError` if the deadline passes. Return value shape depends on parameters — see **Human-in-the-loop** in Workflow Patterns.
 - **To get the current time, use `workflow.now()`** — it returns a timezone-aware `datetime` object. Never use `datetime.now()` or `datetime.utcnow()`; those are not available.
 - The code must `return` a `dict`
 - **Never write `import` statements** — all imports are auto-injected
@@ -329,60 +329,104 @@ result = await workflow.execute_activity(
 return {"body": result["body"]}
 ```
 
-### Human-in-the-loop (wait for signal)
+### Human-in-the-loop (wait_for_signal)
 
-Use `workflow.wait_for_signal(name)` to pause the workflow until a human provides
-input or approval.
+Use `workflow.wait_for_signal()` to pause the workflow until a human responds in
+the UI. The workflow suspends durably — it survives worker restarts and resumes
+exactly where it left off when the person acts.
 
-**Pause and continue (no data needed):**
-
-```python
-# Open browser to the login page
-page = await workflow.execute_activity("browser", {"action": "navigate", "url": login_url})
-
-# Wait for the user to complete login
-await workflow.wait_for_signal("logged_in")
-
-# Continue automation after login
-result = await workflow.execute_activity("browser", {"action": "click", "selector": "#submit"})
-return {"status": "done"}
-```
-
-**Prompt the user for data (e.g. a form value):**
+**API:**
 
 ```python
-# Ask the user to provide a value
-salary = await workflow.wait_for_signal("salary", prompt="Enter desired salary:")
-
-# Use the value in the next step
-await workflow.execute_activity("browser", {"action": "fill", "selector": "#salary", "value": salary})
-return {"status": "submitted"}
+result = await workflow.wait_for_signal(
+    "signal_name",                           # machine-readable identifier (required)
+    prompt="Display text",                   # shown to the human (optional)
+    choices=["Yes", "No"],                   # button labels (optional, list[str])
+    text_input=True,                         # show textarea, no placeholder (optional)
+    text_input={"placeholder": "Add..."},    # show textarea with placeholder (optional)
+    timeout=3600,                            # max seconds to wait (optional; None = wait forever)
+)
 ```
 
-Multiple sequential signals work naturally — each `wait_for_signal` call suspends
-independently:
+**Return value** depends on the parameters provided:
+
+| Parameters provided | Return dict |
+|---|---|
+| `choices` (with or without `text_input`) | `{"choice": "Yes", "text": "typed text or None"}` |
+| `text_input` only (no choices) | `{"text": "typed text or None"}` |
+| Neither | `{"ok": True}` |
+
+On timeout: `asyncio.TimeoutError` is raised.
+
+**Approval gate:**
 
 ```python
-salary = await workflow.wait_for_signal("salary", prompt="Enter desired salary:")
-cover_note = await workflow.wait_for_signal("cover_note", prompt="Any notes for the cover letter?")
+# Fetch the content to review
+report = await workflow.execute_activity("api", {"url": url})
+
+# Pause for human approval before proceeding
+decision = await workflow.wait_for_signal(
+    "approval",
+    prompt="Review the report and decide whether to publish.",
+    choices=["Approve", "Reject"],
+)
+
+if decision["choice"] == "Reject":
+    return {"status": "rejected"}
+
+# Publish once approved
+result = await workflow.execute_activity("api", {"url": publish_url, "method": "POST", "body": report["body"]})
+return {"status": "published"}
 ```
 
-**Signal with timeout (fail if no response within N seconds):**
+**Collect free-text input:**
+
+```python
+# Pause and ask the human for free-text input
+feedback = await workflow.wait_for_signal(
+    "user_feedback",
+    prompt="Please provide your feedback.",
+    text_input={"placeholder": "Type your feedback here..."},
+)
+return {"feedback": feedback["text"]}
+```
+
+**Buttons with optional text:**
+
+```python
+decision = await workflow.wait_for_signal(
+    "review",
+    prompt="Does this draft look good?",
+    choices=["Approve", "Request Changes"],
+    text_input={"placeholder": "Optional: explain your decision..."},
+)
+
+if decision["choice"] == "Request Changes":
+    return {"status": "changes_requested", "note": decision["text"]}
+return {"status": "approved"}
+```
+
+**Timeout handling:**
 
 ```python
 try:
-    approval = await workflow.wait_for_signal("approval", timeout=3600)
+    decision = await workflow.wait_for_signal(
+        "approval",
+        prompt="Approve this deployment?",
+        choices=["Approve", "Reject"],
+        timeout=3600,
+    )
 except asyncio.TimeoutError:
-    return {"status": "timed_out", "message": "No approval within 1 hour"}
+    return {"status": "timed_out", "message": "No response within 1 hour"}
 
-if approval and approval.get("approved"):
+if decision["choice"] == "Approve":
     return {"status": "approved"}
-return {"status": "rejected", "reason": approval.get("reason") if approval else None}
+return {"status": "rejected"}
 ```
 
-- `wait_for_signal` returns the data sent with the signal, or `None` if sent with no data
-- Use `prompt` to tell the user what input is needed (displayed by the CLI runner)
-- Signals sent before the workflow reaches `wait_for_signal` are buffered and delivered immediately
+**When to use:** approval gates before irreversible actions (deploy, publish, send, delete), collecting human judgment that cannot be automated, gathering free-text input mid-workflow.
+
+**When NOT to use:** anything that can be decided programmatically. If the answer can come from data, an API, or a conditional, use pure Python or `execute_activity` instead.
 
 ## Restrictions
 

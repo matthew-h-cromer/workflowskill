@@ -27,13 +27,14 @@ Run this workflow using the run_workflow tool.
 try:
     decision = await workflow.wait_for_signal(
         "approval",
-        prompt=f"Approve purchase request for ${amount}: \"{request}\"? Send {{\"approved\": true}} or {{\"approved\": false, \"reason\": \"...\"}}",
+        prompt=f"Approve purchase request for ${amount}: \"{request}\"?",
+        choices=["Approve", "Reject"],
         timeout=3600,
     )
 except asyncio.TimeoutError:
     return {"status": "escalated", "message": "No response within 1 hour — request auto-escalated"}
 
-if decision and decision.get("approved"):
+if decision["choice"] == "Approve":
     return {"status": "approved", "message": f"Approved: {request}"}
-return {"status": "rejected", "message": decision.get("reason", "No reason provided") if decision else "Rejected"}
+return {"status": "rejected", "message": "Rejected"}
 ```
