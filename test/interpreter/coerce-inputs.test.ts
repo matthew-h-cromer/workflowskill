@@ -26,7 +26,9 @@ function minimalWorkflow(inputType: string, defaultValue?: unknown): Workflow {
       {
         id: "noop",
         type: "transform",
+        description: "noop",
         expr: "input.val",
+        continue_on_error: false,
       },
     ],
   };
