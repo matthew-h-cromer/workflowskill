@@ -1,5 +1,5 @@
 import type { Runtime } from "../runtime/protocol.js";
-import { toWorkflowError } from "../schema/errors.js";
+import { WorkflowInputError, toWorkflowError } from "../schema/errors.js";
 import type { Step } from "../schema/steps.js";
 import type { Workflow } from "../schema/workflow.js";
 import type { Toolkit } from "../toolkit/protocol.js";
@@ -18,6 +18,77 @@ import { executeTry } from "./steps/try.js";
 import { executeWait } from "./steps/wait.js";
 import { executeWaitForSignal } from "./steps/wait_for_signal.js";
 import { executeWhile } from "./steps/while.js";
+
+// ---------------------------------------------------------------------------
+// Input coercion
+// ---------------------------------------------------------------------------
+
+/**
+ * Coerce a raw input value to the declared type. String representations of
+ * numbers, booleans, and JSON structures are accepted; already-correct JS
+ * types are passed through unchanged.
+ *
+ * Returns undefined/null unchanged so callers can rely on $exists() guards.
+ * Throws WorkflowInputError when the value cannot be coerced.
+ */
+function coerceInput(name: string, type: string, raw: unknown): unknown {
+  // Absent inputs — preserve so workflows can use $exists() guards
+  if (raw === undefined || raw === null) return raw;
+
+  switch (type) {
+    case "string":
+      return typeof raw === "string" ? raw : String(raw);
+
+    case "number": {
+      if (typeof raw === "number") return raw;
+      if (typeof raw === "string" && raw.trim() !== "") {
+        const n = Number(raw);
+        if (!Number.isNaN(n)) return n;
+      }
+      throw new WorkflowInputError(name, type, raw);
+    }
+
+    case "boolean": {
+      if (typeof raw === "boolean") return raw;
+      if (typeof raw === "string") {
+        const lower = raw.toLowerCase();
+        if (lower === "true") return true;
+        if (lower === "false") return false;
+      }
+      throw new WorkflowInputError(name, type, raw);
+    }
+
+    case "array": {
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {
+          // fall through
+        }
+      }
+      throw new WorkflowInputError(name, type, raw);
+    }
+
+    case "object": {
+      if (typeof raw === "object" && !Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return parsed;
+        } catch {
+          // fall through
+        }
+      }
+      throw new WorkflowInputError(name, type, raw);
+    }
+
+    default:
+      // Unknown type — pass through without coercion
+      return raw;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -45,10 +116,11 @@ export async function runWorkflow(
   toolkit: Toolkit,
   opts: RunWorkflowOptions = {},
 ): Promise<Record<string, unknown>> {
-  // Apply input defaults
+  // Apply input defaults and coerce to declared types
   const resolvedInputs: Record<string, unknown> = {};
   for (const [name, spec] of Object.entries(workflow.inputs ?? {})) {
-    resolvedInputs[name] = inputs[name] !== undefined ? inputs[name] : spec.default;
+    const raw = inputs[name] !== undefined ? inputs[name] : spec.default;
+    resolvedInputs[name] = coerceInput(name, spec.type, raw);
   }
   // Also pass through any undeclared inputs
   for (const [name, value] of Object.entries(inputs)) {

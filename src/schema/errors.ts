@@ -1,4 +1,23 @@
 /**
+ * Thrown when a declared workflow input cannot be coerced to its declared type.
+ */
+export class WorkflowInputError extends Error {
+  readonly input: string;
+  readonly declaredType: string;
+  readonly received: unknown;
+
+  constructor(input: string, declaredType: string, received: unknown) {
+    const display =
+      received === null ? "null" : received === undefined ? "undefined" : JSON.stringify(received);
+    super(`Input "${input}" must be of type ${declaredType}, got ${display}`);
+    this.name = "WorkflowInputError";
+    this.input = input;
+    this.declaredType = declaredType;
+    this.received = received;
+  }
+}
+
+/**
  * Runtime error shape. Propagated through catch blocks and continue_on_error.
  */
 export interface WorkflowError {
