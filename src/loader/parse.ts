@@ -53,7 +53,18 @@ export function parseWorkflowContent(content: string, ext = ".md"): ParseResult 
     };
   }
 
-  const raw = extractFrontmatter(content);
+  let raw: unknown;
+  try {
+    raw = extractFrontmatter(content);
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        type: "parse_error",
+        message: `YAML parse error: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    };
+  }
   if (raw === null) {
     return {
       ok: false,

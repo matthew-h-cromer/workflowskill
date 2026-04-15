@@ -11,12 +11,20 @@
  * no credentials, no MCP server required.
  */
 
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type Anthropic from "@anthropic-ai/sdk";
+import { getCurrentTest } from "vitest/suite";
 import { parseWorkflowContent } from "../src/loader/parse.js";
 import type { Workflow } from "../src/schema/workflow.js";
 import { WeldableMockToolkit } from "../src/toolkit/weldable/mock.js";
 import { validate } from "../src/validate/index.js";
 import { MAX_TOKENS, MODEL, buildSystemPrompt, createClient } from "./setup.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SNAPSHOTS_DIR = join(__dirname, "snapshots");
+const REGENERATE = process.env.EVAL_REGENERATE === "1";
 
 // ---------------------------------------------------------------------------
 // Shared toolkit instance (reused across tool calls within one eval run)
@@ -174,8 +182,32 @@ export interface EvalRunResult {
  * `save_workflow`, `list_actions`, `describe_action`, and `validate_workflow`, and returns
  * the captured workflow content + parsed Workflow object.
  */
+function snapshotPathForCurrentTest(): string | null {
+  const test = getCurrentTest();
+  if (!test) return null;
+  const testName = `${test.suite?.name ?? ""} ${test.name}`;
+  const slug = testName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return join(SNAPSHOTS_DIR, `${slug}.workflow.md`);
+}
+
 export async function runEval(task: string, opts: EvalRunOptions = {}): Promise<EvalRunResult> {
   const { maxTurns = 15, verbose = false } = opts;
+
+  const snapshotPath = snapshotPathForCurrentTest();
+
+  // Default: read the committed snapshot. Only call the API when EVAL_REGENERATE=1.
+  if (!REGENERATE && snapshotPath) {
+    try {
+      const rawContent = await readFile(snapshotPath, "utf-8");
+      return parseAndReturn(rawContent, 0);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      // Fall through to regenerate if snapshot doesn't exist
+    }
+  }
 
   const client = createClient();
   const systemPrompt = await buildSystemPrompt();
@@ -212,19 +244,6 @@ export async function runEval(task: string, opts: EvalRunOptions = {}): Promise<
     // Add assistant turn
     messages.push({ role: "assistant", content: response.content });
 
-    // Check for save_workflow call
-    for (const block of response.content) {
-      if (block.type === "tool_use" && block.name === "save_workflow") {
-        const input = block.input as { content?: string; path?: string };
-        if (input.content) {
-          rawContent = input.content;
-        }
-      }
-    }
-
-    // If we got the workflow, we're done
-    if (rawContent !== null) break;
-
     // If stop_reason is end_turn with no tools, the model is done but didn't save
     if (response.stop_reason === "end_turn") break;
 
@@ -234,11 +253,29 @@ export async function runEval(task: string, opts: EvalRunOptions = {}): Promise<
       if (block.type !== "tool_use") continue;
 
       if (block.name === "save_workflow") {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: JSON.stringify({ ok: true, path: (block.input as { path?: string }).path }),
-        });
+        const input = block.input as { content?: string; path?: string };
+        const content = input.content ?? "";
+        // Validate before accepting — reject invalid workflows so the model fixes them
+        const validation = await handleValidateWorkflow({ content, dry_run: false });
+        const validationResult = JSON.parse(validation) as { ok: boolean; issues?: unknown[] };
+        if (!validationResult.ok) {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: JSON.stringify({
+              ok: false,
+              error: "Workflow failed validation. Fix the issues and call save_workflow again.",
+              validation: validationResult,
+            }),
+          });
+        } else {
+          rawContent = content;
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: JSON.stringify({ ok: true, path: input.path }),
+          });
+        }
       } else if (block.name === "list_actions") {
         toolResults.push({
           type: "tool_result",
@@ -266,11 +303,22 @@ export async function runEval(task: string, opts: EvalRunOptions = {}): Promise<
       }
     }
 
+    // If save_workflow succeeded, we're done
+    if (rawContent !== null) break;
+
     if (toolResults.length === 0) break;
     messages.push({ role: "user", content: toolResults });
   }
 
-  // Parse the workflow
+  if (REGENERATE && rawContent !== null && snapshotPath) {
+    await mkdir(SNAPSHOTS_DIR, { recursive: true });
+    await writeFile(snapshotPath, rawContent, "utf-8");
+  }
+
+  return parseAndReturn(rawContent, turns);
+}
+
+function parseAndReturn(rawContent: string | null, turns: number): EvalRunResult {
   let workflow: Workflow | null = null;
   let parseError: string | null = null;
 

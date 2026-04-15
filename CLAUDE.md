@@ -169,15 +169,25 @@ Third-party interpreters can consume the conformance suite directly — `conform
 
 ## Eval Workflow
 
-Evals are manual-only (require `ANTHROPIC_API_KEY`):
+The eval suite is the regression harness for the authoring skill. Each eval pairs a task description with structural assertions (`evals/checks.ts`) on the workflow Claude generates. Committed snapshots in `evals/snapshots/` are the audit trail.
 
 ```sh
-ANTHROPIC_API_KEY=... pnpm eval                    # all evals
-ANTHROPIC_API_KEY=... pnpm eval -- --snapshot      # save snapshots
-ANTHROPIC_API_KEY=... pnpm eval -- -t foreach      # single test
+pnpm eval                                                 # check committed snapshots (no API)
+ANTHROPIC_API_KEY=... EVAL_REGENERATE=1 pnpm eval         # regenerate, then check
+pnpm eval -- -t foreach                                   # single test
 ```
 
-Evals call Claude with `skill/SKILL.md` as the system prompt and a natural-language task, then assert the generated YAML has correct step structure via `evals/checks.ts`. Snapshots in `evals/snapshots/` are the record of what the model generated — keep them current.
+**Add an eval when:**
+- Adding a new step type, field, or schema feature — include a positive test and a negative (asserting the model *doesn't* reach for it inappropriately).
+- Adding or changing authoring guidance in `skill/SKILL.md` or `skill/toolkits/*/prompt.md` — the test should fail without the guidance.
+- Fixing a bug class in model output — the test should reliably reproduce the error.
+- Adding a new toolkit.
+
+Good evals describe the behavior without naming the step type, assert structural properties (not exact YAML), and include `rawContent` in failure messages.
+
+**Regenerate when** editing anything the model sees: `skill/SKILL.md`, toolkit prompts, harness tool definitions, action metadata, schema, or the eval model. Loop: change → `EVAL_REGENERATE=1 pnpm eval` → review diff → commit skill + snapshots together, or iterate.
+
+Assertions are a floor, not a ceiling — review diffs for quality regressions (worse step selection, sloppier expressions, missing descriptions) even when tests pass. Promote recurring ad-hoc checks into `evals/checks.ts`; add an eval for every authoring bug traced to skill ambiguity.
 
 ### Skill authoring files
 
