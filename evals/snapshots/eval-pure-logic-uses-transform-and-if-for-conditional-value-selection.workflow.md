@@ -1,18 +1,18 @@
 ---
 version: 1
 name: score-to-grade
-description: "Converts a numeric score into a letter grade: A for 90+, B for 80–89, or C for anything below."
+description: "Converts a numeric score into a letter grade: A for 90+, B for 80–89, and C for anything below 80."
 inputs:
   score:
     type: number
-    description: "The numeric score to grade"
+    description: "The numeric score to convert into a letter grade"
 outputs:
   grade: "{{ steps.grade.output }}"
 steps:
   - id: grade
     description: Depending on the score, assign letter grade A, B, or C
     type: switch
-    on: "score >= 90 ? 'A' : score >= 80 ? 'B' : 'C'"
+    on: "input.score >= 90 ? 'A' : input.score >= 80 ? 'B' : 'C'"
     cases:
       A:
         - id: grade_a
@@ -31,10 +31,10 @@ steps:
         expr: "'C'"
 ---
 
-Converts a numeric input score into a letter grade using pure conditional logic — no external calls required.
+Converts a numeric input score into a letter grade using pure conditional logic with no external calls.
 
 - **A** — score is 90 or above
 - **B** — score is 80 through 89
 - **C** — score is below 80
 
-The result is returned as `grade` in the workflow output.
+The workflow uses a `switch` step that evaluates the score with a JSONata ternary expression, routes to the matching case, and returns the grade string.

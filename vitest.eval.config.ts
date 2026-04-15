@@ -5,6 +5,7 @@ export default defineConfig({
     include: ["evals/tests/**/*.eval.ts"],
     environment: "node",
     testTimeout: 120_000,
+    setupFiles: ["dotenv/config"],
     // Evals run sequentially to avoid hammering the API
     pool: "forks",
     poolOptions: {

@@ -254,6 +254,59 @@ with:
 A string that is entirely one `{{ expr }}` span returns the raw evaluated value
 (object/array/number/boolean); strings with surrounding text are coerced to string.
 
+### Common JSONata patterns
+
+**Filter and iterate safely — always append `[]`**
+
+`$filter`, `$sift`, `$sort`, `$map`, `$distinct`, and path expressions all collapse a single result to a scalar instead of a one-element array. Any `foreach.items` or action arg typed `array` must receive an array. Append `[]` to force array shape:
+
+```yaml
+# BAD — $filter returns a scalar when exactly one message matches; foreach throws
+items: "{{ $filter(steps.fetch.output.messages, function($m){ $m.urgent }) }}"
+
+# GOOD — [] forces array shape even on a single match
+items: "{{ $filter(steps.fetch.output.messages, function($m){ $m.urgent })[] }}"
+```
+
+Use the same pattern in `transform.expr` when the result feeds an array slot:
+
+```
+$filter(steps.results.output, function($r){ $r.score > 0.8 })[]
+```
+
+**Map/reshape an array**
+
+```
+steps.items.output.{ "id": id, "label": name }
+```
+
+**Reduce to a scalar**
+
+```
+$reduce(steps.scores.output, function($acc, $v){ $acc + $v }, 0)
+```
+
+**Safe navigation (null-forgiving)**
+
+JSONata path navigation returns `undefined` (not an error) when a field is missing — no optional-chaining needed:
+
+```
+steps.search.output.results[0].title    /* undefined if missing, never throws */
+```
+
+**Count / check existence**
+
+```
+$count(steps.list.output) > 0          /* true if list is non-empty */
+$exists(steps.step_id.output.field)    /* true if field is present */
+$not($exists(x))                       /* true if field is absent */
+```
+
+**String interpolation vs. bare expressions**
+
+- `{{ expr }}` in string fields (action args, `return.value`, `wait_for_signal.match`) — always wrap in braces
+- Bare expression (no braces) in `transform.expr`, `if.when`, `while.when`, `switch.on` — never use `{{ }}`
+
 ### JSONata gotchas (vs. other languages)
 
 ```

@@ -1,34 +1,36 @@
+import type { Action, InputField, OutputField } from "@weldable/integration-core";
+
 // ---------------------------------------------------------------------------
-// Action schema types (serializable — no execute/mockExecute handlers)
+// Action info types — serializable descriptors (no execute/mockExecute handlers)
 // ---------------------------------------------------------------------------
 
-export interface ActionFieldSchema {
-  name: string;
-  /** Matches @weldable/integration-core InputField.type */
-  type: "string" | "text" | "number" | "boolean" | "object" | "array" | "enum";
-  required: boolean;
-  description?: string;
-  default?: unknown;
-  /** Enum values. Only present when type === "enum". */
-  options?: Array<{ label: string; value: string }>;
+/**
+ * Extends integration-core's InputField with workflowskill-specific validation
+ * metadata. When @weldable/integration-core adds `schema` to InputField this
+ * interface collapses to a type alias.
+ */
+export interface ActionInputField extends InputField {
+  /**
+   * Optional JSON Schema (draft 2020-12) the literal arg value must satisfy.
+   * Validated with ajv during `workflowskill validate`. Skipped when the value
+   * contains `{{ }}` spans (runtime-resolved).
+   */
+  schema?: unknown;
 }
 
-export interface ActionOutputFieldSchema {
-  name: string;
-  type: "string" | "number" | "boolean" | "object" | "array";
-  description?: string;
-}
+/** Direct alias for OutputField — no divergence needed. */
+export type ActionOutputField = OutputField;
 
-export interface ActionSchema {
-  /** Composite id, e.g. "gmail.search" */
-  id: string;
-  name: string;
-  description: string;
-  intents?: string[];
-  preview?: string;
-  inputFields: ActionFieldSchema[];
-  outputFields: ActionOutputFieldSchema[];
-}
+/**
+ * Serializable descriptor for a single action: identity, field definitions,
+ * and optional metadata. Runtime handlers (execute/mockExecute) are stripped.
+ *
+ * Named "Info" to distinguish from Zod schemas (which use the Schema suffix
+ * throughout this codebase).
+ */
+export type ActionInfo = Omit<Action, "execute" | "mockExecute"> & {
+  inputFields: ActionInputField[];
+};
 
 // ---------------------------------------------------------------------------
 // Toolkit interface
@@ -64,13 +66,13 @@ export interface Toolkit {
    * Return schema metadata for every action this toolkit supports.
    * Used for static workflow validation and CLI action discovery.
    */
-  listActions(): Promise<ActionSchema[]>;
+  listActions(): Promise<ActionInfo[]>;
 
   /**
    * Return schema metadata for a single action by its composite id (e.g. "gmail.search").
    * Returns undefined when the action is not registered in this toolkit.
    */
-  getAction(id: string): Promise<ActionSchema | undefined>;
+  getAction(id: string): Promise<ActionInfo | undefined>;
 }
 
 // ---------------------------------------------------------------------------

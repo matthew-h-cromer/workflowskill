@@ -20,7 +20,9 @@ export async function executeForeach(
 
   if (!Array.isArray(items)) {
     throw new Error(
-      `foreach at ${path}: items expression must return an array, got ${typeof items}`,
+      `foreach at ${path}: items expression must return an array, got ${typeof items}. ` +
+        "If you are using $filter, $sift, $sort, $map, or a path expression, JSONata collapses " +
+        "single-element results to a scalar. Append [] to force array shape: $filter(x, fn)[]",
     );
   }
 

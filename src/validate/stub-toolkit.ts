@@ -1,5 +1,5 @@
-import type { ActionSchema, Toolkit } from "../toolkit/protocol.js";
-import { findAction, listActionIds, toSchema } from "../toolkit/weldable/registry.js";
+import type { ActionInfo, Toolkit } from "../toolkit/protocol.js";
+import { findAction, listActionIds, toActionInfo } from "../toolkit/weldable/registry.js";
 
 /**
  * Toolkit used during `validate({ dryRun: true })`. Every action returns an
@@ -24,16 +24,16 @@ export function createStubToolkit(): Toolkit {
     async getAuthoringContext(): Promise<string> {
       return "";
     },
-    async listActions(): Promise<ActionSchema[]> {
+    async listActions(): Promise<ActionInfo[]> {
       return listActionIds().map((id) => {
         const action = findAction(id);
         if (!action) throw new Error(`Registry inconsistency: id "${id}" listed but not found`);
-        return toSchema(action);
+        return toActionInfo(action);
       });
     },
-    async getAction(id: string): Promise<ActionSchema | undefined> {
+    async getAction(id: string): Promise<ActionInfo | undefined> {
       const action = findAction(id);
-      return action ? toSchema(action) : undefined;
+      return action ? toActionInfo(action) : undefined;
     },
   };
 }

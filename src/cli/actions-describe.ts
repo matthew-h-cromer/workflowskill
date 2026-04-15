@@ -1,5 +1,5 @@
 import kleur from "kleur";
-import type { ActionSchema } from "../toolkit/protocol.js";
+import type { ActionInfo } from "../toolkit/protocol.js";
 import { resolveToolkit } from "./toolkit.js";
 
 export interface ActionsDescribeOptions {
@@ -30,7 +30,7 @@ export async function actionsDescribeCommand(
 }
 
 /**
- * Render an ActionSchema in human-readable form.
+ * Render an ActionInfo in human-readable form.
  *
  * This format is intentionally stable — it is parsed by the workflow-author
  * skill during the self-heal loop. Do not change formatting without updating
@@ -49,7 +49,7 @@ export async function actionsDescribeCommand(
  *     ...
  *
  */
-export function renderHuman(action: ActionSchema): void {
+export function renderHuman(action: ActionInfo): void {
   process.stdout.write(`ID          ${action.id}\n`);
   process.stdout.write(`DESCRIPTION ${action.description}\n`);
 
@@ -79,10 +79,11 @@ export function renderHuman(action: ActionSchema): void {
   process.stdout.write("\n");
   process.stdout.write("OUTPUTS\n");
 
-  if (action.outputFields.length === 0) {
+  const outputFields = action.outputFields ?? [];
+  if (outputFields.length === 0) {
     process.stdout.write("  (none)\n");
   } else {
-    for (const field of action.outputFields) {
+    for (const field of outputFields) {
       const desc = field.description ? `  — ${field.description}` : "";
       process.stdout.write(`  ${field.name} ${field.type}${desc}\n`);
     }

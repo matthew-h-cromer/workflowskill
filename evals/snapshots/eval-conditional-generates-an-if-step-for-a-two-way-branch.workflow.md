@@ -1,7 +1,7 @@
 ---
 version: 1
 name: gmail-urgent-slack-alert
-description: "Searches Gmail for emails with URGENT in the subject and posts a Slack alert if any are found — keeping your team instantly informed of critical messages."
+description: "Searches Gmail for emails with URGENT in the subject and posts a Slack alert if any are found, otherwise returns a quiet status."
 inputs:
   slack_channel:
     type: string
@@ -10,10 +10,10 @@ inputs:
   max_results:
     type: number
     default: 10
-    description: "Maximum number of urgent emails to surface"
+    description: "Maximum number of urgent emails to retrieve"
 outputs:
   status: "{{ steps.result.output.status }}"
-  urgent_count: "{{ steps.result.output.count }}"
+  urgent_count: "{{ steps.result.output.urgent_count }}"
 steps:
   - id: search
     description: Search Gmail for emails with URGENT in the subject
@@ -24,32 +24,25 @@ steps:
       maxResults: "{{ input.max_results }}"
 
   - id: check_urgent
-    description: If urgent emails found, alert Slack; otherwise return quiet status
+    description: If urgent emails found, post a Slack alert; otherwise return quiet status
     type: if
     when: "$count(steps.search.output.messages) > 0"
     then:
-      - id: format_subjects
-        description: Build a bullet list of message IDs for the Slack alert
-        type: transform
-        expr: |
-          "🚨 *" & $string($count(steps.search.output.messages)) & " URGENT email(s) found in your inbox:*\n" &
-          $join(steps.search.output.messages.("• Message ID: " & id), "\n")
-
-      - id: notify
-        description: Post the urgent-email alert to Slack
+      - id: alert
+        description: Post an urgent-email alert to Slack
         type: action
         uses: slack.post_message
         with:
           channel: "{{ input.slack_channel }}"
-          text: "{{ steps.format_subjects.output }}"
+          text: "{{ ':rotating_light: *Urgent emails detected!* ' & $string($count(steps.search.output.messages)) & ' email(s) with URGENT in the subject found in your inbox.' }}"
 
       - id: result
-        description: Return alerted status with the count of urgent emails
+        description: Return alert-sent status with the count of urgent emails
         type: transform
         expr: |
           {
-            "status": "alerted",
-            "count": $count(steps.search.output.messages)
+            "status": "alert_sent",
+            "urgent_count": $count(steps.search.output.messages)
           }
     else:
       - id: result
@@ -57,29 +50,21 @@ steps:
         type: transform
         expr: |
           {
-            "status": "quiet",
-            "count": 0
+            "status": "no_urgent_emails",
+            "urgent_count": 0
           }
 ---
 
-Searches Gmail for any emails whose subject contains **URGENT**. If one or more are found, it posts a formatted Slack alert to your chosen channel (default: `#alerts`) listing how many urgent messages arrived. If the inbox is clear, the workflow exits silently with a `quiet` status — no Slack noise.
+Searches Gmail for emails that contain "URGENT" in the subject line. If any matching emails are found, it posts an alert message to a configurable Slack channel (default: `#alerts`) detailing how many urgent emails were detected. If no urgent emails exist, the workflow exits quietly with a `no_urgent_emails` status — no Slack message is sent.
 
-## Inputs
+**Inputs**
+- `slack_channel` — Slack channel to post the alert to (default: `#alerts`)
+- `max_results` — Maximum number of urgent emails to retrieve (default: 10)
 
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `slack_channel` | string | `#alerts` | Channel to post the alert to |
-| `max_results` | number | `10` | Cap on urgent emails to surface per run |
+**Outputs**
+- `status` — `alert_sent` or `no_urgent_emails`
+- `urgent_count` — Number of urgent emails found
 
-## Outputs
-
-| Name | Description |
-|---|---|
-| `status` | `"alerted"` if a Slack message was posted, `"quiet"` if the inbox was clear |
-| `urgent_count` | Number of urgent emails found (0 when quiet) |
-
-## Setup
-
-1. Connect your **Gmail** integration (read-only scope is sufficient).
-2. Connect your **Slack** integration with `chat:write` scope.
-3. Set `slack_channel` to the channel where alerts should appear.
+**Integrations used**
+- Gmail — `gmail.search_messages`
+- Slack — `slack.post_message`

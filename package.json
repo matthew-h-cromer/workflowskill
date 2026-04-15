@@ -1,6 +1,6 @@
 {
   "name": "workflowskill",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "Declarative YAML workflow runtime — authoring skill and schema",
   "license": "MIT",
   "type": "module",
@@ -58,6 +58,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "vitest run --config vitest.eval.config.ts",
+    "eval:regen": "EVAL_REGENERATE=1 vitest run --config vitest.eval.config.ts",
     "conformance": "vitest run --config vitest.conformance.config.ts",
     "clean": "rm -rf dist",
     "workflowskill": "node dist/cli/index.js",
@@ -76,6 +77,7 @@
     "@weldable/integration-google-tasks": "^1.0.0",
     "@weldable/integration-slack": "^1.0.0",
     "@weldable/integration-web": "^1.0.0",
+    "ajv": "^8.18.0",
     "commander": "^12.0.0",
     "jsonata": "^2.0.5",
     "kleur": "^4.1.5",
@@ -87,6 +89,7 @@
     "@anthropic-ai/sdk": "^0.52.0",
     "@biomejs/biome": "^1.9.0",
     "@types/node": "^22.0.0",
+    "dotenv": "^17.4.2",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   }

@@ -1,42 +1,20 @@
 ---
 version: 1
-name: filter-and-double
-description: "Filters a list of numbers to only those greater than 10, then doubles each one."
+name: filter-and-double-numbers
+description: "Filters a list of numbers to only those greater than 10, then doubles each one and returns the result."
 inputs:
   numbers:
     type: array
-    description: "List of numbers to filter and transform"
+    description: "The list of numbers to process"
 outputs:
-  result: "{{ steps.double.output }}"
+  result: "{{ steps.filter_and_double.output }}"
 steps:
-  - id: filter
-    description: Filter numbers to only those greater than 10
+  - id: filter_and_double
+    description: Filter numbers greater than 10 and double each one
     type: transform
-    expr: "input.numbers[$ > 10]"
-
-  - id: double
-    description: Double each number that passed the filter
-    type: transform
-    expr: "steps.filter.output * 2"
+    expr: "$map(input.numbers[$ > 10], function($n){ $n * 2 })[]"
 ---
 
-Filters an input list of numbers, keeping only values greater than 10, then doubles each qualifying number. Returns the resulting array.
+Filters a list of input numbers to keep only those greater than 10, then doubles each surviving number and returns the resulting array.
 
-## How it works
-
-1. **Filter** — Uses a JSONata array filter (`[$ > 10]`) to keep only numbers greater than 10 from the input array.
-2. **Double** — Multiplies every remaining number by 2. JSONata automatically maps the `* 2` operation across the entire array.
-
-## Example
-
-**Input:**
-```json
-{ "numbers": [3, 11, 7, 25, 10, 42] }
-```
-
-**Output:**
-```json
-{ "result": [22, 50, 84] }
-```
-
-No external integrations or credentials are required — this workflow is pure data transformation.
+No external integrations are used — this is a pure in-memory transformation powered by a single JSONata expression.

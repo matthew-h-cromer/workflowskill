@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ActionSchema, Toolkit } from "../protocol.js";
+import type { ActionInfo, Toolkit } from "../protocol.js";
 import { ActionNotFoundError } from "../protocol.js";
-import { findAction, listActionIds, toSchema } from "./registry.js";
+import { findAction, listActionIds, toActionInfo } from "./registry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,16 +46,16 @@ export class WeldableMockToolkit implements Toolkit {
     }
   }
 
-  async listActions(): Promise<ActionSchema[]> {
+  async listActions(): Promise<ActionInfo[]> {
     return listActionIds().map((id) => {
       const action = findAction(id);
       if (!action) throw new Error(`Registry inconsistency: id "${id}" listed but not found`);
-      return toSchema(action);
+      return toActionInfo(action);
     });
   }
 
-  async getAction(id: string): Promise<ActionSchema | undefined> {
+  async getAction(id: string): Promise<ActionInfo | undefined> {
     const action = findAction(id);
-    return action ? toSchema(action) : undefined;
+    return action ? toActionInfo(action) : undefined;
   }
 }

@@ -70,11 +70,25 @@ program
   .command("validate <file>")
   .description("Statically validate a workflow file and report issues")
   .option("--toolkit <name>", "Toolkit to validate actions against", "weldable")
-  .option("--dry-run", "Also execute the workflow with mock actions to catch runtime errors", false)
+  .option("--no-dry-run", "Skip dry-run execution (dry-run is on by default)")
+  .option(
+    "-i, --input <key=value>",
+    "Workflow input for dry-run (repeatable)",
+    (v, acc: string[]) => {
+      acc.push(v);
+      return acc;
+    },
+    [],
+  )
   .option("--json", "Output results as JSON", false)
-  .action(async (file: string, opts: { toolkit: string; dryRun: boolean; json: boolean }) => {
-    await validateCommand(file, opts);
-  });
+  .action(
+    async (
+      file: string,
+      opts: { toolkit: string; noDryRun: boolean; input: string[]; json: boolean },
+    ) => {
+      await validateCommand(file, opts);
+    },
+  );
 
 // ---------------------------------------------------------------------------
 // actions subcommands

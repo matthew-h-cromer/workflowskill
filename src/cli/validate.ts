@@ -6,7 +6,10 @@ import { resolveToolkit } from "./toolkit.js";
 
 export interface ValidateCommandOptions {
   toolkit: string;
-  dryRun: boolean;
+  /** When true, skip dry-run (opt-out). Dry-run runs by default. */
+  noDryRun: boolean;
+  /** key=value strings to pass as workflow inputs for dry-run. */
+  input: string[];
   json: boolean;
 }
 
@@ -24,9 +27,27 @@ export async function validateCommand(
 
   const toolkit = await resolveToolkit(opts.toolkit);
 
+  // Parse -i key=value flags
+  const inputs: Record<string, unknown> = {};
+  for (const pair of opts.input) {
+    const eq = pair.indexOf("=");
+    if (eq === -1) {
+      process.stderr.write(kleur.red(`Invalid --input flag: "${pair}" (expected key=value)\n`));
+      process.exit(1);
+    }
+    const key = pair.slice(0, eq);
+    const rawVal = pair.slice(eq + 1);
+    try {
+      inputs[key] = JSON.parse(rawVal);
+    } catch {
+      inputs[key] = rawVal;
+    }
+  }
+
   const result = await validate(content, {
     toolkit,
-    dryRun: opts.dryRun,
+    dryRun: !opts.noDryRun,
+    inputs,
   });
 
   if (opts.json) {

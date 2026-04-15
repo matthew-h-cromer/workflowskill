@@ -10,7 +10,7 @@ import googleSheets from "@weldable/integration-google-sheets";
 import googleTasks from "@weldable/integration-google-tasks";
 import slack from "@weldable/integration-slack";
 import web from "@weldable/integration-web";
-import type { ActionSchema } from "../protocol.js";
+import type { ActionInfo } from "../protocol.js";
 
 const integrations: Integration[] = [
   anthropic,
@@ -42,27 +42,12 @@ export function listActionIds(): string[] {
 }
 
 /**
- * Convert a compiled Action into a serializable ActionSchema (no execute/mockExecute).
+ * Strip runtime handlers from a compiled Action, returning a serializable ActionInfo.
  */
-export function toSchema(action: Action): ActionSchema {
+export function toActionInfo({ execute: _e, mockExecute: _m, ...rest }: Action): ActionInfo {
   return {
-    id: action.id,
-    name: action.name,
-    description: action.description,
-    ...(action.intents !== undefined && { intents: action.intents }),
-    ...(action.preview !== undefined && { preview: action.preview }),
-    inputFields: action.inputFields.map((f) => ({
-      name: f.name,
-      type: f.type,
-      required: f.required,
-      ...(f.description !== undefined && { description: f.description }),
-      ...(f.default !== undefined && { default: f.default }),
-      ...(f.options !== undefined && { options: f.options }),
-    })),
-    outputFields: (action.outputFields ?? []).map((f) => ({
-      name: f.name,
-      type: f.type,
-      ...(f.description !== undefined && { description: f.description }),
-    })),
+    ...rest,
+    inputFields: rest.inputFields.map((f) => ({ ...f })),
+    outputFields: (rest.outputFields ?? []).map((f) => ({ ...f })),
   };
 }

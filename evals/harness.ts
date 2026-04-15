@@ -205,7 +205,11 @@ export async function runEval(task: string, opts: EvalRunOptions = {}): Promise<
       return parseAndReturn(rawContent, 0);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      // Fall through to regenerate if snapshot doesn't exist
+      // Snapshot missing — fail fast rather than silently hitting the API.
+      throw new Error(
+        `Eval snapshot not found: ${snapshotPath}\n` +
+          "Run EVAL_REGENERATE=1 pnpm eval to generate it.",
+      );
     }
   }
 
