@@ -67,6 +67,43 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 | `runtimes` | Workflow execution environments (dbos, etc.) |
 | `examples` | Example workflow files |
 
+## Version bump evaluation
+
+Before every commit, evaluate whether `package.json` version should change. Walk through the reasoning out loud, then propose a bump (or none) and wait for user confirmation before running `git commit`.
+
+### Decision process
+
+1. **Identify what's in the published surface.** Only changes to files shipped via `package.json` `files`/`exports` (here: `dist/schema/**`, `skill/**`) affect consumers. Changes to `evals/`, `conformance/`, `test/`, `CLAUDE.md`, `.gitignore`, CI config, and scripts do **not**.
+
+2. **Classify the published change** against semver:
+   - **major** (`x.0.0`) — breaking change to public API, schema, or skill content that existing consumers must adapt to. For 0.x, still use major for intentional breaks.
+   - **minor** (`0.x.0`) — new public API, new schema field, new skill guidance, new exported helper. Backwards-compatible additions.
+   - **patch** (`0.0.x`) — bug fix, internal refactor, doc-only changes inside published files, robustness improvements that don't add API surface.
+   - **none** — nothing in the published surface changed. Internal-only tooling, dev docs, tests, CI.
+
+3. **Default to patch when in doubt** between patch and minor. Minor should signal "there's something new you can use."
+
+### Output format (always show the user)
+
+```
+Version bump: <current> → <proposed>    (or: no bump)
+
+Reasoning:
+- <what shipped: specific file(s) in published surface>
+- <what didn't ship: internal-only changes>
+- <which semver bucket this falls in and why>
+```
+
+Then ask: "Proceed with commit?" Wait for approval before running `git commit`. Never bump version and commit in one silent step.
+
+### Examples
+
+- Fix inside `src/loader/parse.ts` + new evals + CLAUDE.md edits → **patch**. Only the loader fix ships; the rest is internal.
+- Add a new exported helper from `src/schema/index.ts` → **minor**. New API surface.
+- Rename a field in `WorkflowSchema` → **major**. Breaking for anyone parsing workflows.
+- Edit `evals/`, `.gitignore`, and `CLAUDE.md` only → **no bump**. Nothing ships.
+- Rewrite `skill/SKILL.md` guidance → **minor** (authoring behavior changed for consumers reading the skill). If it's a pure typo fix, patch.
+
 ## Examples
 
 Good:
