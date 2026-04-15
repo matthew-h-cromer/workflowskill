@@ -1,7 +1,93 @@
 {
   "name": "workflowskill",
-  "version": "0.9.1",
-  "description": "WorkflowSkill system prompt and tool contract",
-  "main": "index.js",
-  "license": "MIT"
+  "version": "0.8.0",
+  "description": "Declarative YAML workflow runtime — authoring skill and schema",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "workflowskill": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js"
+    },
+    "./validate": {
+      "types": "./dist/validate/index.d.ts",
+      "import": "./dist/validate/index.js"
+    },
+    "./loader": {
+      "types": "./dist/loader/index.d.ts",
+      "import": "./dist/loader/index.js"
+    },
+    "./interpreter": {
+      "types": "./dist/interpreter/index.d.ts",
+      "import": "./dist/interpreter/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./toolkit": {
+      "types": "./dist/toolkit/index.d.ts",
+      "import": "./dist/toolkit/index.js"
+    },
+    "./skill": {
+      "types": "./skill/index.d.ts",
+      "import": "./skill/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "skill/**"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "dev": "tsc --watch --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/ evals/ conformance/ test/",
+    "format": "biome format --write src/ evals/ conformance/ test/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "vitest run --config vitest.eval.config.ts",
+    "conformance": "vitest run --config vitest.conformance.config.ts",
+    "clean": "rm -rf dist",
+    "workflowskill": "node dist/cli/index.js",
+    "prepublishOnly": "pnpm clean && pnpm build"
+  },
+  "dependencies": {
+    "@weldable/integration-anthropic": "^1.0.0",
+    "@weldable/integration-core": "^1.0.0",
+    "@weldable/integration-discord": "^1.0.0",
+    "@weldable/integration-github": "^1.0.0",
+    "@weldable/integration-gmail": "^1.0.0",
+    "@weldable/integration-google-calendar": "^1.0.0",
+    "@weldable/integration-google-docs": "^1.0.0",
+    "@weldable/integration-google-drive": "^1.0.0",
+    "@weldable/integration-google-sheets": "^1.0.0",
+    "@weldable/integration-google-tasks": "^1.0.0",
+    "@weldable/integration-slack": "^1.0.0",
+    "@weldable/integration-web": "^1.0.0",
+    "commander": "^12.0.0",
+    "jsonata": "^2.0.5",
+    "kleur": "^4.1.5",
+    "yaml": "^2.7.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.23.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@biomejs/biome": "^1.9.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
 }

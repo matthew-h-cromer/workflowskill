@@ -1,22 +1,27 @@
 ---
-type: workflow
-name: Hello World
-description: "See WorkflowSkill in action — run this to get a personalized greeting and confirm your setup is working."
+version: 1
+name: hello-world
+description: "Returns a personalized greeting — the simplest possible workflow."
 inputs:
   name:
-    type: str
-    default: "World"
+    type: string
+    default: World
+    description: "The name to greet"
 outputs:
-  message:
-    type: str
+  greeting: "{{ steps.greet.output }}"
+steps:
+  - id: greet
+    description: Build the personalized greeting string
+    type: transform
+    expr: "'Hello, ' & input.name & '!'"
 ---
 
-## Usage
+The minimal WorkflowSkill example. Takes a name and returns a greeting string.
+No actions, no external calls — pure data transformation.
 
-Run this workflow using the run_workflow tool.
-
-## Workflow
-
-```python
-return {"message": f"Hello, {name}!"}
-```
+Demonstrates:
+- Workflow structure and frontmatter
+- `transform` step with a JSONata expression
+- Top-level `outputs:` section
+- Default input values
+- Step `description` field for human-readable step labels

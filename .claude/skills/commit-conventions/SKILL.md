@@ -62,7 +62,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 |-------|--------|
 | `loader` | SKILL.md parsing, frontmatter extraction, AST validation |
 | `runner` | run_skill orchestration |
-| `cli` | Click CLI commands (run) |
+| `cli` | CLI commands |
 | `toolkits` | Platform toolkit implementations (weldable, etc.) |
 | `runtimes` | Workflow execution environments (dbos, etc.) |
 | `examples` | Example workflow files |
@@ -84,7 +84,7 @@ fix(runner): prevent duplicate activity execution on retry
 ```
 
 ```
-chore: scaffold Python project with uv and pytest
+chore: scaffold TypeScript project with pnpm and vitest
 ```
 
 Bad (and how to fix):

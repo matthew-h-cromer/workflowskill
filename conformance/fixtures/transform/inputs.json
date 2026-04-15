@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "label": "a", "value": 1 },
+    { "label": "b", "value": 3 },
+    { "label": "c", "value": 5 }
+  ]
+}

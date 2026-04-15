@@ -1,161 +1,188 @@
 # WorkflowSkill
 
-A standard for authoring durable Python workflows from natural language descriptions, plus a CLI for developing and testing them.
+A standard for authoring durable YAML workflows from natural language descriptions, plus a CLI and interpreter for developing and testing them.
 
 ## Purpose
 
-**The standard** — `skill/SKILL.md` is the main artifact: a platform-agnostic authoring guide published via npm.
+**The standard** — `skill/SKILL.md` is the main artifact: a platform-agnostic authoring guide published via npm. It teaches LLMs to emit declarative YAML workflows.
 
-**The CLI** serves two purposes:
-1. **Improve the skill** — An eval-driven test framework (in `evals/`) measures how well `skill/SKILL.md` teaches an LLM to generate valid workflows. Run evals before and after editing the skill.
-2. **Execute workflows locally** — Developers can run workflows on their machine during development.
+**The interpreter** (`src/interpreter/`) executes those workflows deterministically. It is the reference implementation — Weldable and other runtimes build their own against the Specification section of `README.md` + `conformance/`.
+
+**The CLI** (`src/cli/`) runs workflows locally in mock mode (no real action calls). Used for authoring iteration and eval.
 
 ## Repo Structure
 
 ```
 skill/
-  SKILL.md                         # Workflow-author skill (the main artifact)
-evals/                             # Eval framework for improving skill/SKILL.md
-  ast_checks.py                    # AST assertion helpers
-  conftest.py                      # Fixtures: LLM caller, skill parser, score report
-  test_authoring.py                # Eval test cases
-  snapshots/                       # Saved generated outputs for diffing
+  SKILL.md                           # Workflow-author skill (platform-agnostic, the main artifact)
+  toolkits/
+    weldable/
+      prompt.md                      # Weldable-specific authoring context
+src/
+  schema/                            # PUBLISHED — Zod schemas + TypeScript types
+    index.ts
+    workflow.ts
+    steps.ts
+    expressions.ts                   # DurationSchema, parseDurationMs, branded expr types
+    version.ts
+    json-schema.ts                   # zod-to-json-schema emitter
+  interpreter/                       # INTERNAL
+    index.ts                         # runWorkflow(workflow, inputs, runtime, toolkit)
+    context.ts                       # ExecutionContext: steps, input, workflow, env
+    expressions/
+      jsonata.ts                     # evaluateJsonata + interpolate ({{ }} template scanning)
+      common.ts                      # shared utilities (truncate)
+    steps/                           # One file per step type
+      action.ts transform.ts if.ts switch.ts foreach.ts while.ts
+      parallel.ts try.ts wait.ts wait_for_signal.ts
+      return.ts
+    errors.ts                        # WorkflowError shape
+    idempotency.ts                   # sha256(runId | stepPath) — path encodes iteration+branch
+  runtime/
+    protocol.ts                      # Runtime interface
+    memory.ts                        # InMemoryRuntime (EventEmitter-based signals)
+  toolkit/
+    protocol.ts                      # Toolkit interface: execute(action, args, idempotencyKey)
+    registry.ts                      # ToolkitRegistry
+  loader/
+    frontmatter.ts                   # Extract frontmatter YAML and markdown body from .workflow.md
+    parse.ts                         # .workflow.md → Zod-validated Workflow + body
+  cli/
+    index.ts                         # commander entrypoint; bin: workflowskill
+    run.ts
+    login.ts
+    display.ts
 examples/
-  hello-world.md                   # Pure Python example (no toolkit)
-  weldable/                        # Weldable toolkit examples
-workflows/                         # Local workflow workspace (gitignored)
-cli/
-  workflowskill/                   # Python package
-    __init__.py
-    _plugin_loader.py              # Shared dynamic loader for toolkits/runtimes
-    main.py                        # Click CLI: run command
-    display.py                     # Rich console output
-    workflow_context.py            # ContextVar-based dispatch for action routing
-    loader/
-      skill_loader.py              # Parse SKILL.md → LoadedSkill
-      validator.py                 # AST validator for restricted Python subset
-    runner/
-      runner.py                    # run_skill() — load → execute directly → return
-    toolkits/                      # Platform-specific execution integrations
-      _protocol.py                 # Toolkit protocol definition
-      weldable/                    # Weldable cloud platform toolkit
-        README.md                  # Platform docs and setup steps
-        prompt.md                  # Action catalog for authoring context
-    runtimes/                      # Workflow execution environments
-      _protocol.py                 # Runtime protocol definition
-      dbos/                        # DBOS-backed durable runtime (SQLite/Postgres)
-  tests/                           # CLI unit & integration tests
-    unit/
-    integration/
-pyproject.toml                     # Python project config (uv, dependencies)
+  hello-world.md
+  gmail-triage.md
+  human-review.md
+conformance/
+  fixtures/<name>/
+    workflow.md
+    inputs.json
+    expected_output.json
+  runner.ts
+evals/                               # Dev-only; not published
+  setup.ts
+  harness.ts
+  checks.ts
+  tests/
 ```
 
-## Development
+## Development Commands
 
 ```sh
-uv sync --extra dev                    # Install dependencies
-uv run pytest cli/tests                # Run CLI tests
-uv run mypy cli/workflowskill/         # Type checking
-uv run ruff check cli/workflowskill/   # Linting
-uv run ruff format cli/workflowskill/  # Formatting
+pnpm install               # Install dependencies
+pnpm typecheck             # tsc --noEmit
+pnpm lint                  # biome / eslint
+pnpm test                  # vitest run (unit + integration)
+pnpm conformance           # run conformance fixtures
+pnpm build                 # tsc → dist/
 
-# Run workflows (always uses current source):
-uv run python -m workflowskill.main run <file>
-uv run python -m workflowskill.main run examples/weldable/hello-world.md --toolkit weldable
+# Run a workflow locally (mock mode):
+pnpm workflowskill run examples/hello-world.md -i name=Alice
+pnpm workflowskill run examples/gmail-triage.md
 ```
 
-## Eval Suite
+## Local mock integrations
 
-The eval suite measures how well `skill/SKILL.md` teaches an LLM to generate valid workflows. Evals call Claude and cost money, so they run only on demand.
-
-### Running evals
+The CLI's Weldable toolkit imports integration packages directly from the weldable repo at `../weldable/packages/*`. Before running `pnpm install` here, build the integration packages:
 
 ```sh
-uv run pytest -m eval -v                     # Run all evals
-uv run pytest -m eval -k test_loop -v        # Run one eval
-EVAL_RETRIES=5 uv run pytest -m eval -v      # Multi-trial stability check
-uv run pytest -m eval --eval-snapshot -v     # Save generated outputs for diffing
+# From ../weldable
+pnpm -r build
 ```
 
-Requires `ANTHROPIC_API_KEY` in the environment. Tests are skipped automatically if the key is not set.
+No login or API key is required for `workflowskill run` — mock execution is fully offline.
 
-### What evals test
+## Published Surface
 
-Each eval gives Claude a natural-language task and checks whether the generated SKILL.md has the correct structure via AST analysis. Tests target specific language features: pure logic, single/sequential/parallel activities, conditionals, loops, retry policies, error recovery, explicit timeouts, and LLM schema usage.
+```json
+{
+  "exports": {
+    ".":        { "types": "./dist/schema/index.d.ts", "import": "./dist/schema/index.js" },
+    "./schema": { "types": "./dist/schema/index.d.ts", "import": "./dist/schema/index.js" },
+    "./skill":  "./skill/index.js"
+  },
+  "files": ["dist/schema/**", "skill/**"]
+}
+```
 
-## Improving the Skill
+`./skill/index.js` exports absolute paths to `SKILL.md` and `toolkits/weldable/prompt.md` so consumers can read them without guessing file locations.
 
-When making changes to `skill/SKILL.md`, follow this eval-driven workflow:
+**The CLI is internal** (not exported, only exposed as the `workflowskill` bin). The schema, validate, loader, interpreter, runtime, and toolkit sub-paths are all exported. Weldable and other consumers may import from them, but are encouraged to build their own interpreter against the Specification section of `README.md` + `conformance/` + the Zod schema.
 
-### Step 1: Baseline
+## Architecture Notes
 
-Run evals and note which tests pass:
+### Expression Language
+
+**JSONata only.** Used two ways:
+
+- **Bare** (the field IS the expression, no delimiters) in `transform.expr`, `if.when`, `while.when`, and `switch.on`. In predicate positions (`when`/`on`) any truthy JSONata result selects the branch.
+- **Template** via `{{ expr }}` spans inside string-typed fields everywhere else. `interpolate(str, ctx)` scans for `{{ }}` spans and evaluates each. A string that is exactly one `{{ expr }}` span returns the raw value; strings with surrounding text are coerced to string.
+
+### Execution Context
+
+```ts
+interface ExecutionContext {
+  stack: StepScope[];              // outer → inner; resolution walks end → start
+  input: Record<string, unknown>;
+  workflow: { owner: {...}; run_id: string; name: string; started_at: string };
+  env: Record<string, unknown>;
+}
+```
+
+Step outputs are accessed as `steps.<id>.output`. Foreach iterations push a new scope; parallel branches each get their own scope. Parallel output shape: `steps.<id>.branches.<name>.<inner_id>.output`.
+
+### Runtime Protocol
+
+The `Runtime` interface in `src/runtime/protocol.ts` maps to DBOS primitives:
+
+- `executeStep(path, fn, opts?)` — atomic "execute or return cached." Maps to `DBOS.runStep`.
+- `executeBranches(path, branches, opts?)` — fan-out for `foreach`/`parallel`. Child workflows on DBOS; `Promise.all` + semaphore on InMemoryRuntime.
+- `sleep(path, ms)` — maps to `DBOS.sleep`.
+- `waitForSignal(path, opts)` — match predicate + timeout. Maps to `DBOS.recv` loop.
+
+**Interpreter invariant:** tree traversal order depends only on parsed YAML + inputs. Every `executeStep` call must happen in the same deterministic order for a given workflow + inputs. This is what DBOS's ordinal-based replay depends on.
+
+### Idempotency
+
+`src/interpreter/idempotency.ts`: `sha256(runId | stepPath)`. The `stepPath` encodes the iteration index and branch name as structural segments (e.g. `body[2]/action`), so the key is a pure function of stable inputs — safe to use as an idempotency key for action calls.
+
+## Conformance Suite
+
+Fixtures under `conformance/fixtures/<name>/` each have `workflow.md`, `inputs.json`, and `expected_output.json`. The runner auto-discovers all fixtures.
 
 ```sh
-uv run pytest -m eval -v
+pnpm conformance      # all fixtures
 ```
 
-This tells you the current state so you can distinguish regressions you introduced from pre-existing failures.
+Third-party interpreters can consume the conformance suite directly — `conformance/README.md` describes the contract.
 
-### Step 2: Make the change
+## Key Constraints
 
-Edit `skill/SKILL.md`. This is the authoring guide that teaches the model how to generate workflows — changes here affect generation quality.
+- **YAML edits invalidate in-progress runs.** Tree structure changes shift DBOS ordinals. Edits produce new workflow instances; mid-run upgrades are not supported.
+- **Parallel fan-out uses child workflows** on durable runtimes. Authors always use `foreach`/`parallel` — the runtime decides how to parallelize.
+- **Workflow body must be deterministic.** All non-determinism lives inside `executeStep` thunks. Control flow depends only on parsed YAML + inputs + checkpointed step outputs.
+- **`env.*` is never `process.env`.** CLI populates `env` only from explicit `--env KEY=VALUE` flags. Secrets are resolved by integrations at execution time, not surfaced to workflows.
+- **`retry` applies to `action` steps only.** Schema rejects it on all other step types.
 
-### Step 3: Run evals and save snapshots
+## Eval Workflow
+
+Evals are manual-only (require `ANTHROPIC_API_KEY`):
 
 ```sh
-uv run pytest -m eval --eval-snapshot -v
+ANTHROPIC_API_KEY=... pnpm eval                    # all evals
+ANTHROPIC_API_KEY=... pnpm eval -- --snapshot      # save snapshots
+ANTHROPIC_API_KEY=... pnpm eval -- -t foreach      # single test
 ```
 
-When an eval fails, the assertion message includes the full generated code. Read it to understand what the model got wrong, then go back to Step 2 and adjust SKILL.md accordingly. Repeat until no new regressions — all tests that passed at baseline still pass.
+Evals call Claude with `skill/SKILL.md` as the system prompt and a natural-language task, then assert the generated YAML has correct step structure via `evals/checks.ts`. Snapshots in `evals/snapshots/` are the record of what the model generated — keep them current.
 
-**Always run with `--eval-snapshot`.** Snapshots in `evals/snapshots/` are the record of what the model actually generated. They must be kept current with every SKILL.md change so regressions are visible as diffs, not just test failures.
+### Skill authoring files
 
-### Adding a new eval
+- **`skill/SKILL.md`** — Platform-agnostic authoring guide. All authoring behavior changes go here. Must never contain platform-specific details.
+- **`.claude/skills/workflow-author/SKILL.md`** — Claude Code entry point. Reads `skill/SKILL.md` + `skill/toolkits/weldable/prompt.md`. Instructs Claude to write the workflow file and run it in mock mode.
+- **`skill/toolkits/weldable/prompt.md`** — Weldable-specific authoring context: action discovery, probing, mock execution.
 
-If your change introduces a new pattern that existing evals don't cover:
-
-1. Add an AST check to `evals/ast_checks.py` if needed (follow existing patterns)
-2. Add a test to `evals/test_authoring.py` with a natural-language task and structural assertions
-3. Run it **before** editing SKILL.md to see if the model already handles it
-4. If it fails, edit SKILL.md and iterate per Steps 2–3
-5. **Save snapshots** once the test passes: `uv run pytest -m eval -k <test_name> --eval-snapshot -v`
-
-### Eval design principles
-
-Each eval tests whether SKILL.md successfully teaches one structural pattern. Follow these principles:
-
-- **One pattern per test.** Isolate the feature you're testing. A test for retry policies shouldn't also require parallel execution.
-- **Task reads like a user request.** The TASK string is what a real user would say. Describe the goal, not the implementation — say "run in parallel" not "use asyncio.gather".
-- **Assert structure via AST, not string matching.** The model may generate valid code that looks different from what you expect. Use `evals/ast_checks.py` helpers to check structural properties.
-- **Assert absence too.** The strongest evals check both what SHOULD be there and what should NOT. For example, a deterministic extraction test asserts `scrape` is present AND `llm` is absent. This catches the model over-reaching.
-- **Include generated code in assertion messages.** Every assertion should embed the generated code in its failure message so the developer can immediately see what the model produced without re-running.
-- **Keep assertions minimal.** Only assert what's structurally necessary for the pattern. Don't assert variable names, string formatting, or style choices.
-
-## Key Conventions
-
-| Convention | Rule |
-|-----------|------|
-| Workflow return type | Always `dict` |
-| Action handler signature | `async def handler(args: dict) -> dict` |
-| Action invocation | `workflow.execute_activity("name", args_dict, start_to_close_timeout=...)` |
-| Input passing | Flat keyword args dict to `@workflow.run` |
-| Timeout | Default is 30s; override with `start_to_close_timeout` only when needed |
-| I/O dataclasses | Optional inside action handlers; workflow interface uses plain `dict` |
-| Determinism | Prefer pure Python for parsing, transforming, and filtering. Use `llm` only for genuine inference (summarization, classification, generation, translation). |
-| `actions` field | Required in frontmatter when the workflow calls any actions; lists action names used in `execute_activity` calls. Enables runtime compatibility checking during progressive discovery. |
-
-## SKILL.md Format
-
-Workflows are Python code blocks in markdown files with YAML frontmatter. See `skill/SKILL.md` for the full format specification. Key frontmatter fields: `type`, `name`, `description`, `actions` (list of action names), `inputs` (with `type`, optional `default` and `description`), `outputs`. Optional `## Details` section between Usage and Workflow for prerequisites, config, and limitations.
-
-WorkflowSkills are designed to live alongside regular skills in agent environments and be picked up by progressive discovery. Every SKILL.md includes `type: workflow` in frontmatter (machine-readable discriminator) and a `## Usage` section in the markdown body that says "Run this workflow using the run_workflow tool". Together these ensure a discovering agent knows to execute the workflow via a tool rather than follow it as instructions.
-
-## Skill Authoring Guide
-
-Two skill files with distinct roles:
-
-- **`skill/SKILL.md`** — Platform-agnostic authoring guide. Used as the system prompt by all consumers. Must never contain platform-specific details. All authoring behavior changes go here.
-- **`.claude/skills/workflow-author/SKILL.md`** — Entry point for Claude Code. Reads `skill/SKILL.md` (authoring guide) + `cli/workflowskill/toolkits/weldable/prompt.md` (Weldable-specific context). Contains output/UX rules (save_workflow tool, file paths, how to describe workflows to users).
-- **`cli/workflowskill/toolkits/weldable/prompt.md`** — Weldable-specific authoring context: routing, auth, and progressive discovery protocol using `weldable_act`. Served programmatically via `get_authoring_context()` for CLI and evals.
-- **`cli/workflowskill/toolkits/weldable/`** — Weldable toolkit. Registers a catch-all HTTP handler that routes any action name to Weldable's REST API via BM25 catalog search. Use `--toolkit weldable` to run workflows with Weldable.
+When editing `skill/SKILL.md`, run evals before and after to catch regressions.

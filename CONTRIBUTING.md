@@ -1,340 +1,171 @@
 # Contributing
 
-WorkflowSkill has two extension points: **toolkits** (action execution) and **runtimes** (workflow orchestration). To support WorkflowSkill, a platform implements both. They are independent — any toolkit works with any runtime.
+WorkflowSkill has two extension points: **toolkits** (action execution) and **runtimes** (workflow orchestration). They are independent — any toolkit works with any runtime. Both are TypeScript interfaces defined in `src/`.
+
+If you just want to run WorkflowSkill on your own platform without modifying this repo, skip to [Building your own interpreter](#building-your-own-interpreter).
+
+---
+
+## Dev setup
+
+```sh
+pnpm install
+pnpm typecheck
+pnpm test             # vitest — unit + integration
+pnpm conformance      # fixture-based conformance suite
+pnpm build            # tsup → dist/
+
+# Run a workflow locally (mock mode):
+pnpm workflowskill run examples/hello-world.md -i name=Alice
+pnpm workflowskill run examples/hello-world.md --toolkit weldable --runtime memory
+```
+
+The default `weldable` toolkit imports integration packages from `../weldable/packages/*`. Before `pnpm install` here, run `pnpm -r build` inside `../weldable`.
+
+Evals are manual (require `ANTHROPIC_API_KEY`): `pnpm eval`.
 
 ---
 
 ## Toolkits
 
-A toolkit connects workflows to a platform's action execution layer. When workflow code calls `workflow.execute_activity("slack.post_message", {...})`, the toolkit receives that call and routes it to the right place — a cloud API, an SDK, a local process, whatever the platform provides.
+A toolkit translates action names + args into calls against a specific platform. When a workflow step executes `gmail.search`, the toolkit is what actually runs it.
 
-### What a toolkit provides
+### Implement the `Toolkit` interface
 
-1. **Action execution** — an `execute(action, args)` method that handles any action name the workflow calls.
-2. **Authoring context** — a `prompt.md` document injected into Claude's context when authoring workflows for this toolkit. Describes available action names, required arguments, and response shapes.
+`src/toolkit/protocol.ts`:
 
-### Implement the Toolkit protocol
-
-Create `cli/workflowskill/toolkits/{name}/__init__.py`:
-
-```python
-from __future__ import annotations
-from pathlib import Path
-from typing import Any
-
-
-class MyPlatformToolkit:
-    name = "myplatform"
-    description = "My platform — short description"
-    homepage = "https://myplatform.example"
-
-    def __init__(self, api_key: str) -> None:
-        self._api_key = api_key
-
-    async def execute(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        # Route the action name to the right API call.
-        # Raise KeyError if the action is not supported.
-        # Raise RuntimeError if the action fails.
-        response = await self._call_api(action, args)
-        return response
-
-    def get_authoring_context(self) -> str:
-        return (Path(__file__).parent / "prompt.md").read_text()
-
-
-def create_toolkit() -> MyPlatformToolkit:
-    """Factory called by load_toolkit(). Read config from environment here."""
-    import os
-    api_key = os.environ.get("MYPLATFORM_API_KEY")
-    if not api_key:
-        raise RuntimeError("MYPLATFORM_API_KEY is required.")
-    return MyPlatformToolkit(api_key=api_key)
-```
-
-Two patterns for `execute()`:
-
-**Catch-all** (the platform handles routing):
-```python
-async def execute(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-    resp = await self._client.post("/act", json={"intent": action, "args": args})
-    return resp.json()["result"]
-```
-
-**Fixed action set** (the toolkit routes internally):
-```python
-async def execute(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-    match action:
-        case "stripe.create_customer":
-            return await self._create_customer(args)
-        case "stripe.list_charges":
-            return await self._list_charges(args)
-        case _:
-            raise KeyError(f"Unknown action: {action!r}")
-```
-
-### Register the toolkit
-
-Add it to `_REGISTRY` in `cli/workflowskill/toolkits/__init__.py`:
-
-```python
-_REGISTRY: dict[str, str] = {
-    "weldable": "workflowskill.toolkits.weldable",
-    "myplatform": "workflowskill.toolkits.myplatform",
+```ts
+export interface Toolkit {
+  readonly name: string;
+  readonly description: string;
+  execute(
+    action: string,
+    args: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<unknown>;
+  getAuthoringContext(): Promise<string>;
 }
 ```
 
-### Write prompt.md
+Throw the error types defined alongside the interface where they apply:
 
-`cli/workflowskill/toolkits/{name}/prompt.md` is injected into Claude when authoring workflows with `--toolkit myplatform`. Document:
+- `ActionNotFoundError` — unknown action name.
+- `ActionArgsError` — required args missing.
+- `IntegrationNotConnectedError` — the target integration isn't authorized for this user.
 
-- Available action names and their exact format (e.g. `myplatform.do_thing`)
-- Required and optional arguments for each action
-- Response shapes
-- Authentication requirements and how to connect services
+The `idempotencyKey` is derived by the interpreter via `src/interpreter/idempotency.ts` as `sha256(runId + path + iteration + branch)`. Pass it through to APIs that support idempotency headers (Stripe, Square, etc.) to make action calls safely retryable.
 
-See `cli/workflowskill/toolkits/weldable/prompt.md` for an example.
+Reference implementation: `src/toolkit/weldable/mock.ts` (catch-all dispatch against imported Weldable integration packages) and `src/toolkit/weldable/registry.ts` (flat action-ID map).
 
-### Support `workflowskill login` (optional)
+### Authoring prompt
 
-If your toolkit needs an API key or OAuth token, you can add browser-based login support so users run `workflowskill login --toolkit myplatform` instead of setting environment variables by hand.
+Write `skill/toolkits/<name>/prompt.md` describing available action names, their args, and response shapes. This file is what `getAuthoringContext()` must return — it's injected into Claude when authoring workflows for your toolkit. See `skill/toolkits/weldable/prompt.md` for an example.
 
-**1. Register your toolkit name** in the `--toolkit` option in `cli/workflowskill/main.py`:
+### Register it
 
-```python
-@click.option(
-    "--toolkit",
-    required=True,
-    type=click.Choice(["weldable", "myplatform"]),
-    ...
-)
+Add your factory to `src/toolkit/registry.ts`:
+
+```ts
+const registry: Record<string, ToolkitFactory> = {
+  weldable: async () => {
+    const { WeldableMockToolkit } = await import("./weldable/mock.js");
+    return new WeldableMockToolkit();
+  },
+  myplatform: async () => {
+    const { MyPlatformToolkit } = await import("./myplatform/toolkit.js");
+    return new MyPlatformToolkit();
+  },
+};
 ```
 
-**2. Implement a `login_myplatform` function** in `cli/workflowskill/auth.py`. It receives the API base URL and the path to `.env`, runs the auth flow, and writes credentials there. See `login_weldable` for a complete reference implementation — it opens a browser to your authorization endpoint, waits for a callback on a local HTTP server, validates a CSRF state token, and calls `_save_to_env` to write the key.
+Users select it with `pnpm workflowskill run ... --toolkit myplatform`.
 
-**3. Dispatch it** in the `login` command body in `main.py`:
+### Tests
 
-```python
-elif toolkit == "myplatform":
-    from workflowskill.auth import login_myplatform
-    login_myplatform(api_url, env_path)
-```
+Add `test/toolkit/<name>.test.ts`. Verify protocol compliance, action routing, and error paths (missing action, missing args, not-connected). See `test/cli/registry.test.ts` for the registry round-trip pattern.
 
-The PR checklist for toolkits with login support:
-- `login_myplatform` added to `auth.py`
-- Toolkit name added to the `--toolkit` Choice in `main.py`
-- Login dispatched in the `login` command
-- Flow tested end-to-end: browser opens, key writes to `.env`, re-running prompts before overwriting
+### Examples
 
-### Add examples
+Add at least one runnable workflow under `examples/` that exercises your toolkit.
 
-Create `examples/myplatform/` with at least one runnable end-to-end example.
+### PR checklist
 
-### Write tests
+- Toolkit class implements `Toolkit`.
+- Factory registered in `src/toolkit/registry.ts`.
+- `skill/toolkits/<name>/prompt.md` documents all actions with arg names and response shapes.
+- At least one runnable example in `examples/`.
+- Tests cover protocol compliance, action routing, and the three error types.
 
-Verify Protocol compliance and action routing:
-
-```python
-from workflowskill.toolkits._protocol import Toolkit
-
-def test_implements_protocol():
-    toolkit = MyPlatformToolkit(api_key="test")
-    assert isinstance(toolkit, Toolkit)
-
-async def test_execute_routes_correctly():
-    toolkit = MyPlatformToolkit(api_key="test")
-    # mock the underlying HTTP/SDK call and verify routing
-    ...
-```
-
-### Submit a PR
-
-PRs are reviewed for:
-
-- `execute()` implemented and reachable
-- `create_toolkit()` factory exported at module level
-- `prompt.md` documents available actions with parameter names and shapes
-- At least one runnable example in `examples/`
-- Tests: Protocol compliance, action routing, missing-config error
-
-No changes to core infrastructure (loader, runner, `skill/SKILL.md`, evals) are needed or expected.
+You should not need to touch the interpreter, schema, loader, or SKILL.md.
 
 ---
 
 ## Runtimes
 
-A runtime provides the orchestration layer for workflow execution. It decides how a workflow runs — whether steps are checkpointed, how crashes are recovered, how retries work, and how signals (pause/resume) are implemented.
+A runtime provides the orchestration layer — checkpointing, crash recovery, retries, and signals. The toolkit is injected at workflow-start time; the workflow body never sees either directly.
 
-Runtimes receive a toolkit at construction and call `toolkit.execute()` inside each step. The workflow code is unaware of both.
+### Implement the `Runtime` interface
 
-### What a runtime provides
+`src/runtime/protocol.ts`:
 
-1. **`run_workflow(workflow_fn, inputs, *, workflow_id)`** — execute a workflow function with whatever durability guarantees the platform offers.
-2. **`execute_step(action, args, *, timeout, retry_policy)`** — execute a single action as a checkpointed step. On crash recovery, completed steps return cached results.
-3. **`wait_for_signal(name, *, prompt, timeout)`** — pause the workflow and wait for an external event.
-
-### Implement the Runtime protocol
-
-Create `cli/workflowskill/runtimes/{name}.py`:
-
-```python
-from __future__ import annotations
-from collections.abc import Awaitable, Callable
-from datetime import timedelta
-from typing import Any
-
-import workflowskill.workflow_context as _wf_ctx
-from workflowskill.toolkits._protocol import Toolkit
-
-
-class MyRuntime:
-    name = "myruntime"
-
-    def __init__(
-        self,
-        toolkit: Toolkit | None = None,
-        on_activity_start: Callable | None = None,
-        on_activity_complete: Callable | None = None,
-        on_signal_waiting: Callable | None = None,
-    ) -> None:
-        self._toolkit = toolkit
-        self._on_activity_start = on_activity_start
-        self._on_activity_complete = on_activity_complete
-        self._on_signal_waiting = on_signal_waiting
-
-    async def run_workflow(
-        self,
-        workflow_fn: Callable[..., Awaitable[dict[str, Any]]],
-        inputs: dict[str, Any],
-        *,
-        workflow_id: str | None = None,
-    ) -> dict[str, Any]:
-        # Set the ContextVar so execute_activity() routes here.
-        token = _wf_ctx.set_context(self._dispatch, self._signal)
-        try:
-            return await workflow_fn(**inputs)
-        finally:
-            _wf_ctx.reset_context(token)
-
-    async def _dispatch(
-        self, action: str, args: dict, step_index: int, display_label: str
-    ) -> dict:
-        # Wrap execute_step with lifecycle callbacks for display.
-        import time
-        if self._on_activity_start:
-            self._on_activity_start(action, args)
-        t0 = time.monotonic()
-        try:
-            return await self.execute_step(action, args)
-        finally:
-            if self._on_activity_complete:
-                self._on_activity_complete(action, int((time.monotonic() - t0) * 1000))
-
-    async def execute_step(
-        self,
-        action: str,
-        args: dict[str, Any],
-        *,
-        timeout: timedelta | None = None,
-        retry_policy: Any | None = None,
-    ) -> dict[str, Any]:
-        if self._toolkit is None:
-            raise RuntimeError(f"Action '{action}' called but no toolkit configured.")
-        # Wrap with your platform's checkpointing here.
-        return await self._toolkit.execute(action, args)
-
-    async def _signal(self, name: str, prompt: str | None, timeout: Any) -> Any:
-        td = timeout if isinstance(timeout, timedelta) else (
-            timedelta(seconds=float(timeout)) if timeout is not None else None
-        )
-        return await self.wait_for_signal(name, prompt=prompt, timeout=td)
-
-    async def wait_for_signal(
-        self,
-        name: str,
-        *,
-        prompt: str | None = None,
-        timeout: timedelta | None = None,
-    ) -> Any:
-        # Implement platform-specific pause/resume.
-        ...
-
-
-def create_runtime(
-    toolkit: Toolkit | None = None,
-    on_activity_start: Callable | None = None,
-    on_activity_complete: Callable | None = None,
-    on_signal_waiting: Callable | None = None,
-) -> MyRuntime:
-    return MyRuntime(
-        toolkit=toolkit,
-        on_activity_start=on_activity_start,
-        on_activity_complete=on_activity_complete,
-        on_signal_waiting=on_signal_waiting,
-    )
-```
-
-### Key implementation notes
-
-**`workflow_id`** is the SKILL.md file path. Durable runtimes use it as the checkpoint key so crash recovery can reload the workflow class from disk rather than serializing the function. Non-durable runtimes can ignore it.
-
-**ContextVar wiring** is how the workflow code reaches your runtime. `_wf_ctx.set_context(dispatch, signal)` installs two functions into ContextVars that the generated workflow module calls when it hits `workflow.execute_activity()` or `workflow.wait_for_signal()`. Always call `reset_context(token)` in a `finally` block.
-
-**Lifecycle callbacks** (`on_activity_start`, `on_activity_complete`) are display concerns — they drive the CLI spinner. Wire them in `_dispatch`, not in `execute_step`, so they fire regardless of how the step is checkpointed.
-
-**Durable runtimes** need the step to be the atomic unit. Call `toolkit.execute()` inside your platform's checkpointing primitive (a DBOS step, a Temporal activity, an Inngest step function). The checkpoint must wrap the execution — not follow it — to guarantee exactly-once semantics.
-
-### Register the runtime
-
-Add it to `_REGISTRY` in `cli/workflowskill/runtimes/__init__.py`:
-
-```python
-_REGISTRY: dict[str, str] = {
-    "dbos": "workflowskill.runtimes.dbos",
-    "myruntime": "workflowskill.runtimes.myruntime",
+```ts
+export interface Runtime {
+  readonly runId: string;
+  readonly owner: { email?: string; [k: string]: unknown };
+  now(): Date;
+  executeStep<T>(path: string, fn: () => Promise<T>, opts?: StepOptions): Promise<T>;
+  executeBranches<T>(path: string, branches: BranchSpec<T>[], opts?: BranchOptions): Promise<T[]>;
+  sleep(path: string, ms: number): Promise<void>;
+  waitForSignal<T>(path: string, opts: SignalOptions): Promise<SignalResult<T>>;
 }
 ```
 
-### Write tests
+The DBOS mapping comments in `protocol.ts` describe the intended semantics for each method.
 
-Verify Protocol compliance and the ContextVar wiring:
+### Key invariants
 
-```python
-from workflowskill.runtimes._protocol import Runtime
+- **Call-order determinism.** Tree traversal order depends only on parsed YAML + inputs. Every `executeStep` call must happen in the same order for a given workflow + inputs on replay. DBOS's ordinal-based replay depends on this — if your runtime uses replay, enforce it.
+- **Fan-out uses child workflows.** On durable runtimes, `executeBranches` must spawn one child workflow per branch, not `Promise.all` inside a single workflow (which would interleave ordinals).
+- **Signal predicates must be pure.** `waitForSignal` may be called across restarts; the match function depends only on its payload argument.
 
-def test_implements_protocol():
-    runtime = MyRuntime()
-    assert isinstance(runtime, Runtime)
+Reference implementation: `src/runtime/memory.ts` — an in-process, non-durable runtime suitable for CLI authoring. It's the right thing to read first.
 
-async def test_execute_activity_routes_to_toolkit():
-    mock_toolkit = AsyncMock()
-    mock_toolkit.execute = AsyncMock(return_value={"ok": True})
-    runtime = MyRuntime(toolkit=mock_toolkit)
+### Register it
 
-    async def workflow() -> dict:
-        import workflowskill.workflow_context as ctx
-        return await ctx.dispatch_action("my.action", {"x": 1}, 0, "my.action")
+Add your factory to `src/runtime/registry.ts`. Users select it with `--runtime <name>`.
 
-    result = await runtime.run_workflow(workflow, {})
-    assert result == {"ok": True}
-    mock_toolkit.execute.assert_called_once_with("my.action", {"x": 1})
-```
+### Tests
 
-### Submit a PR
+Add `test/runtime/<name>.test.ts`. Protocol compliance + the determinism invariant (a workflow replayed with the same inputs hits `executeStep` in the same order).
 
-PRs are reviewed for:
+### PR checklist
 
-- `run_workflow()`, `execute_step()`, `wait_for_signal()` implemented
-- `create_runtime()` factory exported at module level
-- ContextVar wiring: `set_context` called in `run_workflow`, `reset_context` in `finally`
-- Lifecycle callbacks wired through `_dispatch`
-- Tests: Protocol compliance, ContextVar integration, toolkit dispatch
-
-No changes to core infrastructure (loader, `skill/SKILL.md`, evals) are needed or expected.
+- Runtime class implements `Runtime`.
+- Factory registered in `src/runtime/registry.ts`.
+- Tests cover protocol compliance and determinism under replay (if applicable).
+- Conformance suite passes against your runtime: `pnpm conformance` with your runtime swapped in.
 
 ---
 
-## Governance
+## Building your own interpreter
 
-- **Core infrastructure** (`skill/SKILL.md`, loader, evals) is maintained by the workflowskill team. Changes here require a proposal and review.
-- **Toolkits and runtimes** are maintained by their respective platform teams. Breaking changes to core require maintainer notification.
-- Authors who know workflowskill can write workflows for your platform immediately, using the same authoring experience and eval suite.
+Third-party platforms (Weldable, etc.) typically build their own interpreter rather than adding a toolkit to this repo. The contract:
+
+- **Schema** — consume `workflowskill` (Zod schemas + TypeScript types). Exported from `src/schema/`.
+- **Conformance suite** — `conformance/fixtures/<name>/` each contain `workflow.md`, `inputs.json`, and (optionally) `expected_output.json`. Your interpreter must produce the expected output for each fixture. Run via `pnpm conformance` after pointing the runner at your implementation.
+- **Specification** — the "Specification" section of `README.md` documents step semantics, expression evaluation (JSONata), output shapes, and scoping rules.
+
+The published npm surface is deliberately narrow: schema + SKILL.md only. Everything else in `src/` is internal reference material.
+
+---
+
+## Core changes
+
+Changes to any of these require maintainer review and usually a proposal:
+
+- `skill/SKILL.md` — the platform-agnostic authoring guide. Run `pnpm eval` before and after; update snapshots if behavior intentionally shifts.
+- `src/schema/` — Zod schemas. Changes propagate to every interpreter; version bumps may be required.
+- `src/interpreter/` — reference implementation semantics.
+- `conformance/fixtures/` — the contract third parties rely on. New fixtures welcome; changing existing ones is a breaking change.
+
+Toolkits and runtimes live behind the registry and don't touch core — if a contribution requires core changes, flag it in the PR and explain why.

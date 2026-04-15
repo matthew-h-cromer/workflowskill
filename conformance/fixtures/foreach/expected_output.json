@@ -1,0 +1,7 @@
+{
+  "results": [
+    { "double": { "output": 2 } },
+    { "double": { "output": 4 } },
+    { "double": { "output": 6 } }
+  ]
+}
