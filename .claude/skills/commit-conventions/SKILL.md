@@ -1,8 +1,8 @@
 ---
 name: commit-conventions
 description: >
-  Commit message conventions for this project. Use when creating git
-  commits, amending commits, or reviewing commit messages.
+  Commit and push changes in workflowskill. Use when creating commits, amending,
+  proposing a version bump, or reviewing commit messages for this package.
 ---
 
 # Commit Message Conventions

@@ -86,14 +86,9 @@ pnpm workflowskill run examples/gmail-triage.md
 
 ## Local mock integrations
 
-The CLI's Weldable toolkit imports integration packages directly from the weldable repo at `../weldable/packages/*`. Before running `pnpm install` here, build the integration packages:
+No login or API key is required for `workflowskill run` — mock execution is fully offline and resolves `@weldable/integration-*` from npm.
 
-```sh
-# From ../weldable
-pnpm -r build
-```
-
-No login or API key is required for `workflowskill run` — mock execution is fully offline.
+If you are testing an unpublished integration alongside workflowskill (weldable-all dev setup), use the `link-local` skill in `weldable-all/` to wire local packages without publishing.
 
 ## Published Surface
 
