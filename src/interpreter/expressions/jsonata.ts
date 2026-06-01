@@ -88,9 +88,23 @@ export async function interpolate(template: string, ctx: ExecutionContext): Prom
 }
 
 /**
- * Evaluate a record of `with:` args. Each value may be a string containing
- * `{{ }}` spans or a plain primitive / nested object. Strings with spans are
- * interpolated; plain values pass through unchanged.
+ * Recursively interpolate `{{ }}` spans throughout a nested value.
+ * Mirrors `emitTemplate` in `validate/walk.ts` so static analysis and
+ * runtime stay in sync: strings interpolated, arrays recursed element-wise,
+ * objects recursed key-wise, primitives passed through unchanged.
+ */
+async function interpolateValue(value: unknown, ctx: ExecutionContext): Promise<unknown> {
+  if (typeof value === "string") return interpolate(value, ctx);
+  if (Array.isArray(value)) return Promise.all(value.map((v) => interpolateValue(v, ctx)));
+  if (value !== null && typeof value === "object")
+    return interpolateArgs(value as Record<string, unknown>, ctx);
+  return value;
+}
+
+/**
+ * Evaluate a record of `with:` args. Each value is recursed through
+ * `interpolateValue` — strings interpolated, arrays and objects traversed
+ * deeply, primitives passed through unchanged.
  */
 export async function interpolateArgs(
   args: Record<string, unknown>,
@@ -98,13 +112,7 @@ export async function interpolateArgs(
 ): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
-    if (typeof value === "string") {
-      result[key] = await interpolate(value, ctx);
-    } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      result[key] = await interpolateArgs(value as Record<string, unknown>, ctx);
-    } else {
-      result[key] = value;
-    }
+    result[key] = await interpolateValue(value, ctx);
   }
   return result;
 }

@@ -3,9 +3,6 @@
 ## [2026-04-29] src/interpreter/expressions/jsonata.ts:46-53
 `sanitizeJsonata` mutates the JSONata result object in-place for the object branch while the array branch correctly returns a new value via `Array.from()`. If expression compilation is ever memoized this will corrupt cached results — should use `Object.fromEntries()` instead of mutating.
 
-## [2026-04-29] src/interpreter/expressions/jsonata.ts:95-110
-`interpolateArgs` does not recurse into arrays. Action `with:` fields containing arrays of objects with `{{ }}` spans are silently passed through unexpanded. The static-analysis walker (`emitTemplate`) handles arrays correctly; the runtime does not. No test covers this case.
-
 ## [2026-04-29] src/runtime/retry.ts
 `applyRetry` uses deterministic exponential backoff with no jitter. Under concurrent workflows retrying the same flaky action this creates thundering herd. No unit tests exist for this function at all — both the missing jitter and missing tests are defects in a production retry implementation.
 

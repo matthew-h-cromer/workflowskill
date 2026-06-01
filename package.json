@@ -1,6 +1,6 @@
 {
   "name": "workflowskill",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Declarative YAML workflow runtime — authoring skill and schema",
   "license": "MIT",
   "type": "module",
