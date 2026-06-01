@@ -3,6 +3,7 @@ name: Publish
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -37,7 +38,7 @@ jobs:
           LOCAL=$(node -p "require('./package.json').version")
           echo "published=$PUBLISHED" >> $GITHUB_OUTPUT
           echo "local=$LOCAL" >> $GITHUB_OUTPUT
-          if [ "$PUBLISHED" != "$LOCAL" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$PUBLISHED" != "$LOCAL" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
